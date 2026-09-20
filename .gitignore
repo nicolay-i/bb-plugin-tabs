@@ -1,0 +1,16 @@
+dist/
+node_modules/
+
+.tmp/
+.DS_Store
+
+# Локальные credentials никогда не должны попасть в публичный репозиторий.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519

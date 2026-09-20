@@ -1,0 +1,1165 @@
+:root {
+  /* Верхняя scrollbar и одна строка вкладок. */
+  --bb-chat-tabs-strip-height: 52px;
+  --bb-chat-tabs-top-scrollbar-height: 0.625rem;
+  /* Нейтральная выбранная поверхность: серый из темы, не foreground-чёрный. */
+  --bb-chat-tabs-active-background: color-mix(
+    in oklch,
+    var(--foreground) 20%,
+    var(--background)
+  );
+  --bb-chat-tabs-active-border: color-mix(
+    in oklch,
+    var(--foreground) 30%,
+    var(--background)
+  );
+  --bb-chat-tabs-active-foreground: var(--foreground);
+  /* Текст статуса всегда следует foreground: это сохраняет AA-контраст даже
+   * в палитрах с intentionally мягким primary. Рабочий оттенок остаётся у
+   * точки, поэтому состояние узнаваемо и по цвету, и по подписи. */
+  --bb-chat-tabs-status-working: var(--foreground);
+  --bb-chat-tabs-status-working-dot: color-mix(
+    in oklch,
+    var(--primary) 45%,
+    var(--foreground)
+  );
+  --bb-chat-tabs-status-working-halo: color-mix(
+    in oklch,
+    var(--primary) 20%,
+    transparent
+  );
+  --bb-chat-tabs-status-unread: var(--foreground);
+  --bb-chat-tabs-scrollbar-track: color-mix(
+    in oklch,
+    var(--muted) 86%,
+    var(--background)
+  );
+  --bb-chat-tabs-scrollbar-thumb: color-mix(
+    in oklch,
+    var(--muted-foreground) 52%,
+    var(--muted)
+  );
+  --bb-chat-tabs-scrollbar-thumb-hover: color-mix(
+    in oklch,
+    var(--foreground) 54%,
+    var(--muted-foreground)
+  );
+}
+
+/* В dark theme поверхность остаётся различимой, но достаточно тёмной для
+ * AA-контраста маленького текста в палитрах с цветным canvas. */
+.dark {
+  --bb-chat-tabs-active-background: color-mix(
+    in oklch,
+    var(--foreground) 12%,
+    var(--background)
+  );
+  --bb-chat-tabs-active-border: color-mix(
+    in oklch,
+    var(--foreground) 22%,
+    var(--background)
+  );
+}
+
+/* Все вкладки идут одной строкой; вложенной вертикальной прокрутки нет. */
+#bb-chat-tabs-overlay[data-row-count="1"],
+body:has(#bb-chat-tabs-overlay[data-row-count="1"]) {
+  --bb-chat-tabs-strip-height: 52px;
+}
+
+/* Без overflow rail не нужен: полоса становится компактной, в одну строку. */
+#bb-chat-tabs-overlay[data-scrollable="false"],
+body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
+  --bb-chat-tabs-strip-height: 46px;
+}
+
+/*
+ * Это intentionally hybrid CSS: overlay зарегистрирован штатно, а CSS лишь
+ * резервирует место в существующей timeline. Никакие host-узлы не создаются,
+ * не переносятся и не получают обработчиков событий.
+ */
+#bb-chat-tabs-overlay {
+  position: fixed;
+  z-index: 9;
+  top: calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height, 48px));
+  right: 0;
+  left: 0;
+  height: var(--bb-chat-tabs-strip-height);
+  pointer-events: none;
+}
+
+#bb-chat-tabs-overlay[data-docked="false"] {
+  display: none;
+}
+
+/*
+ * В single-pane `data-thread-window` является main pane внутри
+ * SecondaryPanelLayout. Поэтому его horizontal anchor следует за resize
+ * правой панели и не перекрывает её native tab strip. SidebarInset остаётся
+ * fallback для промежуточной загрузки без thread window.
+ */
+@supports (left: anchor(left)) {
+  [data-sidebar="inset"] {
+    anchor-name: --bb-chat-tabs-content-inset;
+  }
+
+  #bb-chat-tabs-overlay {
+    z-index: 11;
+    position-anchor: --bb-chat-tabs-content-inset;
+    right: anchor(right);
+    left: anchor(left);
+  }
+
+  [data-thread-window]:not(aside [data-thread-window]) {
+    anchor-name: --bb-chat-tabs-thread-window;
+  }
+
+  body:has([data-thread-window]:not(aside [data-thread-window]))
+    #bb-chat-tabs-overlay {
+    position-anchor: --bb-chat-tabs-thread-window;
+  }
+}
+
+.bb-chat-tabs-shell {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  pointer-events: auto;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--background) 94%, var(--muted));
+  border-bottom: 1px solid var(--border);
+}
+
+/*
+ * Отдельный proxy-scroller помещает нативную горизонтальную дорожку сверху.
+ * Содержимое вкладок скроллится синхронно, но его собственная scrollbar
+ * скрыта, поэтому рядом с активной вкладкой не появляется второй скролл.
+ */
+.bb-chat-tabs-top-scrollbar {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--bb-chat-tabs-top-scrollbar-height);
+  flex: 0 0 var(--bb-chat-tabs-top-scrollbar-height);
+  overflow-x: scroll;
+  overflow-y: hidden;
+  pointer-events: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb)
+    var(--bb-chat-tabs-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.bb-chat-tabs-shell[data-scrollable="false"] .bb-chat-tabs-top-scrollbar {
+  display: none;
+}
+
+.bb-chat-tabs-top-scrollbar-spacer {
+  width: 100%;
+  min-width: 100%;
+  height: 1px;
+}
+
+/* Под scrollbar находится только горизонтальный strip вкладок. */
+.bb-chat-tabs-content-row {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* Единая icon-кнопка списка может быть слева или справа от strip. */
+.bb-chat-tabs-list-switcher {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0.125rem 0 0.25rem 0.5rem;
+}
+
+/* При правом положении DOM и visual order совпадают: strip идёт первым,
+ * а у кнопки меняется только внешний отступ от границы панели. */
+.bb-chat-tabs-list-switcher[data-position="right"] {
+  padding: 0.125rem 0.5rem 0.25rem 0;
+}
+
+.bb-chat-tabs-list-trigger {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 1.75rem;
+  appearance: none;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--background) 96%, var(--muted));
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-list-trigger:hover,
+.bb-chat-tabs-list-trigger[data-state="open"] {
+  color: var(--foreground);
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--foreground) 20%, var(--border));
+}
+
+.bb-chat-tabs-list-trigger:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+
+.bb-chat-tabs-list-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Radix portal: подменю остаётся одним и тем же на desktop и mobile. */
+.bb-chat-tabs-list-menu {
+  z-index: 100;
+  width: min(20rem, calc(100vw - 1rem));
+  /* История должна продолжаться ниже pinned, а не упираться в короткое окно.
+   * Radix всё ещё ограничивает высоту реально доступной областью viewport. */
+  max-height: min(
+    44rem,
+    var(
+      --radix-dropdown-menu-content-available-height,
+      calc(100dvh - 1rem)
+    )
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0.25rem;
+  color: var(--popover-foreground, var(--foreground));
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow:
+    0 0.5rem 1rem -0.375rem color-mix(in oklch, var(--foreground) 24%, transparent),
+    0 0.125rem 0.25rem -0.125rem color-mix(in oklch, var(--foreground) 12%, transparent);
+  outline: none;
+  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb)
+    var(--bb-chat-tabs-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.bb-chat-tabs-list-menu-group + .bb-chat-tabs-list-menu-group {
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.bb-chat-tabs-list-menu-group-label {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 0.875rem;
+}
+
+/* «Ещё» добавляет history локальными страницами. Граница порции остаётся
+ * видимой после раскрытия, но не является фокусируемым пунктом меню. */
+.bb-chat-tabs-list-menu-history-page-separator {
+  height: 1px;
+  margin: 0.375rem 0.5rem;
+  background: color-mix(in oklch, var(--foreground) 20%, var(--border));
+}
+
+.bb-chat-tabs-list-menu-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4375rem 0.5rem;
+  color: inherit;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.bb-chat-tabs-list-menu-item[data-highlighted],
+.bb-chat-tabs-list-menu-item[data-active="true"] {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Tombstone из history остаётся объяснимым, но не выглядит как доступная
+ * навигационная строка и не попадает в keyboard selection Radix. */
+.bb-chat-tabs-list-menu-item[data-disabled] {
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+}
+
+.bb-chat-tabs-list-menu-item[data-disabled][data-highlighted] {
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.bb-chat-tabs-list-menu-unavailable-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: color-mix(in oklch, var(--muted-foreground) 84%, var(--foreground));
+}
+
+.bb-chat-tabs-list-menu-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.125rem;
+}
+
+/* Вторая строка пунктов меню повторяет root-карточку: проект слева,
+ * компактный статус справа. При узком меню первым обрезается проект. */
+.bb-chat-tabs-list-menu-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bb-chat-tabs-list-menu-title,
+.bb-chat-tabs-list-menu-project,
+.bb-chat-tabs-list-menu-status,
+.bb-chat-tabs-list-menu-unavailable-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bb-chat-tabs-list-menu-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.bb-chat-tabs-list-menu-title[data-unavailable] {
+  color: color-mix(in oklch, var(--muted-foreground) 84%, var(--foreground));
+  text-decoration-line: line-through;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 0.0625rem;
+}
+
+.bb-chat-tabs-list-menu-project {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+}
+
+.bb-chat-tabs-list-menu-status,
+.bb-chat-tabs-list-menu-unavailable-label {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 68%;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.3125rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+}
+
+.bb-chat-tabs-list-menu-unavailable-label {
+  color: color-mix(in oklch, var(--muted-foreground) 90%, var(--foreground));
+}
+
+.bb-chat-tabs-list-menu-status-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+
+.bb-chat-tabs-list-menu-status[data-status="working"] {
+  color: var(--bb-chat-tabs-status-working);
+}
+
+.bb-chat-tabs-list-menu-status[data-status="working"]
+  .bb-chat-tabs-list-menu-status-dot {
+  background: var(--bb-chat-tabs-status-working-dot);
+  box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
+}
+
+.bb-chat-tabs-list-menu-status[data-status="unread"] {
+  color: var(--bb-chat-tabs-status-unread);
+}
+
+.bb-chat-tabs-list-menu-status[data-status="unread"]
+  .bb-chat-tabs-list-menu-status-dot {
+  background: var(--bb-chat-tabs-status-unread);
+}
+
+.bb-chat-tabs-list-menu-check {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+/* Click раскрывает порцию сразу; desktop hover делает то же через секунду. */
+.bb-chat-tabs-list-menu-more {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  padding: 0.4375rem 0.5rem;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.bb-chat-tabs-list-menu-more[data-highlighted] {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.bb-chat-tabs-list-menu-more::after {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0;
+  left: 0.5rem;
+  height: 0.125rem;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: var(--ring, var(--primary));
+  content: "";
+}
+
+.bb-chat-tabs-list-menu-more[data-pending="true"]::after {
+  animation: bb-chat-tabs-history-more-progress 1s linear forwards;
+}
+
+.bb-chat-tabs-list-menu-more-count {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 0.875rem;
+}
+
+@keyframes bb-chat-tabs-history-more-progress {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.bb-chat-tabs-top-scrollbar::-webkit-scrollbar {
+  height: 0.5rem;
+}
+
+.bb-chat-tabs-top-scrollbar::-webkit-scrollbar-track {
+  background: var(--bb-chat-tabs-scrollbar-track);
+  border: 0.125rem solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.bb-chat-tabs-top-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--bb-chat-tabs-scrollbar-thumb);
+  border: 0.125rem solid var(--bb-chat-tabs-scrollbar-track);
+  border-radius: 999px;
+}
+
+.bb-chat-tabs-top-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--bb-chat-tabs-scrollbar-thumb-hover);
+}
+
+.bb-chat-tabs-strip {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: 0.375rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.125rem 0.5rem 0.25rem;
+  pointer-events: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.bb-chat-tabs-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Вкладки — прямые элементы strip: их порядок задаёт ручная сортировка. */
+.bb-chat-tab {
+  position: relative;
+  display: flex;
+  width: 11rem;
+  min-width: 8rem;
+  max-width: 14rem;
+  min-height: 1.75rem;
+  flex: 0 0 11rem;
+  align-items: center;
+  overflow: hidden;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--background) 96%, var(--muted));
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+}
+
+/* Визуальная обратная связь ручной сортировки pinned-вкладок. */
+.bb-chat-tab[data-dragging="true"] {
+  opacity: 0.52;
+}
+
+/*
+ * У каждой щели один drop-target. Сами вкладки больше не делятся на левую и
+ * правую половины: hit-area центрируется на границе, а линия видна только
+ * у одной активной щели.
+ */
+.bb-chat-tab-drop-slot {
+  position: relative;
+  z-index: 2;
+  display: none;
+  width: 0;
+  height: 100%;
+  flex: 0 0 0;
+}
+
+.bb-chat-tabs-strip[data-dragging="true"] .bb-chat-tab-drop-slot {
+  /*
+   * У strip остаётся исходный gap между tab. Щель имеет нулевую ширину и
+   * компенсирует второй flex-gap отрицательными margin, поэтому старт drag
+   * не прижимает соседние вкладки к источнику и не раздвигает остальные.
+   */
+  display: block;
+  width: 0;
+  flex: 0 0 0;
+  margin-inline: -0.1875rem;
+  pointer-events: auto;
+}
+
+.bb-chat-tab-drop-slot-hit {
+  position: absolute;
+  top: -0.125rem;
+  bottom: -0.125rem;
+  left: -0.5rem;
+  width: 1rem;
+}
+
+.bb-chat-tab-drop-slot[data-active="true"] .bb-chat-tab-drop-slot-hit::before {
+  position: absolute;
+  top: 0.3125rem;
+  bottom: 0.3125rem;
+  left: calc(50% - 0.0625rem);
+  width: 0.125rem;
+  border-radius: 999px;
+  background: var(--ring, var(--primary));
+  content: "";
+  pointer-events: none;
+}
+
+/* Активный чат — нейтрально-серый, с контрастным текстом из текущей темы. */
+.bb-chat-tab[data-active="true"] {
+  color: var(--bb-chat-tabs-active-foreground);
+  background: var(--bb-chat-tabs-active-background);
+  border-color: var(--bb-chat-tabs-active-border);
+}
+
+.bb-chat-tab-select,
+.bb-chat-tab-action {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bb-chat-tab-select {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.5rem;
+  color: inherit;
+  background: transparent;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  text-align: left;
+}
+
+.bb-chat-tab-select:hover {
+  color: var(--foreground);
+}
+
+.bb-chat-tab[data-active="true"] .bb-chat-tab-select:hover {
+  color: var(--bb-chat-tabs-active-foreground);
+}
+
+.bb-chat-tab-select:focus-visible,
+.bb-chat-tab-action:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -2px;
+}
+
+.bb-chat-tab-copy {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bb-chat-tab-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bb-chat-tab[data-preview="true"] .bb-chat-tab-title {
+  font-style: italic;
+}
+
+/* Название — часть primary click action; inline rename остаётся double-click. */
+.bb-chat-tab-title {
+  cursor: pointer;
+}
+
+.bb-chat-tab-inline-rename {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 1.5rem;
+  flex: 1 1 auto;
+  margin-inline: 0.25rem;
+  padding: 0.125rem 0.25rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--ring, var(--primary));
+  border-radius: 0.25rem;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  cursor: text;
+}
+
+.bb-chat-tab[data-active="true"] .bb-chat-tab-inline-rename {
+  color: var(--bb-chat-tabs-active-foreground);
+  background: color-mix(
+    in oklch,
+    var(--bb-chat-tabs-active-background) 72%,
+    var(--background)
+  );
+}
+
+.bb-chat-tab-inline-rename:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -1px;
+}
+
+.bb-chat-tab-working {
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--bb-chat-tabs-status-working-dot);
+  box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
+}
+
+.bb-chat-tab[data-active="true"] .bb-chat-tab-working {
+  background: var(--bb-chat-tabs-active-foreground);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 24%, transparent);
+}
+
+/* Непрочитанное — отдельная от runtime компактная, контрастная точка. */
+.bb-chat-tab-unread {
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--bb-chat-tabs-status-unread);
+  box-shadow: 0 0 0 2px color-mix(
+    in oklch,
+    var(--bb-chat-tabs-status-unread) 16%,
+    transparent
+  );
+}
+
+.bb-chat-tab[data-active="true"] .bb-chat-tab-unread {
+  background: var(--bb-chat-tabs-active-foreground);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 24%, transparent);
+}
+
+.bb-chat-tab-action {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  margin-inline-end: 0.25rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+  background: transparent;
+  border-radius: 0.25rem;
+}
+
+.bb-chat-tab-action:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.bb-chat-tab[data-active="true"] .bb-chat-tab-action {
+  color: color-mix(
+    in oklch,
+    var(--bb-chat-tabs-active-foreground) 72%,
+    transparent
+  );
+}
+
+.bb-chat-tab[data-active="true"] .bb-chat-tab-action:hover {
+  color: var(--bb-chat-tabs-active-foreground);
+  background: color-mix(
+    in oklch,
+    var(--bb-chat-tabs-active-foreground) 16%,
+    transparent
+  );
+}
+
+.bb-chat-tabs-error {
+  align-self: center;
+  padding: 0 0.5rem;
+  color: var(--destructive);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/*
+ * Homepage slot живёт под root composer. Slot API всегда рисует свой h2,
+ * поэтому при выключенной настройке marker скрывает именно owning section,
+ * а не затрагивает чужие homepage extensions.
+ */
+section:has(
+  > [data-bb-plugin-root][data-bb-plugin="tabs"]
+    > .bb-chat-tabs-homepage-pinned-list[data-visible="false"]
+) {
+  display: none;
+}
+
+.bb-chat-tabs-homepage-pinned-list[data-visible="false"] {
+  display: none;
+}
+
+.bb-chat-tabs-homepage-pinned-empty {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+/*
+ * Карточки доступны сразу под «Новый чат», не требуют открытия dropdown и
+ * сохраняют общий ручной порядок pinned tabs. Высота ограничена только для
+ * больших наборов, чтобы composer не уезжал далеко вверх страницы.
+ */
+.bb-chat-tabs-homepage-pinned-items {
+  display: grid;
+  max-height: 18rem;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0 0.125rem 0.125rem 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb)
+    var(--bb-chat-tabs-scrollbar-track);
+  scrollbar-width: thin;
+  list-style: none;
+}
+
+.bb-chat-tabs-homepage-pinned-item {
+  min-width: 0;
+}
+
+.bb-chat-tabs-homepage-pinned-button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.375rem;
+  padding: 0.625rem 0.75rem;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--background) 96%, var(--muted));
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-homepage-pinned-button:hover {
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--foreground) 20%, var(--border));
+}
+
+.bb-chat-tabs-homepage-pinned-button:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+
+.bb-chat-tabs-homepage-pinned-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+/* Вторая строка: проект слева, полезный статус строго у правого края. */
+.bb-chat-tabs-homepage-pinned-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bb-chat-tabs-homepage-pinned-title,
+.bb-chat-tabs-homepage-pinned-project,
+.bb-chat-tabs-homepage-pinned-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bb-chat-tabs-homepage-pinned-title {
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.bb-chat-tabs-homepage-pinned-project {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+}
+
+.bb-chat-tabs-homepage-pinned-status {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 68%;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 0.3125rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+}
+
+.bb-chat-tabs-homepage-pinned-status-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+
+.bb-chat-tabs-homepage-pinned-status[data-status="working"] {
+  color: var(--bb-chat-tabs-status-working);
+}
+
+.bb-chat-tabs-homepage-pinned-status[data-status="working"]
+  .bb-chat-tabs-homepage-pinned-status-dot {
+  background: var(--bb-chat-tabs-status-working-dot);
+  box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
+}
+
+.bb-chat-tabs-homepage-pinned-status[data-status="unread"] {
+  color: var(--bb-chat-tabs-status-unread);
+}
+
+.bb-chat-tabs-homepage-pinned-status[data-status="unread"]
+  .bb-chat-tabs-homepage-pinned-status-dot {
+  background: var(--bb-chat-tabs-status-unread);
+}
+
+/* Повторяет compact desktop context menu строк чатов в native sidebar BB. */
+.bb-chat-tab-context-menu {
+  z-index: 100;
+  min-width: 7rem;
+  overflow: hidden;
+  padding: 0.25rem;
+  color: var(--popover-foreground, var(--foreground));
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  box-shadow:
+    0 0.25rem 0.375rem -0.0625rem
+      color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 0.125rem 0.25rem -0.125rem
+      color-mix(in oklch, var(--foreground) 10%, transparent);
+  outline: none;
+}
+
+.bb-chat-tab-context-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem;
+  border-radius: 0.125rem;
+  color: inherit;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  cursor: default;
+  outline: none;
+  user-select: none;
+}
+
+.bb-chat-tab-context-menu-item > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.bb-chat-tab-context-menu-item[data-highlighted] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.bb-chat-tab-context-menu-separator {
+  height: 1px;
+  margin: 0.25rem -0.25rem;
+  background: var(--muted);
+}
+
+.bb-chat-tab-rename-overlay {
+  position: fixed;
+  z-index: 110;
+  inset: 0;
+  background: color-mix(in oklch, var(--foreground) 24%, transparent);
+}
+
+.bb-chat-tab-rename-dialog {
+  position: fixed;
+  z-index: 111;
+  top: 50%;
+  left: 50%;
+  width: min(24rem, calc(100vw - 2rem));
+  transform: translate(-50%, -50%);
+  padding: 1rem;
+  color: var(--popover-foreground, var(--foreground));
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  box-shadow: 0 1.25rem 3rem color-mix(in oklch, var(--foreground) 24%, transparent);
+  outline: none;
+}
+
+.bb-chat-tab-rename-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.25rem;
+}
+
+.bb-chat-tab-rename-description {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+
+.bb-chat-tab-rename-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 2rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.bb-chat-tab-rename-input:focus-visible {
+  border-color: var(--ring, var(--primary));
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+}
+
+.bb-chat-tab-rename-error {
+  margin: 0.5rem 0 0;
+  color: var(--destructive);
+  font-size: 0.75rem;
+}
+
+.bb-chat-tab-rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.bb-chat-tab-dialog-button {
+  appearance: none;
+  min-height: 1.875rem;
+  padding: 0.25rem 0.625rem;
+  color: var(--foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.bb-chat-tab-dialog-button:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+.bb-chat-tab-dialog-button-primary {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.bb-chat-tab-dialog-button-primary:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--primary) 88%, var(--foreground));
+}
+
+.bb-chat-tab-dialog-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/*
+ * У CSS нет public thread-chrome slot. Это единственное место, где hybrid
+ * адаптер резервирует высоту под overlay. В split и mobile режимах оно не
+ * срабатывает. Правый `<aside>` намеренно исключён: ему не нужен отступ,
+ * поскольку верхняя полоса привязана только к main chat pane.
+ *
+ * Одиночный leaf правой панели тоже несёт `[data-split-pane-id]`, хотя main
+ * conversation при этом не разделён. Поэтому guard использует реальную
+ * resize-boundary — тот же маркер, который ниже скрывает overlay для split.
+ */
+@media (min-width: 768px) and (pointer: fine) {
+  body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary]))
+    [data-testid="app-layout-content-shell"]
+    [data-thread-window]:not(aside [data-thread-window]) {
+    box-sizing: border-box;
+    padding-block-start: var(--bb-chat-tabs-strip-height);
+  }
+}
+
+/*
+ * Compact/mobile: та же icon-кнопка открывает меню закреплённых вкладок и
+ * recent history, а strip справа остаётся доступным для горизонтального свайпа.
+ * Desktop proxy-scrollbar здесь не нужна: touch browser рисует свой
+ * affordance во время прокрутки.
+ */
+@media (max-width: 767px), (pointer: coarse) {
+  #bb-chat-tabs-overlay[data-docked="true"],
+  body:has(#bb-chat-tabs-overlay[data-docked="true"]) {
+    --bb-chat-tabs-strip-height: 3.25rem;
+  }
+
+  /*
+   * В mobile shell main page inset поднимается в свой слой `z-30`, чтобы
+   * сдвигаться вместе с drawer. App overlay монтируется его sibling'ом,
+   * поэтому без следующего уровня полосу полностью закрашивает timeline.
+   */
+  #bb-chat-tabs-overlay[data-docked="true"] {
+    z-index: 31;
+    display: block;
+  }
+
+  .bb-chat-tabs-top-scrollbar {
+    display: none !important;
+  }
+
+  .bb-chat-tabs-content-row {
+    gap: 0.375rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .bb-chat-tabs-list-switcher {
+    padding: 0;
+    flex: 0 0 2.75rem;
+  }
+
+  .bb-chat-tabs-list-trigger {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.5rem;
+  }
+
+  .bb-chat-tabs-list-menu-item,
+  .bb-chat-tabs-list-menu-more {
+    min-height: 2.75rem;
+    padding-block: 0.375rem;
+  }
+
+  .bb-chat-tabs-strip {
+    gap: 0.375rem;
+    padding: 0;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bb-chat-tab {
+    width: auto;
+    min-width: 6.75rem;
+    max-width: 11rem;
+    min-height: 2.75rem;
+    flex: 0 0 auto;
+    border-radius: 0.5rem;
+    scroll-snap-align: start;
+  }
+
+  .bb-chat-tab-select {
+    min-height: 2.75rem;
+    padding-inline-start: 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  .bb-chat-tab-action {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-inline-end: 0.125rem;
+  }
+
+  /* HTML drag-and-drop не является надёжным touch-gesture. */
+  .bb-chat-tab-drop-slot {
+    display: none !important;
+  }
+
+  body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary]))
+    [data-testid="app-layout-content-shell"]
+    [data-thread-window]:not(aside [data-thread-window]) {
+    box-sizing: border-box;
+    padding-block-start: var(--bb-chat-tabs-strip-height);
+  }
+
+  /* Root overlay и его portal-подменю не принадлежат сдвигаемому page inset. */
+  body:has([data-sidebar-shelf="open"]) #bb-chat-tabs-overlay,
+  body:has([data-panel-shelf="shelf"]) #bb-chat-tabs-overlay,
+  body:has([data-panel-shelf="full"]) #bb-chat-tabs-overlay,
+  body:has([data-sidebar-shelf="open"]) .bb-chat-tabs-list-menu,
+  body:has([data-panel-shelf="shelf"]) .bb-chat-tabs-list-menu,
+  body:has([data-panel-shelf="full"]) .bb-chat-tabs-list-menu {
+    display: none;
+  }
+}
+
+/* При разворачивании правой панели на всю ширину conversation скрыта. */
+body:has([inert] [data-thread-window]:not(aside [data-thread-window]))
+  #bb-chat-tabs-overlay {
+  display: none;
+}
+
+body:has([data-split-resize-grid-boundary]) #bb-chat-tabs-overlay {
+  display: none;
+}
