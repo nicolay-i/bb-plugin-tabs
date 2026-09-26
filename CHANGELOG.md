@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Chat Tabs are documented here in English. Published Git tags are immutable; this file describes new work without rewriting earlier releases.
+All notable changes to Chat Tabs are documented here.
 
 ## 0.1.1 — upcoming release
 
@@ -16,7 +16,7 @@ All notable changes to Chat Tabs are documented here in English. Published Git t
 - More compact, theme-aware tabs and menus with reduced-motion support; hover-to-open and **More** use a 300 ms delay.
 - The current conversation retains or recovers its temporary preview tab when sidebar data is incomplete or plugin state changes.
 - Working and unread indicators, nested-chat activity handling, tab navigation, drag and drop, touch behavior, and lifecycle reconciliation.
-- English interface text, documentation, and examples; `SPEC.md` remains the Russian technical specification.
+- Refined interface text, documentation, and examples.
 
 ## 0.1.0 — initial public release
 

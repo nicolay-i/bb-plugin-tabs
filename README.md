@@ -125,7 +125,7 @@ bb plugin install .
 
 Chat Tabs requires BB `0.43+` and Plugin SDK `0.4.97+`.
 
-See the [English changelog](CHANGELOG.md) for version history.
+See the [changelog](CHANGELOG.md) for version history.
 
 ## License
 
