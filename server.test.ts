@@ -18,8 +18,8 @@ async function loadPlugin() {
   return host;
 }
 
-describe("RPC верхних вкладок", () => {
-  it("объявляет настройку видимости закреплённых чатов на экране «Новый чат»", async () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", async () => {
     const host = await loadPlugin();
 
     await expect(
@@ -30,7 +30,7 @@ describe("RPC верхних вкладок", () => {
     ).rejects.toThrow('expects a boolean');
   });
 
-  it("объявляет настройки видимости верхней панели и состава списка", async () => {
+  it("handles behavior 2", async () => {
     const host = await loadPlugin();
 
     await expect(
@@ -40,23 +40,23 @@ describe("RPC верхних вкладок", () => {
         showTabListButton: false,
         showTabListPinned: false,
         showTabListHistory: false,
-        tabListButtonPosition: "Справа",
+        tabListButtonPosition: "Right",
       }),
     ).resolves.toBeUndefined();
     await expect(
       host.harness.behavior.setSettings({
-        tabListButtonPosition: "Сверху",
+        tabListButtonPosition: "Top",
       }),
     ).rejects.toThrow();
   });
 
-  it("автосинхронизация обновляет одну preview, а pin сохраняет её", async () => {
+  it("handles behavior 3", async () => {
     const host = await loadPlugin();
 
     const first = await host.harness.behavior.callRpc("tabs_sync_activity", {
       threads: [
-        { threadId: "thr_build", projectId: "proj_api", title: "Сборка" },
-        { threadId: "thr_review", projectId: "proj_api", title: "Ревью" },
+        { threadId: "thr_build", projectId: "proj_api", title: "Build" },
+        { threadId: "thr_review", projectId: "proj_api", title: "Review" },
       ],
     });
     expect(first.state.entries).toEqual([
@@ -72,7 +72,7 @@ describe("RPC верхних вкладок", () => {
         {
           threadId: "thr_build",
           projectId: "proj_api",
-          title: "Сборка релиза",
+          title: "Release build",
         },
       ],
     });
@@ -81,12 +81,12 @@ describe("RPC верхних вкладок", () => {
       expect.arrayContaining([
         expect.objectContaining({
           threadId: "thr_review",
-          title: "Ревью",
+          title: "Review",
           pinned: true,
         }),
         expect.objectContaining({
           threadId: "thr_build",
-          title: "Сборка релиза",
+          title: "Release build",
           pinned: false,
         }),
       ]),
@@ -98,23 +98,23 @@ describe("RPC верхних вкладок", () => {
     ).toHaveLength(3);
   });
 
-  it("ведёт отдельную историю посещений и возвращает её с tabs_list", async () => {
+  it("handles behavior 4", async () => {
     const host = await loadPlugin();
 
     await host.harness.behavior.callRpc("tabs_history_visit", {
       threadId: "thr_first",
       projectId: "proj_api",
-      title: "Первый",
+      title: "First",
     });
     await host.harness.behavior.callRpc("tabs_history_visit", {
       threadId: "thr_second",
       projectId: "proj_web",
-      title: "Второй",
+      title: "Second",
     });
     await host.harness.behavior.callRpc("tabs_history_visit", {
       threadId: "thr_first",
       projectId: "proj_api",
-      title: "Первый (обновлён)",
+      title: "First (updated)",
     });
 
     const list = await host.harness.behavior.callRpc("tabs_list", null);
@@ -122,12 +122,12 @@ describe("RPC верхних вкладок", () => {
       expect.objectContaining({
         threadId: "thr_first",
         projectId: "proj_api",
-        title: "Первый (обновлён)",
+        title: "First (updated)",
       }),
       expect.objectContaining({
         threadId: "thr_second",
         projectId: "proj_web",
-        title: "Второй",
+        title: "Second",
       }),
     ]);
     expect(
@@ -137,18 +137,18 @@ describe("RPC верхних вкладок", () => {
     ).toHaveLength(3);
   });
 
-  it("убирает архивные и удалённые чаты из tabs/pin, сохраняя history tombstone", async () => {
+  it("handles behavior 5", async () => {
     const host = await loadPlugin();
 
     await host.harness.behavior.callRpc("tabs_open", {
       threadId: "thr_archived",
       projectId: "proj_api",
-      title: "Архивируемый",
+      title: "Archivable",
     });
     await host.harness.behavior.callRpc("tabs_history_visit", {
       threadId: "thr_archived",
       projectId: "proj_api",
-      title: "Архивируемый",
+      title: "Archivable",
     });
     const archivedEvent = await host.harness.behavior.emitThreadEvent(
       "thread.archived",
@@ -182,12 +182,12 @@ describe("RPC верхних вкладок", () => {
     await host.harness.behavior.callRpc("tabs_open", {
       threadId: "thr_deleted",
       projectId: "proj_api",
-      title: "Удаляемый",
+      title: "Deletable",
     });
     await host.harness.behavior.callRpc("tabs_history_visit", {
       threadId: "thr_deleted",
       projectId: "proj_api",
-      title: "Удаляемый",
+      title: "Deletable",
     });
     const deletedEvent = await host.harness.behavior.emitThreadEvent(
       "thread.deleted",
@@ -207,7 +207,31 @@ describe("RPC верхних вкладок", () => {
     ).toEqual(expect.objectContaining({ unavailableReason: "deleted" }));
   });
 
-  it("сверяет архивы и удаления, случившиеся до загрузки плагина", async () => {
+  it("resolves an open chat that is absent from the sidebar snapshot", async () => {
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: { threads: { get: async ({ threadId }: { threadId: string }) =>
+        makeThreadResponse({
+          id: threadId,
+          projectId: "proj_api",
+          title: "Missing from sidebar",
+          archivedAt: threadId === "thr_archived" ? 1 : null,
+        }),
+      } },
+    });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    await expect(host.harness.behavior.callRpc("tabs_resolve_current", {
+      threadId: "thr_open",
+    })).resolves.toEqual({ candidate: {
+      threadId: "thr_open", projectId: "proj_api", title: "Missing from sidebar",
+    } });
+    await expect(host.harness.behavior.callRpc("tabs_resolve_current", {
+      threadId: "thr_archived",
+    })).resolves.toEqual({ candidate: null });
+  });
+
+  it("handles behavior 6", async () => {
     const host = createFakePluginHost({
       pluginId: "tabs",
       sdk: {
@@ -225,8 +249,8 @@ describe("RPC верхних вкладок", () => {
     await plugin(host.bb);
 
     for (const [threadId, title] of [
-      ["thr_legacy_archived", "Старый архив"],
-      ["thr_legacy_deleted", "Старое удаление"],
+      ["thr_legacy_archived", "Old archive"],
+      ["thr_legacy_deleted", "Old deletion"],
     ]) {
       await host.harness.behavior.callRpc("tabs_open", {
         threadId,
@@ -254,13 +278,13 @@ describe("RPC верхних вкладок", () => {
     expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(2);
   });
 
-  it("не называет чат удалённым при transient ошибке сверки", async () => {
+  it("handles behavior 7", async () => {
     const host = createFakePluginHost({
       pluginId: "tabs",
       sdk: {
         threads: {
           get: async () => {
-            throw new Error("временная ошибка сети");
+            throw new Error("transient network error");
           },
         },
       },
@@ -271,12 +295,12 @@ describe("RPC верхних вкладок", () => {
     await host.harness.behavior.callRpc("tabs_open", {
       threadId: "thr_unknown",
       projectId: "proj_api",
-      title: "Пока недоступный для сверки",
+      title: "Unavailable for reconciliation",
     });
     await host.harness.behavior.callRpc("tabs_history_visit", {
       threadId: "thr_unknown",
       projectId: "proj_api",
-      title: "Пока недоступный для сверки",
+      title: "Unavailable for reconciliation",
     });
 
     const result = await host.harness.behavior.callRpc("tabs_list", null);
@@ -288,7 +312,7 @@ describe("RPC верхних вкладок", () => {
     );
   });
 
-  it("сохраняет общий ручной порядок закреплённых вкладок через проекты", async () => {
+  it("handles behavior 8", async () => {
     const host = await loadPlugin();
     for (const [threadId, title, projectId] of [
       ["thr_a", "A", "proj_a"],
@@ -319,7 +343,6 @@ describe("RPC верхних вкладок", () => {
       position: "after",
     });
     expect(unchanged.state).toEqual(result.state);
-    // Три открытия и одно реальное перемещение: no-op не шумит realtime.
     expect(
       host.harness.inspection.realtimeSignals.filter(
         (signal) => signal.channel === "tabs-changed",
@@ -327,7 +350,7 @@ describe("RPC верхних вкладок", () => {
     ).toHaveLength(4);
   });
 
-  it("читает durable workflow activity встроенного workflows по origin-чату", async () => {
+  it("handles behavior 9", async () => {
     const host = createFakePluginHost({
       pluginId: "tabs",
       sdk: {
@@ -358,7 +381,7 @@ describe("RPC верхних вкладок", () => {
         {
           threadId: "thr_finished",
           projectId: "proj_system",
-          title: "Завершённый workflow",
+          title: "Finished workflow",
         },
       ],
     });
@@ -396,7 +419,7 @@ describe("RPC верхних вкладок", () => {
     ]);
   });
 
-  it("объединяет параллельные tabs_list с одинаковым workflow input", async () => {
+  it("handles behavior 10", async () => {
     let workflowCalls = 0;
     const host = createFakePluginHost({
       pluginId: "tabs",
@@ -404,8 +427,6 @@ describe("RPC верхних вкладок", () => {
         plugins: {
           callRpc: async () => {
             workflowCalls += 1;
-            // Сохраняем request in-flight на microtask, чтобы второй renderer
-            // встретил уже зарегистрированный server-side promise.
             await Promise.resolve();
             return { runs: [{ status: "running" }] };
           },
@@ -417,7 +438,7 @@ describe("RPC верхних вкладок", () => {
     await host.harness.behavior.callRpc("tabs_open", {
       threadId: "thr_shared",
       projectId: "proj_api",
-      title: "Общий workflow",
+      title: "Shared workflow",
     });
 
     const [first, second] = await Promise.all([
@@ -430,7 +451,7 @@ describe("RPC верхних вкладок", () => {
     expect(workflowCalls).toBe(1);
   });
 
-  it("сериализует одновременные обновления из двух окон и оставляет последний preview", async () => {
+  it("handles behavior 11", async () => {
     const host = await loadPlugin();
 
     await Promise.all([
@@ -448,12 +469,12 @@ describe("RPC верхних вкладок", () => {
     ]);
   });
 
-  it("явное добавление закрепляет чат и закрытие не архивирует его", async () => {
+  it("handles behavior 12", async () => {
     const host = await loadPlugin();
     const opened = await host.harness.behavior.callRpc("tabs_open", {
       threadId: "thr_keep",
       projectId: "proj_a",
-      title: "Не архивировать",
+      title: "Do not archive",
     });
     expect(opened.state.entries).toEqual([
       expect.objectContaining({ threadId: "thr_keep", pinned: true }),
@@ -464,7 +485,6 @@ describe("RPC верхних вкладок", () => {
     });
 
     expect(closed).toEqual({ state: { version: 1, entries: [] }, removed: true });
-    // Закрытие plugin tab не обращается к thread SDK: runtime продолжает идти.
     expect(host.harness.inspection.sdk.calls).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.0",
-  "description": "Плагин BB с preview-вкладкой текущего чата, закреплёнными чатами и историей переходов.",
+  "version": "0.1.1",
+  "description": "A BB plugin with a current-chat preview tab, pinned chats, and navigation history.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -30,8 +30,8 @@
     "bbPluginSdk": ">=0.4.97"
   },
   "bb": {
-    "name": "Вкладки чатов",
-    "description": "Показывает preview-вкладку текущего чата, вручную упорядочиваемые закреплённые чаты и быстрый переход к закреплённым чатам и истории.",
+    "name": "Chat Tabs",
+    "description": "Shows a preview tab for the current chat, manually ordered pinned chats, and quick navigation to pinned chats and history.",
     "branding": {
       "icon": "NewTab"
     },
@@ -44,7 +44,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.4.97",
+    "@get-bb/plugin-sdk": "0.4.104",
     "@pierre/diffs": "^1.2.9",
     "@radix-ui/react-alert-dialog": "^1.1.19",
     "@radix-ui/react-context-menu": "^2.3.3",

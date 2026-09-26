@@ -1,7 +1,7 @@
 /**
- * Копирует текст через Clipboard API, а при запрете браузера — через
- * краткоживущий textarea. Возвращает результат вместо выброса ошибки, чтобы
- * UI мог показать понятный toast.
+ * Copies text through the Clipboard API, with a short-lived textarea fallback
+ * when the browser denies access. Returns a result so the UI can show a clear
+ * toast instead of surfacing an exception.
  */
 export async function copyTextToClipboard(text: string): Promise<boolean> {
   if (text.length === 0) return false;
@@ -11,7 +11,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // Electron/webview или небезопасный origin могут запретить Clipboard API.
+      // Electron, webviews, or insecure origins can deny the Clipboard API.
     }
   }
 

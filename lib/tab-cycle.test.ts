@@ -7,22 +7,22 @@ const tabs = [
   { threadId: "thr_third" },
 ] as const;
 
-describe("циклическое переключение вкладок", () => {
-  it("переходит вперёд и назад по представленному горизонтальному порядку", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     expect(cycleTab(tabs, "thr_second", "next")?.threadId).toBe("thr_third");
     expect(cycleTab(tabs, "thr_second", "previous")?.threadId).toBe(
       "thr_first",
     );
   });
 
-  it("зацикливается на границах", () => {
+  it("handles behavior 2", () => {
     expect(cycleTab(tabs, "thr_third", "next")?.threadId).toBe("thr_first");
     expect(cycleTab(tabs, "thr_first", "previous")?.threadId).toBe(
       "thr_third",
     );
   });
 
-  it("не перехватывает shortcut без текущей или с единственной вкладкой", () => {
+  it("handles behavior 3", () => {
     expect(cycleTab(tabs, null, "next")).toBeNull();
     expect(cycleTab(tabs, "thr_missing", "next")).toBeNull();
     expect(cycleTab([{ threadId: "thr_only" }], "thr_only", "next")).toBeNull();

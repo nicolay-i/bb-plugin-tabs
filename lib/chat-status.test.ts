@@ -1,26 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { chatStatusFor } from "./chat-status";
 
-describe("короткий статус чата", () => {
-  it("не создаёт декоративный статус для спокойного чата", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     expect(chatStatusFor({ isWorking: false, isUnread: false })).toBeNull();
   });
 
-  it("обозначает выполняющуюся работу коротким названием", () => {
+  it("handles behavior 2", () => {
     expect(chatStatusFor({ isWorking: true, isUnread: false })).toEqual({
       kind: "working",
-      text: "Работает",
+      text: "Working",
     });
   });
 
-  it("сохраняет непрочитанность и объединяет её с работой", () => {
+  it("handles behavior 3", () => {
     expect(chatStatusFor({ isWorking: false, isUnread: true })).toEqual({
       kind: "unread",
-      text: "Непрочитанное",
+      text: "Unread",
     });
     expect(chatStatusFor({ isWorking: true, isUnread: true })).toEqual({
       kind: "working",
-      text: "Работает · Непрочитанное",
+      text: "Working · Unread",
     });
   });
 });

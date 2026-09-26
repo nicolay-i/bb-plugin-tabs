@@ -45,8 +45,8 @@ function thread(
   };
 }
 
-describe("активность дерева чатов", () => {
-  it("поднимает workflow дочернего чата ко всем доступным предкам", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     const root = thread("thr_root");
     const middle = thread("thr_middle", root.id);
     const workflow = thread("thr_workflow", middle.id, {
@@ -71,7 +71,7 @@ describe("активность дерева чатов", () => {
     expect(rootThreadFor(workflow, index).id).toBe(root.id);
   });
 
-  it("останавливается на отсутствующем или циклическом предке", () => {
+  it("handles behavior 2", () => {
     const first = thread("thr_first", "thr_second", {
       activity: {
         workflows: 1,

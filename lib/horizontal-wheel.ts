@@ -1,4 +1,4 @@
-/** Минимальный scroll target, чтобы логику можно было проверить без DOM. */
+/** A minimal scroll target that keeps the logic testable without the DOM. */
 export interface HorizontalScrollable {
   clientWidth: number;
   scrollLeft: number;
@@ -30,17 +30,17 @@ function pixelDelta(
 }
 
 /**
- * Применяет горизонтальный жест к полосе. Ctrl/⌘ намеренно не перехватываются:
- * они принадлежат zoom и системным shortcut'ам.
+ * Applies a horizontal wheel gesture to the strip. Ctrl/⌘ gestures are left to
+ * zoom and operating-system shortcuts.
  */
 export function consumeHorizontalWheel(
   target: HorizontalScrollable,
   input: WheelScrollInput,
 ): boolean {
   if (input.ctrlKey || input.metaKey) return false;
-  // Тачпады нередко присылают небольшой остаточный deltaX после прошлого
-  // горизонтального жеста. Обычное колесо должно следовать доминирующей
-  // дельте, иначе первая прокрутка после смены направления идёт не туда.
+  // Trackpads can retain a small deltaX from the preceding horizontal gesture.
+  // Follow the dominant axis so the first scroll after a direction change does
+  // not unexpectedly move in the old direction.
   const rawDelta =
     Math.abs(input.deltaX) > Math.abs(input.deltaY)
       ? input.deltaX

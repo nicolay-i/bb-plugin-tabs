@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { threadLinkUrl } from "./thread-link";
 
 describe("threadLinkUrl", () => {
-  it("сохраняет фактический route текущего чата", () => {
+  it("handles behavior 1", () => {
     expect(
       threadLinkUrl(
         { projectId: "proj_personal", threadId: "thr_current" },
@@ -15,7 +15,7 @@ describe("threadLinkUrl", () => {
     ).toBe("https://bb.test/threads/thr_current");
   });
 
-  it("кодирует project и thread id для неактивной вкладки", () => {
+  it("handles behavior 2", () => {
     expect(
       threadLinkUrl(
         { projectId: "proj / api", threadId: "thr / next" },

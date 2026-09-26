@@ -5,8 +5,8 @@ interface CycleTab {
 }
 
 /**
- * Возвращает соседнюю вкладку в уже представленном горизонтальном порядке.
- * Одна вкладка и чат вне plugin-полосы не перехватывают нативный shortcut.
+ * Returns the adjacent tab in the already presented horizontal order. A single
+ * tab or a chat outside the plugin strip does not take over the native shortcut.
  */
 export function cycleTab<T extends CycleTab>(
   tabs: readonly T[],

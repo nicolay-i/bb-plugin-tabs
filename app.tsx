@@ -64,6 +64,9 @@ import {
   type RenameTabTarget,
 } from "./components/tab-actions";
 import { PinnedTabsList } from "./components/pinned-tabs-list";
+import { NewChatSwitcher } from "./components/new-chat-switcher";
+import { recentProjects } from "./lib/recent-projects";
+import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
 import "./tabs.css";
 
@@ -71,7 +74,7 @@ function candidateForThread(thread: PluginSidebarThread): TabCandidate {
   return {
     threadId: thread.id,
     projectId: thread.projectId,
-    title: thread.title?.trim() || thread.titleFallback?.trim() || "Без названия",
+    title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
   };
 }
 
@@ -84,17 +87,18 @@ function candidateKey(candidate: TabCandidate | null): string {
 function latestWorkingCandidate(
   threads: readonly PluginSidebarThread[],
   workIndex: ThreadWorkIndex,
-): TabCandidate | null {
+): { candidate: TabCandidate; updatedAt: number } | null {
   let latest: PluginSidebarThread | null = null;
   for (const thread of threads) {
     if (!workIndex.directlyWorkingThreadIds.has(thread.id)) continue;
-    // При равном времени список sidebar уже упорядочен по свежести, поэтому
-    // последняя запись считается более новым кандидатом.
     if (latest === null || thread.updatedAt >= latest.updatedAt) latest = thread;
   }
-  // Workflow живёт в дочернем чате, но preview и active marker относятся к
-  // корневому разговору, который пользователь видит в полосе вкладок.
-  return latest === null ? null : candidateForThread(rootThreadFor(latest, workIndex));
+  return latest === null
+    ? null
+    : {
+        candidate: candidateForThread(rootThreadFor(latest, workIndex)),
+        updatedAt: latest.updatedAt,
+      };
 }
 
 function errorMessage(cause: unknown): string {
@@ -103,8 +107,8 @@ function errorMessage(cause: unknown): string {
 
 function unavailableHistoryLabel(
   reason: TabHistoryUnavailableReason,
-): "В архиве" | "Удалён" {
-  return reason === "archived" ? "В архиве" : "Удалён";
+): "Archived" | "Deleted" {
+  return reason === "archived" ? "Archived" : "Deleted";
 }
 
 function isCloseCurrentTabShortcut(event: KeyboardEvent): boolean {
@@ -137,8 +141,9 @@ function isBrowserChromeKeyboardTarget(target: EventTarget | null): boolean {
 
 const COMPACT_TAB_LAYOUT_MEDIA_QUERY =
   "(max-width: 767px), (pointer: coarse)";
+const LEGACY_RIGHT_TAB_LIST_BUTTON_POSITION =
+  "\u0421\u043f\u0440\u0430\u0432\u0430";
 
-/** Держит HTML drag-and-drop desktop-only, как и CSS touch-компоновку. */
 function useCompactTabLayout(): boolean {
   const [isCompact, setIsCompact] = useState(() => {
     if (typeof window.matchMedia !== "function") return false;
@@ -157,12 +162,13 @@ function useCompactTabLayout(): boolean {
   return isCompact;
 }
 
-/* Durable workflow — лишь fallback к live sidebar/realtime, а не повод
- * опрашивать сервер несколько раз в секунду. */
 const ACTIVE_WORKFLOW_REVALIDATION_MS = 15_000;
 const IDLE_WORKFLOW_REVALIDATION_MS = 30_000;
 const HISTORY_MENU_PAGE_SIZE = 8;
-const HISTORY_MORE_HOVER_DELAY_MS = 1_000;
+const HISTORY_MORE_HOVER_DELAY_MS = 300;
+const DOUBLE_SHIFT_INTERVAL_MS = 350;
+const MENU_HOVER_DELAY_MS = 300;
+const MENU_LEAVE_DELAY_MS = 120;
 
 interface TabsListRequest {
   key: string;
@@ -236,8 +242,6 @@ function useDocumentVisibility(): boolean {
 
 function useTabsState(enabled = true) {
   const rpc = useRpc<typeof rpcContract>();
-  // `useRpc()` не обязан сохранять object identity. Держим живой client в ref,
-  // чтобы эффекты initial refresh не перезапускались после каждого рендера.
   const rpcRef = useRef(rpc);
   const enabledRef = useRef(enabled);
   rpcRef.current = rpc;
@@ -260,11 +264,9 @@ function useTabsState(enabled = true) {
   const activitySyncInFlightRef = useRef<Promise<void> | null>(null);
   const activitySyncInFlightKeyRef = useRef<string | null>(null);
   const queuedActivitySyncRef = useRef<ActivitySyncRequest | null>(null);
-  const lastSyncedActivityKeyRef = useRef<string | null>(null);
   const historyVisitInFlightRef = useRef<Promise<void> | null>(null);
   const historyVisitInFlightKeyRef = useRef<string | null>(null);
   const queuedHistoryVisitRef = useRef<HistoryVisitRequest | null>(null);
-  const lastRecordedHistoryKeyRef = useRef<string | null>(null);
 
   const acceptState = useCallback((next: TabsState) => {
     const normalized = normalizeTabsState(next);
@@ -301,11 +303,6 @@ function useTabsState(enabled = true) {
     [],
   );
 
-  /**
-   * В одну JS-сессию не уходит несколько параллельных `tabs_list`: одинаковый
-   * запрос присоединяется к in-flight promise, а изменившийся вход хранит
-   * только самый свежий trailing request.
-   */
   const refresh = useCallback(
     (workflowThreadIds: readonly string[] = []): Promise<void> => {
       if (!enabledRef.current) return Promise.resolve();
@@ -367,8 +364,6 @@ function useTabsState(enabled = true) {
     [acceptHistory, acceptState, acceptWorkflowActivity],
   );
 
-  // Initial read один раз при активной видимой поверхности. Возврат из
-  // background обрабатывает workflow scheduler ниже уже с актуальным input.
   useEffect(() => {
     if (!enabled || !documentIsVisible()) return;
     void refresh();
@@ -384,10 +379,6 @@ function useTabsState(enabled = true) {
     acceptHistory(normalizeTabHistory(payload));
   });
 
-  /**
-   * `tabs_sync_activity` — mutation, поэтому её нельзя спамить одинаковым
-   * sidebar snapshot. Как и list, разные обновления сериализуются до latest.
-   */
   const syncActivity = useCallback(
     (threads: readonly TabCandidate[]): Promise<void> => {
       const candidates = [...threads];
@@ -409,12 +400,8 @@ function useTabsState(enabled = true) {
       }
 
       const latestCandidate = request.threads.at(-1);
-      if (
-        lastSyncedActivityKeyRef.current === request.key ||
-        (latestCandidate !== undefined &&
-          stateContainsCandidate(stateRef.current, latestCandidate))
-      ) {
-        lastSyncedActivityKeyRef.current = request.key;
+      if (latestCandidate !== undefined &&
+          stateContainsCandidate(stateRef.current, latestCandidate)) {
         return Promise.resolve();
       }
 
@@ -423,18 +410,12 @@ function useTabsState(enabled = true) {
         while (next !== null) {
           activitySyncInFlightKeyRef.current = next.key;
           const latest = next.threads.at(-1);
-          if (
-            lastSyncedActivityKeyRef.current === next.key ||
-            (latest !== undefined && stateContainsCandidate(stateRef.current, latest))
-          ) {
-            lastSyncedActivityKeyRef.current = next.key;
-          } else {
+          if (latest === undefined || !stateContainsCandidate(stateRef.current, latest)) {
             try {
               const result = await rpcRef.current.call("tabs_sync_activity", {
                 threads: next.threads,
               });
               acceptState(result.state);
-              lastSyncedActivityKeyRef.current = next.key;
             } catch (cause) {
               setError(errorMessage(cause));
             }
@@ -459,11 +440,6 @@ function useTabsState(enabled = true) {
     [acceptState],
   );
 
-  /**
-   * История не должна создавать параллельные KV-mutation при быстром переходе
-   * A → B → C. Одинаковый current chat пропускается, а latest visit ждёт
-   * окончания текущего RPC.
-   */
   const recordHistory = useCallback(
     (candidate: TabCandidate): Promise<void> => {
       if (!enabledRef.current) return Promise.resolve();
@@ -483,11 +459,7 @@ function useTabsState(enabled = true) {
         return inFlight;
       }
 
-      if (
-        lastRecordedHistoryKeyRef.current === request.key ||
-        historyStartsWithCandidate(historyRef.current, request.candidate)
-      ) {
-        lastRecordedHistoryKeyRef.current = request.key;
+      if (historyStartsWithCandidate(historyRef.current, request.candidate)) {
         return Promise.resolve();
       }
 
@@ -499,19 +471,13 @@ function useTabsState(enabled = true) {
             break;
           }
           historyVisitInFlightKeyRef.current = next.key;
-          if (
-            lastRecordedHistoryKeyRef.current === next.key ||
-            historyStartsWithCandidate(historyRef.current, next.candidate)
-          ) {
-            lastRecordedHistoryKeyRef.current = next.key;
-          } else {
+          if (!historyStartsWithCandidate(historyRef.current, next.candidate)) {
             try {
               const result = await rpcRef.current.call(
                 "tabs_history_visit",
                 next.candidate,
               );
               acceptHistory(result.history);
-              lastRecordedHistoryKeyRef.current = next.key;
             } catch (cause) {
               setError(errorMessage(cause));
             }
@@ -603,11 +569,6 @@ function useTabsState(enabled = true) {
   };
 }
 
-/**
- * Realtime tabs state и sidebar activity покрывают обычный idle. Таймер нужен
- * только как редкий fallback для durable workflow, который временно не попал
- * ни в одно из этих событий. В hidden document он полностью остановлен.
- */
 function useWorkflowRevalidation({
   activeWorkflowThreadIds,
   enabled,
@@ -647,9 +608,6 @@ function useWorkflowRevalidation({
       : ACTIVE_WORKFLOW_REVALIDATION_MS;
   const wasVisibleRef = useRef(visible);
 
-  // Редкий, но семантически важный initial fallback: если у открытой tab
-  // есть дочерние thread IDs, первый list не мог проверить их до чтения state.
-  // Это не timer и выполняется только при материальном расширении probe-set.
   useEffect(() => {
     if (
       !enabled ||
@@ -672,8 +630,6 @@ function useWorkflowRevalidation({
     visible,
   ]);
 
-  // После возврата на foreground делаем один свежий запрос. При первом mount
-  // initial refresh выполняет useTabsState, поэтому второй запрос не нужен.
   useEffect(() => {
     const wasVisible = wasVisibleRef.current;
     wasVisibleRef.current = visible;
@@ -735,15 +691,9 @@ interface PresentedTab {
   isWorking: boolean;
   projectName: string;
   title: string;
-  /** Только history может быть недоступным tombstone. */
   unavailableReason: TabHistoryUnavailableReason | null;
 }
 
-/**
- * Полоса намеренно плоская: порядок `entries` — это ручной горизонтальный
- * порядок всех pinned tab, независимо от проекта. Стабильный sort лишь
- * удерживает единственную временную preview после закреплённых вкладок.
- */
 function buildPresentedTabs(
   state: TabsState,
   threads: readonly PluginSidebarThread[],
@@ -767,8 +717,8 @@ function buildPresentedTabs(
         isWorking:
           liveThread !== undefined && hasThreadTreeWork(liveThread.id, workIndex),
         projectName: liveProject?.isPersonal
-          ? "Личное"
-          : liveProject?.name || "Проект",
+          ? "Personal"
+          : liveProject?.name || "Project",
         title:
           liveThread?.title?.trim() ||
           liveThread?.titleFallback?.trim() ||
@@ -778,10 +728,6 @@ function buildPresentedTabs(
     });
 }
 
-/**
- * History не становится вторым набором tab-state: это только recent menu,
- * упорядоченное по `visitedAt` и отображающее live sidebar metadata.
- */
 function buildPresentedHistoryTabs(
   history: TabHistoryState,
   threads: readonly PluginSidebarThread[],
@@ -848,8 +794,6 @@ function workflowProbeThreadIds(
 ): string[] {
   if (state === null) return [];
 
-  // Сначала сами вкладки: они не должны выпадать из лимита, даже если у одной
-  // из них много потомков. Затем добавляем только их реальные поддеревья.
   const openTabIds = new Set(state.entries.map((entry) => entry.threadId));
   const seenThreadIds = new Set(openTabIds);
   const threadIds = [...openTabIds];
@@ -877,13 +821,13 @@ function wheelTargetsTabs(
 
 function ChatTabsOverlay() {
   const context = useBbContext();
+  const resolveRpc = useRpc<typeof rpcContract>();
+  const resolveRpcRef = useRef(resolveRpc);
+  resolveRpcRef.current = resolveRpc;
   const isCompactTabLayout = useCompactTabLayout();
   const settings = useSettings();
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
-  // Compact здесь совпадает с уже существующей touch/mobile-компоновкой
-  // (`max-width: 767px` или coarse pointer), чтобы настройки не создавали
-  // третье, расходящееся определение «телефона».
   const showTabsOnCurrentLayout = isCompactTabLayout
     ? settings.values?.showTabsOnMobile !== false
     : settings.values?.showTabsOnDesktop !== false;
@@ -891,7 +835,10 @@ function ChatTabsOverlay() {
   const showTabListPinned = settings.values?.showTabListPinned !== false;
   const showTabListHistory = settings.values?.showTabListHistory !== false;
   const tabListButtonPosition =
-    settings.values?.tabListButtonPosition === "Справа" ? "right" : "left";
+    settings.values?.tabListButtonPosition === "Right" ||
+    settings.values?.tabListButtonPosition === LEGACY_RIGHT_TAB_LIST_BUTTON_POSITION
+      ? "right"
+      : "left";
   const {
     activeWorkflowThreadIds,
     close,
@@ -915,6 +862,10 @@ function ChatTabsOverlay() {
     useState<RenameTabTarget | null>(null);
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
   const [tabListMenuOpen, setTabListMenuOpen] = useState(false);
+  const [tabSearch, setTabSearch] = useState("");
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const lastShiftReleaseRef = useRef<number | null>(null);
   const [historyVisibleCount, setHistoryVisibleCount] = useState(
     HISTORY_MENU_PAGE_SIZE,
   );
@@ -922,20 +873,54 @@ function ChatTabsOverlay() {
   const [draggedTab, setDraggedTab] = useState<DraggedTab | null>(null);
   const [dropTarget, setDropTarget] = useState<TabDropTarget | null>(null);
   const draggedTabRef = useRef<DraggedTab | null>(null);
+  const dropTargetRef = useRef<TabDropTarget | null>(null);
   const embeddedBrowserFocused = useRef(false);
   const inlineRenameSubmitting = useRef(false);
   const inlineRenameCancelled = useRef(false);
   const historyMoreTimerRef = useRef<number | null>(null);
+  const listHoverOpenTimerRef = useRef<number | null>(null);
+  const listHoverCloseTimerRef = useRef<number | null>(null);
+  const listOpenedByHoverRef = useRef(false);
+
+  const clearListHoverTimers = useCallback(() => {
+    if (listHoverOpenTimerRef.current !== null) window.clearTimeout(listHoverOpenTimerRef.current);
+    if (listHoverCloseTimerRef.current !== null) window.clearTimeout(listHoverCloseTimerRef.current);
+    listHoverOpenTimerRef.current = null;
+    listHoverCloseTimerRef.current = null;
+  }, []);
+
+  const enterTabListMenu = (pointerType: string) => {
+    if (pointerType !== "mouse") return;
+    if (listHoverCloseTimerRef.current !== null) window.clearTimeout(listHoverCloseTimerRef.current);
+    listHoverCloseTimerRef.current = null;
+    if (tabListMenuOpen || listHoverOpenTimerRef.current !== null) return;
+    listHoverOpenTimerRef.current = window.setTimeout(() => {
+      listHoverOpenTimerRef.current = null;
+      listOpenedByHoverRef.current = true;
+      setTabListMenuOpen(true);
+    }, MENU_HOVER_DELAY_MS);
+  };
+
+  const leaveTabListMenu = (pointerType: string) => {
+    if (pointerType !== "mouse") return;
+    if (listHoverOpenTimerRef.current !== null) window.clearTimeout(listHoverOpenTimerRef.current);
+    listHoverOpenTimerRef.current = null;
+    if (!tabListMenuOpen) return;
+    listHoverCloseTimerRef.current = window.setTimeout(() => {
+      listHoverCloseTimerRef.current = null;
+      setTabListMenuOpen(false);
+    }, MENU_LEAVE_DELAY_MS);
+  };
+
+  useEffect(() => clearListHoverTimers, [clearListHoverTimers]);
 
   const renameTab = useCallback(
     async (entry: TabEntry, title: string) => {
       const normalizedTitle = normalizeTabTitle(title);
       if (normalizedTitle === null) {
-        throw new Error("Введите название от 1 до 300 символов.");
+        throw new Error("Enter a title between 1 and 300 characters.");
       }
       await threadActions.rename(entry.threadId, normalizedTitle);
-      // Sidebar обновится realtime; это сохраняет title и в plugin-owned KV,
-      // чтобы fallback не показывал прежнее имя во время следующей загрузки.
       await syncActivity([
         {
           threadId: entry.threadId,
@@ -954,8 +939,6 @@ function ChatTabsOverlay() {
 
   const cancelInlineRename = useCallback(() => {
     if (inlineRenameSubmitting.current) return;
-    // React может послать blur при размонтировании input после Escape.
-    // Флаг не даёт этому blur неожиданно сохранить отменённый текст.
     inlineRenameCancelled.current = true;
     setInlineRename(null);
   }, []);
@@ -975,14 +958,14 @@ function ChatTabsOverlay() {
     try {
       const normalizedTitle = normalizeTabTitle(target.value);
       if (normalizedTitle === null) {
-        toast.error("Введите название чата от 1 до 300 символов.");
+        toast.error("Enter a chat title between 1 and 300 characters.");
         return;
       }
       if (normalizedTitle !== target.title) {
         await renameTab(target.entry, normalizedTitle);
       }
     } catch (cause) {
-      toast.error(`Не удалось переименовать чат: ${errorMessage(cause)}`);
+      toast.error(`Could not rename the chat: ${errorMessage(cause)}`);
     } finally {
       inlineRenameSubmitting.current = false;
     }
@@ -994,9 +977,9 @@ function ChatTabsOverlay() {
         threadLinkUrl(entry, context.threadId),
       );
       if (copied) {
-        toast.success("Ссылка на чат скопирована");
+        toast.success("Chat link copied");
       } else {
-        toast.error("Не удалось скопировать ссылку на чат");
+        toast.error("Could not copy the chat link");
       }
     },
     [context.threadId],
@@ -1007,7 +990,7 @@ function ChatTabsOverlay() {
       try {
         await threadActions.setRead(entry.threadId, false);
       } catch (cause) {
-        toast.error(`Не удалось пометить чат непрочитанным: ${errorMessage(cause)}`);
+        toast.error(`Could not mark the chat as unread: ${errorMessage(cause)}`);
       }
     },
     [threadActions],
@@ -1016,12 +999,10 @@ function ChatTabsOverlay() {
   const archiveTab = useCallback(
     (entry: TabEntry) => {
       try {
-        // Host archive закрывает native pane и потомков; отдельно убираем
-        // только plugin-вкладку, не меняя архивный статус повторно.
         threadActions.archive(entry.threadId);
         void close(entry.threadId);
       } catch (cause) {
-        toast.error(`Не удалось архивировать чат: ${errorMessage(cause)}`);
+        toast.error(`Could not archive the chat: ${errorMessage(cause)}`);
       }
     },
     [close, threadActions],
@@ -1029,6 +1010,7 @@ function ChatTabsOverlay() {
 
   const clearTabDrag = useCallback(() => {
     draggedTabRef.current = null;
+    dropTargetRef.current = null;
     setDraggedTab(null);
     setDropTarget(null);
   }, []);
@@ -1052,8 +1034,6 @@ function ChatTabsOverlay() {
 
   const handleTabDragStart = useCallback(
     (event: DragEvent<HTMLDivElement>, entry: TabEntry) => {
-      // Кнопка Close не должна становиться источником drag, даже если курсор
-      // начал движение непосредственно с её SVG.
       const target = event.target;
       if (
         !entry.pinned ||
@@ -1067,9 +1047,26 @@ function ChatTabsOverlay() {
       const next: DraggedTab = { threadId: entry.threadId };
       draggedTabRef.current = next;
       setDraggedTab(next);
+      dropTargetRef.current = null;
       setDropTarget(null);
     },
     [],
+  );
+
+  const dropTargetForTab = useCallback(
+    (entry: TabEntry, clientX: number, element: HTMLDivElement): TabDropTarget => {
+      const rect = element.getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2 || state === null) {
+        return { targetThreadId: entry.threadId, position: "before" };
+      }
+      const pinned = state.entries.filter((tab) => tab.pinned);
+      const index = pinned.findIndex((tab) => tab.threadId === entry.threadId);
+      const next = pinned[index + 1];
+      return next === undefined
+        ? { targetThreadId: entry.threadId, position: "after" }
+        : { targetThreadId: next.threadId, position: "before" };
+    },
+    [state],
   );
 
   const handleDropSlotDragOver = useCallback(
@@ -1089,11 +1086,14 @@ function ChatTabsOverlay() {
           position,
         )
       ) {
+        dropTargetRef.current = null;
+        setDropTarget(null);
         return;
       }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       const nextTarget: TabDropTarget = { position, targetThreadId };
+      dropTargetRef.current = nextTarget;
       setDropTarget((previous) =>
         previous?.targetThreadId === nextTarget.targetThreadId &&
         previous.position === nextTarget.position
@@ -1105,21 +1105,18 @@ function ChatTabsOverlay() {
     [scrollStripDuringDrag, state],
   );
 
-  const handleDropSlotDrop = useCallback(
-    (
-      event: DragEvent<HTMLDivElement>,
-      targetThreadId: string,
-      position: TabMovePosition,
-    ) => {
+  const commitTabDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>, target: TabDropTarget | null) => {
       const source = draggedTabRef.current;
       if (
         source === null ||
+        target === null ||
         state === null ||
         isNoopPinnedMove(
           state.entries,
           source.threadId,
-          targetThreadId,
-          position,
+          target.targetThreadId,
+          target.position,
         )
       ) {
         clearTabDrag();
@@ -1127,7 +1124,7 @@ function ChatTabsOverlay() {
       }
       event.preventDefault();
       clearTabDrag();
-      void move(source.threadId, targetThreadId, position);
+      void move(source.threadId, target.targetThreadId, target.position);
     },
     [clearTabDrag, move, state],
   );
@@ -1143,17 +1140,11 @@ function ChatTabsOverlay() {
     }
 
     if (!consumeHorizontalWheel(strip, event)) return;
-    // Мы уже применили scrollLeft вручную. Останавливаем дальнейшие host
-    // wheel handlers, иначе активная button/главная timeline могут попытаться
-    // обработать тот же жест повторно.
     if (event.cancelable) event.preventDefault();
     event.stopPropagation();
   }, []);
 
   useEffect(() => {
-    // Слушаем на window в capture phase, а не на самом strip: BB или UI-kit
-    // могут остановить событие выше кнопки вкладки ещё до bubbling. Проверка
-    // composedPath гарантирует, что мы не перехватываем wheel вне полосы.
     window.addEventListener("wheel", handleStripWheel, {
       capture: true,
       passive: false,
@@ -1170,63 +1161,132 @@ function ChatTabsOverlay() {
     [activeWorkflowThreadIds, sidebar.threads],
   );
 
+  const sidebarCurrent = useMemo(() =>
+    context.threadId === null ? null :
+      sidebar.threads.find((thread) => thread.id === context.threadId) ?? null,
+  [context.threadId, sidebar.threads]);
+  const [resolvedCurrent, setResolvedCurrent] = useState<{
+    threadId: string;
+    candidate: TabCandidate | null;
+  } | null>(null);
+  useEffect(() => {
+    if (context.threadId === null || sidebar.status !== "ready" || sidebarCurrent !== null) return;
+    const threadId = context.threadId;
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    const resolve = () => {
+      void resolveRpcRef.current.call("tabs_resolve_current", { threadId }).then(
+        ({ candidate }) => {
+          if (!cancelled) setResolvedCurrent({ threadId, candidate });
+        },
+        () => {
+          // Transient SDK failures must neither create a fake chat nor leave
+          // the viewed thread without a tab for the rest of this route visit.
+          if (!cancelled) retryTimer = window.setTimeout(resolve, 5_000);
+        },
+      );
+    };
+    resolve();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [context.threadId, sidebar.status, sidebarCurrent !== null]);
   const currentCandidate = useMemo(() => {
     if (sidebar.status !== "ready" || context.threadId === null) return null;
-    const current = sidebar.threads.find((thread) => thread.id === context.threadId);
-    return current === undefined ? null : candidateForThread(current);
-  }, [context.threadId, sidebar.status, sidebar.threads]);
+    if (sidebarCurrent !== null) return candidateForThread(sidebarCurrent);
+    return resolvedCurrent?.threadId === context.threadId
+      ? resolvedCurrent.candidate : null;
+  }, [context.threadId, sidebar.status, sidebarCurrent, resolvedCurrent]);
   const currentKey = candidateKey(currentCandidate);
 
-  // Регистрирует переход из sidebar, Ctrl+Tab, menu или прямого URL. История
-  // намеренно отдельна от preview: закрытие tab не стирает recent navigation.
+  const currentHistoryId = currentCandidate?.threadId ?? null;
   useEffect(() => {
-    if (currentCandidate === null) return;
+    if (!showTabsOnCurrentLayout || currentCandidate === null) return;
     void recordHistory(currentCandidate);
-  }, [currentCandidate, currentKey, recordHistory]);
+  }, [currentHistoryId, recordHistory, showTabsOnCurrentLayout]);
 
-  const latestActivity = useMemo(
+  const workingActivity = useMemo(
     () =>
       sidebar.status === "ready"
         ? latestWorkingCandidate(sidebar.threads, workIndex)
         : null,
     [sidebar.status, sidebar.threads, workIndex],
   );
-  // `updatedAt` нужен только чтобы выбрать самый свежий чат. Не включаем его
-  // в dependency key: runtime может обновлять timestamp много раз в секунду,
-  // хотя preview и её подпись при этом не меняются.
-  const activityKey =
-    latestActivity === null ? "" : candidateKey(latestActivity);
+  const latestActivity = workingActivity?.candidate ?? null;
+  const activityKey = workingActivity === null
+    ? ""
+    : `${candidateKey(workingActivity.candidate)}\u0000${workingActivity.updatedAt}`;
+  const workingHistory = useMemo(() => {
+    const roots = new Map<string, { candidate: TabCandidate; updatedAt: number }>();
+    if (sidebar.status !== "ready") return roots;
+    for (const thread of sidebar.threads) {
+      if (!workIndex.directlyWorkingThreadIds.has(thread.id)) continue;
+      const candidate = candidateForThread(rootThreadFor(thread, workIndex));
+      const previous = roots.get(candidate.threadId);
+      if (previous === undefined || previous.updatedAt < thread.updatedAt) {
+        roots.set(candidate.threadId, { candidate, updatedAt: thread.updatedAt });
+      }
+    }
+    return roots;
+  }, [sidebar.status, sidebar.threads, workIndex]);
+  const lastRecordedActivityKeys = useRef(new Map<string, string>());
+  const lastActivityVisitAt = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (!showTabsOnCurrentLayout || context.threadId === null) return;
+    const previous = lastRecordedActivityKeys.current;
+    const lastVisitAt = lastActivityVisitAt.current;
+    for (const id of previous.keys()) {
+      if (!workingHistory.has(id)) {
+        previous.delete(id);
+        lastVisitAt.delete(id);
+      }
+    }
+    const now = Date.now();
+    const updates = [...workingHistory.values()]
+      .filter(({ candidate, updatedAt }) => {
+        const key = `${candidateKey(candidate)}\u0000${updatedAt}`;
+        const previousKey = previous.get(candidate.threadId);
+        if (previousKey === key) return false;
+        // Runtime timestamps can change many times a second. A running chat
+        // needs recent placement, not one history write per sidebar update.
+        if (previousKey !== undefined &&
+            now - (lastVisitAt.get(candidate.threadId) ?? 0) < 5_000) return false;
+        previous.set(candidate.threadId, key);
+        lastVisitAt.set(candidate.threadId, now);
+        return true;
+      })
+      .sort((a, b) => a.updatedAt - b.updatedAt);
+    void (async () => {
+      for (const { candidate } of updates) await recordHistory(candidate);
+    })();
+  }, [context.threadId === null, recordHistory, showTabsOnCurrentLayout, workingHistory]);
 
   const lastCurrentKey = useRef<string | null>(null);
   const lastActivityKey = useRef<string | null>(null);
   useEffect(() => {
-    // Сначала получаем один snapshot plugin-owned state. Это исключает гонку
-    // initial `tabs_list` ↔ `tabs_sync_activity` и позволяет не отправлять
-    // mutation, если candidate уже отражён в KV/realtime state.
-    // Отключённая верхняя поверхность не мутирует состояние текущего чата,
-    // но root route сохраняет прежний путь: background activity всё равно
-    // может подготовить preview родительского разговора.
     if (!showTabsOnCurrentLayout && context.threadId !== null) return;
     if (state === null && context.threadId !== null) return;
 
     const currentChanged = currentKey !== lastCurrentKey.current;
     const activityChanged = activityKey !== lastActivityKey.current;
     lastCurrentKey.current = currentKey;
-    lastActivityKey.current = activityKey;
-
-    // Переход на любой новый чат создаёт/обновляет preview, даже если в нём
-    // нет runtime-работы. Совпадающая запись не нуждается в server mutation.
     if (
       currentCandidate !== null &&
-      currentChanged &&
+      (currentChanged || !state?.entries.some((entry) => !entry.pinned)) &&
       !stateContainsCandidate(state, currentCandidate)
     ) {
       void syncActivity([currentCandidate]);
       return;
     }
 
-    // Если маршрут не менялся, новая наиболее свежая работа всё ещё попадает
-    // в preview: так не теряется автоматическое обнаружение фоновых чатов.
+    // The viewed chat owns the single preview. Background work can use it
+    // only when the viewed chat is already pinned (or there is no current chat).
+    const currentIsPinned = state?.entries.some(
+      (entry) => entry.threadId === currentCandidate?.threadId && entry.pinned,
+    );
+    if (currentCandidate !== null && !currentIsPinned) return;
+    lastActivityKey.current = activityKey;
     if (
       latestActivity !== null &&
       activityChanged &&
@@ -1251,9 +1311,10 @@ function ChatTabsOverlay() {
         : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex),
     [sidebar.projects, sidebar.threads, state, workIndex],
   );
-  // Когда раздел pinned включён, он идёт раньше history и исключает дубли.
-  // Если раздел скрыт настройкой, закреплённый recent chat остаётся доступен
-  // в истории; закрытие preview/tab её не стирает.
+  const newChatProjects = useMemo(
+    () => recentProjects(sidebar.projects, sidebar.threads),
+    [sidebar.projects, sidebar.threads],
+  );
   const pinnedMenuTabs = useMemo(
     () => tabs.filter((tab) => tab.entry.pinned),
     [tabs],
@@ -1269,8 +1330,6 @@ function ChatTabsOverlay() {
       (tab) => !showTabListPinned || !pinnedIds.has(tab.entry.threadId),
     );
     const knownIds = new Set(presented.map((tab) => tab.entry.threadId));
-    // Не ждём round-trip history mutation, чтобы только что созданная preview
-    // сразу была доступна в навигационном подменю.
     const preview = tabs.find((tab) => !tab.entry.pinned);
     if (
       preview !== undefined &&
@@ -1289,10 +1348,21 @@ function ChatTabsOverlay() {
     tabs,
     workIndex,
   ]);
-  // Настройки управляют только представлением меню: pin/history state и
-  // ручной порядок верхней полосы остаются неизменными.
   const menuPinnedTabs = showTabListPinned ? pinnedMenuTabs : [];
   const menuHistoryTabs = showTabListHistory ? historyMenuTabs : [];
+  const searchableTabs = useMemo(() => {
+    const seen = new Set<string>();
+    return [...menuPinnedTabs, ...menuHistoryTabs].filter((tab) => {
+      if (tab.unavailableReason !== null || seen.has(tab.entry.threadId)) return false;
+      seen.add(tab.entry.threadId);
+      return true;
+    });
+  }, [menuPinnedTabs, menuHistoryTabs]);
+  const searchActive = tabSearch.trim().length > 0;
+  const searchResults = useMemo(
+    () => fuzzyChatSearch(searchableTabs, tabSearch),
+    [searchableTabs, tabSearch],
+  );
   const visibleHistoryMenuTabs = menuHistoryTabs.slice(0, historyVisibleCount);
   const hasMoreHistory = visibleHistoryMenuTabs.length < menuHistoryTabs.length;
   const tabListMenuHasNavigation =
@@ -1330,14 +1400,21 @@ function ChatTabsOverlay() {
 
   useEffect(() => clearHistoryMoreTimer, [clearHistoryMoreTimer]);
   useEffect(() => {
+    if (!tabListMenuOpen) {
+      setTabSearch("");
+      setSelectedSearchIndex(-1);
+      return;
+    }
+    const timer = window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [tabListMenuOpen]);
+  useEffect(() => {
     const strip = stripRef.current;
     const topScrollbar = topScrollbarRef.current;
     const spacer = topScrollbarSpacerRef.current;
     if (strip === null || topScrollbar === null || spacer === null) return;
 
     const syncMetrics = () => {
-      // Верхняя proxy-scrollbar нужна только при реальном переполнении.
-      // Позиция по-прежнему принадлежит strip с фактическими вкладками.
       const nextHasHorizontalOverflow = strip.scrollWidth > strip.clientWidth;
       setHasHorizontalOverflow(
         (previous) =>
@@ -1373,7 +1450,6 @@ function ChatTabsOverlay() {
         : new ResizeObserver(syncMetrics);
     resizeObserver?.observe(strip);
     resizeObserver?.observe(topScrollbar);
-    // Fallback для окружений без ResizeObserver и для jsdom-проверки.
     window.addEventListener("resize", syncMetrics);
 
     return () => {
@@ -1388,6 +1464,7 @@ function ChatTabsOverlay() {
     showTabsOnCurrentLayout && context.threadId !== null && tabs.length > 0;
   useEffect(() => {
     if (!shouldDock || !tabListMenuHasNavigation) {
+      clearListHoverTimers();
       setTabListMenuOpen(false);
       clearHistoryMoreTimer();
       return;
@@ -1395,6 +1472,7 @@ function ChatTabsOverlay() {
     if (!tabListMenuOpen || !showTabListHistory) clearHistoryMoreTimer();
   }, [
     clearHistoryMoreTimer,
+    clearListHoverTimers,
     shouldDock,
     showTabListHistory,
     tabListMenuHasNavigation,
@@ -1414,8 +1492,6 @@ function ChatTabsOverlay() {
     workflowThreadIds,
   });
 
-  // Все вкладки остаются в одной горизонтальной линии: длинные наборы
-  // прокручиваются общей верхней scrollbar, без вложенной вертикали.
   const rowCount = 1;
 
   const openThread = useCallback(
@@ -1431,9 +1507,6 @@ function ChatTabsOverlay() {
       const result = await close(entry.threadId);
       if (result === null || context.threadId !== entry.threadId) return;
       const fallback = fallbackTab(result.state.entries, entry);
-      // Закрытие вкладки не архивирует чат и не останавливает его runtime.
-      // Если есть соседняя — переключаемся на неё, иначе оставляем текущий чат
-      // открытым без верхней вкладки.
       if (fallback !== null) {
         openThread({
           threadId: fallback.threadId,
@@ -1447,7 +1520,6 @@ function ChatTabsOverlay() {
 
   const cycleTabsByKeyboard = useCallback(
     (direction: TabCycleDirection): boolean => {
-      // Не уводим пользователя из inline/modal rename или незавершённого drag.
       if (
         inlineRename !== null ||
         renameDialogTarget !== null ||
@@ -1504,9 +1576,6 @@ function ChatTabsOverlay() {
   closeCurrentTabRef.current = closeCurrentTab;
 
   useEffect(() => {
-    // Focus нативного BrowserView не отражается в document.activeElement.
-    // Bridge и renderer-chrome ведут один marker текущего фокуса; обычный
-    // переход pointer/focus обратно в host сбрасывает его.
     const syncEmbeddedBrowserFocus = (event: Event) => {
       embeddedBrowserFocused.current = isBrowserChromeKeyboardTarget(
         event.target,
@@ -1529,9 +1598,6 @@ function ChatTabsOverlay() {
   }, []);
 
   useEffect(() => {
-    // В Desktop accelerator CommandOrControl+W обрабатывает нативное меню
-    // раньше renderer keydown. Пока BrowserView в фокусе, плагин вообще не
-    // обрабатывает shortcut и оставляет его штатному handler BB.
     const unsubscribe = subscribeToDesktopCloseWindowRequest(() => {
       if (embeddedBrowserFocused.current) return false;
       if (currentEntryRef.current === null) return false;
@@ -1543,6 +1609,7 @@ function ChatTabsOverlay() {
 
   useLayoutEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Shift") lastShiftReleaseRef.current = null;
       if (event.defaultPrevented) return;
 
       if (isCyclePluginTabsShortcut(event)) {
@@ -1550,8 +1617,6 @@ function ChatTabsOverlay() {
           ? "previous"
           : "next";
         if (!cycleTabsByKeyboard(direction)) return;
-        // В Desktop иначе accelerator/native focus traversal может забрать
-        // Ctrl+Tab раньше, чем откроется выбранный plugin tab.
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -1561,9 +1626,6 @@ function ChatTabsOverlay() {
         return;
       }
 
-      // Native BrowserView получает shortcut вне DOM, а его chrome остаётся
-      // в renderer. В обоих случаях не перехватываем Ctrl+W: BB должен закрыть
-      // active browser tab своим штатным panel handler.
       if (
         embeddedBrowserFocused.current ||
         isBrowserChromeKeyboardTarget(event.target)
@@ -1575,16 +1637,38 @@ function ChatTabsOverlay() {
         return;
       }
 
-      // Ctrl+W обычно закрывает окно/вкладку браузера. В пределах открытого
-      // plugin tab отменяем это действие и закрываем только plugin-owned tab.
       event.preventDefault();
       event.stopPropagation();
       void closeCurrentTab();
     };
 
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "Shift" || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+      if (!shouldDock || !tabListMenuHasNavigation || embeddedBrowserFocused.current ||
+          inlineRename !== null || renameDialogTarget !== null ||
+          isBrowserChromeKeyboardTarget(event.target)) return;
+      const now = Date.now();
+      if (lastShiftReleaseRef.current !== null &&
+          now - lastShiftReleaseRef.current <= DOUBLE_SHIFT_INTERVAL_MS) {
+        lastShiftReleaseRef.current = null;
+        event.preventDefault();
+        event.stopPropagation();
+        clearListHoverTimers();
+        setTabListMenuOpen(true);
+        searchInputRef.current?.focus();
+      } else {
+        lastShiftReleaseRef.current = now;
+      }
+    };
     window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [closeCurrentTab, currentEntry, cycleTabsByKeyboard]);
+    window.addEventListener("keyup", onKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+    };
+  }, [closeCurrentTab, currentEntry, cycleTabsByKeyboard, shouldDock,
+      tabListMenuHasNavigation, inlineRename, renameDialogTarget,
+      clearListHoverTimers]);
 
   const lastPinnedThreadId = useMemo(
     () =>
@@ -1624,14 +1708,14 @@ function ChatTabsOverlay() {
         onDragOver={(event) =>
           handleDropSlotDragOver(event, targetThreadId, position)
         }
-        onDrop={(event) => handleDropSlotDrop(event, targetThreadId, position)}
+        onDrop={(event) => commitTabDrop(event, { targetThreadId, position })}
       >
         <span className="bb-chat-tab-drop-slot-hit" aria-hidden="true" />
       </div>
     );
   };
 
-  const renderTabListMenuItem = (tab: PresentedTab) => {
+  const renderTabListMenuItem = (tab: PresentedTab, searchIndex?: number) => {
     const unavailableReason = tab.unavailableReason;
     const unavailableLabel =
       unavailableReason === null
@@ -1643,13 +1727,15 @@ function ChatTabsOverlay() {
     return (
       <DropdownMenu.Item
         key={tab.entry.threadId}
+        id={searchIndex === undefined ? undefined : `bb-chat-tabs-search-result-${searchIndex}`}
+        data-selected={searchIndex === selectedSearchIndex ? "true" : undefined}
         className="bb-chat-tabs-list-menu-item"
         disabled={unavailableReason !== null}
         aria-current={active ? "page" : undefined}
         aria-label={
           unavailableLabel === null
             ? undefined
-            : `${tab.title}. Проект: ${tab.projectName}. ${unavailableLabel}. Чат недоступен.`
+            : `${tab.title}. Project: ${tab.projectName}. ${unavailableLabel}. Chat unavailable.`
         }
         data-active={active ? "true" : "false"}
         data-thread-id={tab.entry.threadId}
@@ -1735,15 +1821,22 @@ function ChatTabsOverlay() {
         open={tabListMenuOpen}
         onOpenChange={(open) => {
           setTabListMenuOpen(open);
-          if (!open) clearHistoryMoreTimer();
+          if (!open) {
+            clearListHoverTimers();
+            clearHistoryMoreTimer();
+          }
         }}
       >
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
             className="bb-chat-tabs-list-trigger"
-            aria-label="Список открытых чатов"
-            title="Открыть список вкладок"
+            aria-label="Open chat list"
+            title="Open tab list"
+            onPointerDown={() => { listOpenedByHoverRef.current = false; clearListHoverTimers(); }}
+            onPointerEnter={(event) => enterTabListMenu(event.pointerType)}
+            onPointerLeave={(event) => leaveTabListMenu(event.pointerType)}
+            onPointerCancel={clearListHoverTimers}
           >
             <Icon name="ListView" className="bb-chat-tabs-list-icon" aria-hidden />
           </button>
@@ -1751,31 +1844,81 @@ function ChatTabsOverlay() {
         <DropdownMenu.Portal>
           <DropdownMenu.Content
             className="bb-chat-tabs-list-menu"
-            aria-label="Список открытых чатов"
+            aria-label="Open chat list"
             side="bottom"
             align={tabListButtonPosition === "right" ? "end" : "start"}
             sideOffset={6}
             collisionPadding={8}
+            onCloseAutoFocus={(event) => {
+              if (listOpenedByHoverRef.current) event.preventDefault();
+            }}
+            onPointerEnter={(event) => enterTabListMenu(event.pointerType)}
+            onPointerLeave={(event) => leaveTabListMenu(event.pointerType)}
           >
-            {menuPinnedTabs.length > 0 ? (
+            <div className="bb-chat-tabs-list-menu-search">
+              <Icon name="Search" className="bb-chat-tabs-list-menu-search-icon" aria-hidden />
+              <input
+                ref={searchInputRef}
+                type="search"
+                className="bb-chat-tabs-list-menu-search-input"
+                aria-label="Search chats by title"
+                aria-controls={searchActive ? "bb-chat-tabs-search-results" : undefined}
+                aria-activedescendant={searchActive && selectedSearchIndex >= 0
+                  ? `bb-chat-tabs-search-result-${selectedSearchIndex}` : undefined}
+                placeholder="Search chats..."
+                value={tabSearch}
+                onChange={(event) => {
+                  setTabSearch(event.target.value);
+                  setSelectedSearchIndex(-1);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") return;
+                  event.stopPropagation();
+                  if (!searchActive) return;
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setSelectedSearchIndex((current) => searchResults.length === 0 ? -1 :
+                      event.key === "ArrowDown"
+                        ? (current + 1) % searchResults.length
+                        : (current - 1 + searchResults.length) % searchResults.length);
+                  } else if (event.key === "Enter" && searchResults.length > 0) {
+                    event.preventDefault();
+                    const result = searchResults[selectedSearchIndex] ?? searchResults[0];
+                    if (result !== undefined) {
+                      setTabListMenuOpen(false);
+                      openThread({ threadId: result.entry.threadId,
+                        projectId: result.entry.projectId, title: result.title });
+                    }
+                  }
+                }}
+              />
+            </div>
+            {searchActive ? (
+              <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label="Search results">
+                {searchResults.length > 0 ? searchResults.map((tab, index) =>
+                  renderTabListMenuItem(tab, index)
+                ) : <span className="bb-chat-tabs-list-menu-search-empty">No matching chats</span>}
+              </DropdownMenu.Group>
+            ) : null}
+            {!searchActive && menuPinnedTabs.length > 0 ? (
               <DropdownMenu.Group className="bb-chat-tabs-list-menu-group">
                 <DropdownMenu.Label className="bb-chat-tabs-list-menu-group-label">
-                  Закреплённые
+                  Pinned
                 </DropdownMenu.Label>
                 {menuPinnedTabs.map(renderTabListMenuItem)}
               </DropdownMenu.Group>
             ) : null}
-            {visibleHistoryMenuTabs.length > 0 ? (
+            {!searchActive && visibleHistoryMenuTabs.length > 0 ? (
               <DropdownMenu.Group className="bb-chat-tabs-list-menu-group">
                 <DropdownMenu.Label className="bb-chat-tabs-list-menu-group-label">
-                  История
+                  History
                 </DropdownMenu.Label>
                 {visibleHistoryMenuTabs.map((tab, index) => (
                   <Fragment key={tab.entry.threadId}>
                     {index > 0 && index % HISTORY_MENU_PAGE_SIZE === 0 ? (
                       <DropdownMenu.Separator
                         className="bb-chat-tabs-list-menu-history-page-separator"
-                        aria-label="Следующая страница истории"
+                        aria-label="Next history page"
                       />
                     ) : null}
                     {renderTabListMenuItem(tab)}
@@ -1783,29 +1926,26 @@ function ChatTabsOverlay() {
                 ))}
               </DropdownMenu.Group>
             ) : null}
-            {hasMoreHistory ? (
+            {!searchActive && hasMoreHistory ? (
               <DropdownMenu.Item
                 className="bb-chat-tabs-list-menu-more"
                 data-pending={historyMorePending ? "true" : "false"}
-                aria-label={`Показать ещё ${Math.min(
+                aria-label={`Show ${Math.min(
                   HISTORY_MENU_PAGE_SIZE,
                   menuHistoryTabs.length - visibleHistoryMenuTabs.length,
-                )} чатов истории`}
+                )} more history chats`}
                 onPointerEnter={(event) => {
                   if (event.pointerType === "mouse") scheduleHistoryMore();
                 }}
                 onPointerLeave={clearHistoryMoreTimer}
                 onPointerCancel={clearHistoryMoreTimer}
                 onSelect={(event) => {
-                  // Click, tap и keyboard раскрывают страницу сразу. Hover на
-                  // desktop остаётся вторым быстрым путём и не должен успеть
-                  // открыть ту же порцию повторно после click.
                   event.preventDefault();
                   clearHistoryMoreTimer();
                   loadMoreHistory();
                 }}
               >
-                <span>Ещё</span>
+                <span>More</span>
                 <span className="bb-chat-tabs-list-menu-more-count">
                   {menuHistoryTabs.length - visibleHistoryMenuTabs.length}
                 </span>
@@ -1833,7 +1973,7 @@ function ChatTabsOverlay() {
           ref={topScrollbarRef}
           className="bb-chat-tabs-top-scrollbar"
           aria-hidden={!hasHorizontalOverflow}
-          aria-label="Горизонтальная прокрутка вкладок"
+          aria-label="Horizontal tab scroll"
           tabIndex={hasHorizontalOverflow ? 0 : -1}
         >
           <div
@@ -1848,7 +1988,22 @@ function ChatTabsOverlay() {
             ref={stripRef}
             className="bb-chat-tabs-strip"
             data-dragging={draggedTab === null ? "false" : "true"}
-            aria-label="Открытые чаты"
+            aria-label="Open chats"
+            onDragOver={(event) => {
+              if (draggedTabRef.current === null || dropTargetRef.current === null) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(event) => commitTabDrop(event, dropTargetRef.current)}
+            onDragLeave={(event) => {
+              const next = event.relatedTarget;
+              if (next instanceof Node && event.currentTarget.contains(next)) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (next === null && event.clientX >= rect.left && event.clientX <= rect.right &&
+                  event.clientY >= rect.top && event.clientY <= rect.bottom) return;
+              dropTargetRef.current = null;
+              setDropTarget(null);
+            }}
           >
           {tabs.map(
             ({
@@ -1866,19 +2021,19 @@ function ChatTabsOverlay() {
                       entry.pinned && !editing && !isCompactTabLayout;
                     const dragging = draggedTab?.threadId === entry.threadId;
                     const workLabel = hasNestedWork
-                      ? "выполняется вложенная работа"
-                      : "работа выполняется";
+                      ? "nested work is running"
+                      : "work is running";
                     const tabHint = [
-                      `Проект: ${projectName}`,
-                      `Чат: ${title}`,
-                      hasNestedWork ? "Выполняется вложенная работа." : "",
-                      isUnread ? "Есть непрочитанные сообщения." : "",
-                      "Кликните, чтобы открыть чат.",
+                      `Project: ${projectName}`,
+                      `Chat: ${title}`,
+                      hasNestedWork ? "Nested work is running." : "",
+                      isUnread ? "There are unread messages." : "",
+                      "Click to open the chat.",
                       entry.pinned
-                        ? "Перетаскивайте, чтобы изменить порядок."
+                        ? "Drag to change the order."
                         : "",
-                      preview ? "Двойной щелчок закрепляет вкладку." : "",
-                      "Щелчок колёсиком закрывает вкладку.",
+                      preview ? "Double-click to pin this tab." : "",
+                      "Middle-click to close this tab.",
                     ]
                       .filter(Boolean)
                       .join("\n");
@@ -1918,12 +2073,20 @@ function ChatTabsOverlay() {
                           draggable={draggable}
                           onDragEnd={clearTabDrag}
                           onDragStart={(event) => handleTabDragStart(event, entry)}
+                          onDragOver={entry.pinned ? (event) => {
+                            const target = dropTargetForTab(entry, event.clientX, event.currentTarget);
+                            handleDropSlotDragOver(event, target.targetThreadId, target.position);
+                          } : undefined}
+                          onDrop={entry.pinned ? (event) => {
+                            const target = dropTargetForTab(entry, event.clientX, event.currentTarget);
+                            commitTabDrop(event, target);
+                          } : undefined}
                         >
                           {editing ? (
                             <input
                               autoFocus
                               className="bb-chat-tab-inline-rename"
-                              aria-label={`Переименовать вкладку «${title}»`}
+                              aria-label={`Rename tab “${title}”`}
                               maxLength={300}
                               value={inlineRename?.value ?? title}
                               onBlur={() => void commitInlineRename()}
@@ -1952,19 +2115,18 @@ function ChatTabsOverlay() {
                               type="button"
                               className="bb-chat-tab-select"
                               aria-current={active ? "page" : undefined}
-                              aria-description={`Клик открывает чат. Проект: ${projectName}.${
+                              aria-description={`Click opens the chat. Project: ${projectName}.${
                                 preview
-                                  ? " Предварительная вкладка."
-                                  : " Закреплённая вкладка. Её можно перетаскивать для изменения порядка."
-                              } Щелчок колёсиком закрывает вкладку.`}
+                                  ? " Preview tab."
+                                  : " Pinned tab. Drag it to change the order."
+                              } Middle-click closes this tab.`}
                               aria-label={`${title}${
                                 isWorking ? `, ${workLabel}` : ""
                               }${
-                                isUnread ? ", есть непрочитанные сообщения" : ""
+                                isUnread ? ", unread messages" : ""
                               }`}
                               title={tabHint}
                               onMouseDown={(event) => {
-                                // Не запускаем browser autoscroll до auxclick.
                                 if (event.button === 1) event.preventDefault();
                               }}
                               onAuxClick={(event) => {
@@ -2008,8 +2170,8 @@ function ChatTabsOverlay() {
                           <button
                             type="button"
                             className="bb-chat-tab-action"
-                            aria-label={`Закрыть вкладку «${title}»`}
-                            title="Закрыть вкладку"
+                            aria-label={`Close tab “${title}”`}
+                            title="Close tab"
                             onClick={(event) => {
                               event.stopPropagation();
                               void closeTab(entry);
@@ -2026,9 +2188,13 @@ function ChatTabsOverlay() {
                     );
             },
           )}
+            <NewChatSwitcher
+              projects={newChatProjects}
+              openNewThread={threadActions.openNewThread}
+            />
             {error === null ? null : (
               <span className="bb-chat-tabs-error" role="status" title={error}>
-                Вкладки недоступны
+                Tabs unavailable
               </span>
             )}
           </div>
@@ -2044,17 +2210,10 @@ function ChatTabsOverlay() {
   );
 }
 
-/**
- * Root-compose surface под штатным полем «Новый чат». В отличие от overlay,
- * этот slot виден и без открытого thread и не требует CSS-вмешательства в
- * native chat chrome.
- */
 function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
   const settings = useSettings();
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
-  // Пока settings загружаются, сохраняем default `true`, чтобы section не
-  // мигал при первом рендере root compose.
   const showPinnedTabsList = settings.values?.showPinnedTabsList !== false;
   const { activeWorkflowThreadIds, refresh, state } = useTabsState(
     showPinnedTabsList,
@@ -2112,7 +2271,7 @@ function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
 export default definePluginApp((app) => {
   app.slots.homepageSection({
     id: "pinned-tabs",
-    title: "Закреплённые чаты",
+    title: "Pinned chats",
     component: PinnedTabsHomepageSection,
   });
   app.slots.experimental_appOverlay({

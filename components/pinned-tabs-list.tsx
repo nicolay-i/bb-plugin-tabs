@@ -15,9 +15,8 @@ interface PinnedTabsListProps {
 }
 
 /**
- * Быстрый переход к закреплённым чатам на root-экране «Новый чат».
- * Данные и порядок остаются plugin-owned, а текущие runtime-статусы приходят
- * из live sidebar snapshot родительского homepage slot.
+ * A quick route to pinned chats on the New chat home screen. Data and ordering
+ * stay plugin-owned; live runtime statuses come from the parent homepage slot.
  */
 export function PinnedTabsList({
   onOpenThread,
@@ -25,9 +24,8 @@ export function PinnedTabsList({
   visible,
 }: PinnedTabsListProps) {
   if (!visible) {
-    // Родительский host-section скрывается scoped CSS-правилом. Этот marker
-    // позволяет убрать также его штатный заголовок, которого slot API пока
-    // не умеет скрывать декларативно.
+    // Scoped CSS hides the parent host section. This marker also hides its
+    // built-in heading, which the current slot API cannot hide declaratively.
     return (
       <div
         className="bb-chat-tabs-homepage-pinned-list"
@@ -46,8 +44,7 @@ export function PinnedTabsList({
         data-visible="true"
       >
         <p className="bb-chat-tabs-homepage-pinned-empty">
-          Пока нет закреплённых чатов. Откройте нужный чат и нажмите
-          «Закрепить».
+          No pinned chats yet. Open a chat and choose “Pin”.
         </p>
       </div>
     );
@@ -61,7 +58,7 @@ export function PinnedTabsList({
     >
       <ul
         className="bb-chat-tabs-homepage-pinned-items"
-        aria-label="Закреплённые чаты"
+        aria-label="Pinned chats"
       >
         {tabs.map((tab) => {
           const status = chatStatusFor(tab);
@@ -72,8 +69,8 @@ export function PinnedTabsList({
                 className="bb-chat-tabs-homepage-pinned-button"
                 aria-label={
                   status === null
-                    ? `${tab.title}. Проект: ${tab.projectName}.`
-                    : `${tab.title}. Проект: ${tab.projectName}. ${status.text}.`
+                    ? `${tab.title}. Project: ${tab.projectName}.`
+                    : `${tab.title}. Project: ${tab.projectName}. ${status.text}.`
                 }
                 onClick={() => onOpenThread(tab.threadId)}
               >

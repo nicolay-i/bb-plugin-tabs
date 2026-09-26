@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
-import { movePinnedTab, type TabsState } from "./lib/tabs-model";
+import { addTabCandidates, movePinnedTab, type TabsState } from "./lib/tabs-model";
+import { visitTabHistory, type TabHistoryState } from "./lib/tab-history";
+import { recentProjects } from "./lib/recent-projects";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -122,8 +124,6 @@ function installDesktopCloseRequestBridge(): {
 beforeEach(() => {
   previousDesktopBridge = desktopHost.bbDesktop;
   desktopHost.bbDesktop = undefined;
-  // jsdom/другие test cases могут менять visibility. Каждая UI-проверка
-  // начинается как видимая вкладка, кроме теста hidden fallback ниже.
   Object.defineProperty(document, "hidden", {
     configurable: true,
     value: false,
@@ -139,19 +139,19 @@ afterEach(() => {
   });
 });
 
-describe("вкладки чатов", () => {
-  it("не добавляет кнопку закрепления в штатную шапку чата", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     expect(app.threadHeaderActions).toHaveLength(0);
   });
 
-  it("не вызывает tabs_sync_activity для уже актуального snapshot activity", async () => {
+  it("handles behavior 2", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий чат",
+          title: "Current chat",
           pinned: true,
           openedAt: 1,
         },
@@ -160,12 +160,12 @@ describe("вкладки чатов", () => {
     let listCalls = 0;
     let syncCalls = 0;
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
-        threads: [sidebarThread("thr_current", "proj_api", "Текущий чат")],
+        threads: [sidebarThread("thr_current", "proj_api", "Current chat")],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
       rpc: {
@@ -184,19 +184,24 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий чат" });
+    await slot.findByRole("button", { name: "Current chat" });
     await waitFor(() => expect(listCalls).toBe(1));
     expect(syncCalls).toBe(0);
+    fireEvent.click(slot.getByRole("button", { name: "New chat" }));
+    expect(slot.sidebarActionCalls).toContainEqual({
+      method: "openNewThread",
+      options: { focusPrompt: true },
+    });
   });
 
-  it("ограничивает idle RPC и приостанавливает revalidation в hidden document", async () => {
+  it("handles behavior 3", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_idle",
           projectId: "proj_api",
-          title: "Спокойный чат",
+          title: "Quiet chat",
           pinned: true,
           openedAt: 1,
         },
@@ -206,7 +211,7 @@ describe("вкладки чатов", () => {
     let listCalls = 0;
     let syncCalls = 0;
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     vi.useFakeTimers();
     try {
@@ -217,7 +222,7 @@ describe("вкладки чатов", () => {
       renderSlot<{}, typeof rpcContract>(overlay, {}, {
         context: { projectId: "proj_api", threadId: "thr_idle" },
         sidebarThreads: {
-          threads: [sidebarThread("thr_idle", "proj_api", "Спокойный чат")],
+          threads: [sidebarThread("thr_idle", "proj_api", "Quiet chat")],
           projects: [{ id: "proj_api", name: "API", isPersonal: false }],
         },
         rpc: {
@@ -242,7 +247,6 @@ describe("вкладки чатов", () => {
       expect(listCalls).toBe(1);
       expect(syncCalls).toBe(0);
 
-      // За десять секунд спокойного foreground нет второго `tabs_list`.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10_000);
       });
@@ -268,7 +272,6 @@ describe("вкладки чатов", () => {
         document.dispatchEvent(new Event("visibilitychange"));
         await vi.advanceTimersByTimeAsync(0);
       });
-      // Возврат в foreground делает ровно один актуализирующий запрос.
       expect(listCalls).toBe(2);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10_000);
@@ -285,51 +288,52 @@ describe("вкладки чатов", () => {
     }
   });
 
-  it("даёт в hover проект и полное имя чата, оставляя tab в одной строке", async () => {
+  it("handles behavior 4", async () => {
+    let moveCalls = 0;
     let state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_build",
           projectId: "proj_api",
-          title: "Сборка",
+          title: "Build",
           pinned: false,
           openedAt: 1,
         },
         {
           threadId: "thr_review",
           projectId: "proj_api",
-          title: "Ревью",
+          title: "Review",
           pinned: true,
           openedAt: 2,
         },
         {
           threadId: "thr_docs",
           projectId: "proj_api",
-          title: "Документация",
+          title: "Documentation",
           pinned: true,
           openedAt: 3,
         },
         {
           threadId: "thr_design",
           projectId: "proj_web",
-          title: "Макет",
+          title: "Design",
           pinned: true,
           openedAt: 4,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_build" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_build", "proj_api", "Сборка"),
-          sidebarThread("thr_review", "proj_api", "Ревью"),
-          sidebarThread("thr_docs", "proj_api", "Документация"),
-          sidebarThread("thr_design", "proj_web", "Макет"),
+          sidebarThread("thr_build", "proj_api", "Build"),
+          sidebarThread("thr_review", "proj_api", "Review"),
+          sidebarThread("thr_docs", "proj_api", "Documentation"),
+          sidebarThread("thr_design", "proj_web", "Design"),
         ],
         projects: [
           { id: "proj_api", name: "API", isPersonal: false },
@@ -356,6 +360,7 @@ describe("вкладки чатов", () => {
           return { state, removed };
         },
         tabs_move: ({ sourceThreadId, targetThreadId, position }) => {
+          moveCalls += 1;
           state = movePinnedTab(
             state,
             sourceThreadId,
@@ -376,38 +381,36 @@ describe("вкладки чатов", () => {
     });
     const overlayElement = slot.container.querySelector("#bb-chat-tabs-overlay");
     if (!(overlayElement instanceof HTMLElement)) {
-      throw new Error("Не найден overlay вкладок");
+      throw new Error("Chat tabs overlay was not found");
     }
-    // Пока все вкладки помещаются, верхняя scrollbar не занимает место.
     expect(overlayElement.getAttribute("data-scrollable")).toBe("false");
 
-    // Название проекта не занимает место в полосе: оба полных имени — в hover.
     expect(slot.queryByText("API")).toBeNull();
     expect(slot.queryByText("Web")).toBeNull();
-    const buildTab = await slot.findByRole("button", { name: "Сборка" });
-    expect(buildTab.getAttribute("title")).toContain("Проект: API");
-    expect(buildTab.getAttribute("title")).toContain("Чат: Сборка");
+    const buildTab = await slot.findByRole("button", { name: "Build" });
+    expect(buildTab.getAttribute("title")).toContain("Project: API");
+    expect(buildTab.getAttribute("title")).toContain("Chat: Build");
     expect(buildTab.getAttribute("title")).toContain(
-      "Кликните, чтобы открыть чат.",
+      "Click to open the chat.",
     );
     expect(buildTab.getAttribute("aria-description")).toContain(
-      "Клик открывает чат.",
+      "Click opens the chat.",
     );
     expect(
       buildTab.closest(".bb-chat-tab")?.getAttribute("data-preview"),
     ).toBe("true");
     expect(slot.container.querySelectorAll(".bb-chat-tab")).toHaveLength(4);
-    expect(slot.queryByRole("button", { name: /Закрепить «/u })).toBeNull();
+    expect(slot.queryByRole("button", { name: /Pin «/u })).toBeNull();
 
     const strip = slot.container.querySelector(".bb-chat-tabs-strip");
     if (!(strip instanceof HTMLDivElement)) {
-      throw new Error("Не найдена полоса вкладок");
+      throw new Error("Chat tab strip was not found");
     }
     const topScrollbar = slot.container.querySelector(
       ".bb-chat-tabs-top-scrollbar",
     );
     if (!(topScrollbar instanceof HTMLDivElement)) {
-      throw new Error("Не найдена верхняя scrollbar");
+      throw new Error("Top scrollbar was not found");
     }
     expect(topScrollbar.getAttribute("aria-hidden")).toBe("true");
     expect(topScrollbar.tabIndex).toBe(-1);
@@ -423,8 +426,6 @@ describe("вкладки чатов", () => {
     expect(topScrollbar.getAttribute("aria-hidden")).toBe("false");
     expect(topScrollbar.tabIndex).toBe(0);
 
-    // Внутренней вертикали нет: даже над *активной* button wheel листает
-    // общую горизонтальную полосу.
     expect(buildTab.getAttribute("aria-current")).toBe("page");
     strip.scrollLeft = 0;
     const alreadyPrevented = new WheelEvent("wheel", {
@@ -439,7 +440,6 @@ describe("вкладки чатов", () => {
     fireEvent.wheel(buildTab, { ctrlKey: true, deltaY: 48 });
     expect(strip.scrollLeft).toBe(48);
 
-    // Верхняя scrollbar и скрытый content scroller всегда синхронизированы.
     topScrollbar.scrollLeft = 120;
     fireEvent.scroll(topScrollbar);
     expect(strip.scrollLeft).toBe(120);
@@ -447,9 +447,7 @@ describe("вкладки чатов", () => {
     fireEvent.scroll(strip);
     expect(topScrollbar.scrollLeft).toBe(84);
 
-    // Preview остаётся временной, но закреплённая вкладка свободно проходит
-    // через границу проектов в общем горизонтальном порядке.
-    const docsTab = slot.getByRole("button", { name: "Документация" });
+    const docsTab = slot.getByRole("button", { name: "Documentation" });
     const docsContainer = docsTab.closest(".bb-chat-tab");
     const previewContainer = buildTab.closest(".bb-chat-tab");
     const designAfterSlot = strip.querySelector(
@@ -460,7 +458,7 @@ describe("вкладки чатов", () => {
       !(previewContainer instanceof HTMLDivElement) ||
       !(designAfterSlot instanceof HTMLDivElement)
     ) {
-      throw new Error("Не найдены контейнеры вкладок/щель для drag-and-drop");
+      throw new Error("Tab containers or drag-and-drop slot were not found");
     }
     expect(previewContainer.draggable).toBe(false);
     expect(docsContainer.draggable).toBe(true);
@@ -500,17 +498,94 @@ describe("вкладки чатов", () => {
         [...strip.querySelectorAll(".bb-chat-tab-select")].map((tab) =>
           tab.getAttribute("aria-label"),
         ),
-      ).toEqual(["Ревью", "Макет", "Документация", "Сборка"]);
+      ).toEqual(["Review", "Design", "Documentation", "Build"]);
     });
 
-    // Остаточный deltaX не должен ломать первый жест после смены направления.
+    const designBeforeSlotForNoop = strip.querySelector(
+      '[data-drop-target="thr_design"][data-drop-position="before"]',
+    );
+    if (!(designBeforeSlotForNoop instanceof HTMLDivElement)) {
+      throw new Error("Design drop slot was not found");
+    }
+    fireEvent.dragStart(docsContainer, { dataTransfer });
+    fireEvent.dragOver(designBeforeSlotForNoop, { clientX: 180, dataTransfer });
+    await waitFor(() => {
+      expect(designBeforeSlotForNoop.getAttribute("data-active")).toBe("true");
+    });
+    fireEvent.dragOver(docsContainer, { clientX: 0, dataTransfer });
+    expect(strip.querySelector('.bb-chat-tab-drop-slot[data-active="true"]')).toBeNull();
+    fireEvent.drop(strip, { clientX: 0, dataTransfer });
+    expect(moveCalls).toBe(1);
+    expect(state.entries.map((entry) => entry.threadId)).toEqual([
+      "thr_build", "thr_review", "thr_design", "thr_docs",
+    ]);
+
+    const reviewContainer = slot.getByRole("button", { name: "Review" }).closest(".bb-chat-tab");
+    const designContainer = slot.getByRole("button", { name: "Design" }).closest(".bb-chat-tab");
+    if (!(reviewContainer instanceof HTMLDivElement) ||
+        !(designContainer instanceof HTMLDivElement)) {
+      throw new Error("Pinned tab containers were not found");
+    }
+    designContainer.getBoundingClientRect = () =>
+      ({ left: 100, width: 100 } as DOMRect);
+    fireEvent.dragStart(reviewContainer, { dataTransfer });
+    fireEvent.dragOver(designContainer, { clientX: 175, dataTransfer });
+    await waitFor(() => {
+      expect(
+        strip.querySelector('[data-drop-target="thr_docs"][data-drop-position="before"]')
+          ?.getAttribute("data-active"),
+      ).toBe("true");
+    });
+    fireEvent.drop(designContainer, { clientX: 175, dataTransfer });
+    await waitFor(() => {
+      expect(state.entries.map((entry) => entry.threadId)).toEqual([
+        "thr_build", "thr_design", "thr_review", "thr_docs",
+      ]);
+    });
+
+    docsContainer.getBoundingClientRect = () =>
+      ({ left: 200, width: 100 } as DOMRect);
+    fireEvent.dragStart(reviewContainer, { dataTransfer });
+    fireEvent.dragOver(docsContainer, { clientX: 275, dataTransfer });
+    await waitFor(() => {
+      expect(
+        strip.querySelector('[data-drop-target="thr_docs"][data-drop-position="after"]')
+          ?.getAttribute("data-active"),
+      ).toBe("true");
+    });
+    fireEvent.drop(docsContainer, { clientX: 275, dataTransfer });
+    await waitFor(() => {
+      expect(state.entries.map((entry) => entry.threadId)).toEqual([
+        "thr_build", "thr_design", "thr_docs", "thr_review",
+      ]);
+    });
+
+    const designBeforeSlot = strip.querySelector(
+      '[data-drop-target="thr_design"][data-drop-position="before"]',
+    );
+    if (!(designBeforeSlot instanceof HTMLDivElement)) {
+      throw new Error("Design drop slot was not found");
+    }
+    fireEvent.dragStart(reviewContainer, { dataTransfer });
+    fireEvent.dragOver(designBeforeSlot, { clientX: 180, dataTransfer });
+    await waitFor(() => {
+      expect(designBeforeSlot.getAttribute("data-active")).toBe("true");
+    });
+    fireEvent.drop(strip, { clientX: 180, dataTransfer });
+    await waitFor(() => {
+      expect(state.entries.map((entry) => entry.threadId)).toEqual([
+        "thr_build", "thr_review", "thr_design", "thr_docs",
+      ]);
+      expect(moveCalls).toBe(4);
+    });
+
     strip.scrollLeft = 150;
     fireEvent.wheel(buildTab, { deltaX: 8, deltaY: -48 });
     expect(strip.scrollLeft).toBe(102);
     fireEvent.wheel(buildTab, { deltaX: -8, deltaY: 48 });
     expect(strip.scrollLeft).toBe(150);
 
-    fireEvent.click(slot.getByRole("button", { name: "Ревью" }));
+    fireEvent.click(slot.getByRole("button", { name: "Review" }));
     expect(slot.inspection.sidebarActionCalls).toEqual([
       { method: "open", threadId: "thr_review", options: undefined },
     ]);
@@ -523,28 +598,28 @@ describe("вкладки чатов", () => {
     });
   });
 
-  it("показывает pinned перед историей и догружает её click/hover/tap через «Ещё»", async () => {
+  it("handles behavior 5", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_api_current",
           projectId: "proj_api",
-          title: "Текущий API",
+          title: "Current API",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_web",
           projectId: "proj_web",
-          title: "Макет",
+          title: "Design",
           pinned: true,
           openedAt: 2,
         },
         {
           threadId: "thr_api_review",
           projectId: "proj_api",
-          title: "Ревью API",
+          title: "API review",
           pinned: true,
           openedAt: 3,
         },
@@ -555,19 +630,19 @@ describe("вкладки чатов", () => {
       entries: Array.from({ length: 26 }, (_, index) => ({
         threadId: `thr_history_${index}`,
         projectId: index % 2 === 0 ? "proj_api" : "proj_web",
-        title: `Исторический чат ${index}`,
+        title: `Historical chat ${index}`,
         visitedAt: 100 - index,
       })),
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_api_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_api_current", "proj_api", "Текущий API"),
-          sidebarThread("thr_web", "proj_web", "Макет", {
+          sidebarThread("thr_api_current", "proj_api", "Current API"),
+          sidebarThread("thr_web", "proj_web", "Design", {
             activity: {
               workflows: 1,
               backgroundAgents: 0,
@@ -577,7 +652,7 @@ describe("вкладки чатов", () => {
             },
             indicator: "workflow",
           }),
-          sidebarThread("thr_api_review", "proj_api", "Ревью API", {
+          sidebarThread("thr_api_review", "proj_api", "API review", {
             isUnread: true,
           }),
           ...history.entries.map((entry, index) =>
@@ -602,21 +677,19 @@ describe("вкладки чатов", () => {
     });
 
     const trigger = await slot.findByRole("button", {
-      name: "Список открытых чатов",
+      name: "Open chat list",
     });
     expect(trigger.querySelector('[data-icon="ListView"]')).not.toBeNull();
-    expect(slot.queryByRole("combobox", { name: "Перейти к чату" })).toBeNull();
+    expect(slot.queryByRole("combobox", { name: "Go to chat" })).toBeNull();
     expect(slot.container.querySelector("select")).toBeNull();
 
-    // Radix DropdownMenu намеренно открывается на pointerdown, чтобы
-    // поддержать touch и не позволить click уйти в фоновый strip.
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     let menu: HTMLElement | null = null;
     await waitFor(() => {
       menu = document.body.querySelector(".bb-chat-tabs-list-menu");
       expect(menu).not.toBeNull();
     });
-    if (menu === null) throw new Error("Не открылось подменю списка вкладок");
+    if (menu === null) throw new Error("Tab list submenu did not open");
 
     const groups = [
       ...menu.querySelectorAll<HTMLElement>(".bb-chat-tabs-list-menu-group"),
@@ -626,7 +699,7 @@ describe("вкладки чатов", () => {
         (group) =>
           group.querySelector(".bb-chat-tabs-list-menu-group-label")?.textContent,
       ),
-    ).toEqual(["Закреплённые", "История"]);
+    ).toEqual(["Pinned", "History"]);
     expect(
       [...groups[0]!.querySelectorAll<HTMLElement>("[data-thread-id]")].map(
         (item) => item.dataset.threadId,
@@ -649,13 +722,13 @@ describe("вкладки чатов", () => {
         ?.querySelector(".bb-chat-tabs-list-menu-status")
         ?.getAttribute("data-status"),
     ).toBe("working");
-    expect(workingMenuItem?.textContent).toContain("Работает");
+    expect(workingMenuItem?.textContent).toContain("Working");
     expect(
       unreadMenuItem
         ?.querySelector(".bb-chat-tabs-list-menu-status")
         ?.getAttribute("data-status"),
     ).toBe("unread");
-    expect(unreadMenuItem?.textContent).toContain("Непрочитанное");
+    expect(unreadMenuItem?.textContent).toContain("Unread");
     const unreadMeta = unreadMenuItem?.querySelector(
       ".bb-chat-tabs-list-menu-meta",
     );
@@ -668,7 +741,7 @@ describe("вкладки чатов", () => {
       unreadMenuItem?.querySelector(".bb-chat-tabs-list-menu-status"),
     );
     const historyGroup = groups[1];
-    if (historyGroup === undefined) throw new Error("Не найден раздел истории");
+    if (historyGroup === undefined) throw new Error("History section was not found");
     expect(
       [...historyGroup.querySelectorAll<HTMLElement>("[data-thread-id]")].map(
         (item) => item.dataset.threadId,
@@ -680,24 +753,20 @@ describe("вкладки чатов", () => {
           ".bb-chat-tabs-list-menu-history-page-separator",
         ),
       ];
-    // Пока показана только первая порция, граница следующей страницы не нужна.
     expect(historyPageSeparators()).toHaveLength(0);
 
     let more = menu.querySelector<HTMLElement>(".bb-chat-tabs-list-menu-more");
-    if (more === null) throw new Error("Не найден пункт «Ещё»");
+    if (more === null) throw new Error("More item was not found");
     vi.useFakeTimers();
     try {
-      // Уход указателя отменяет pending desktop-таймер.
       fireEvent.pointerEnter(more, { pointerType: "mouse" });
       expect(more.getAttribute("data-pending")).toBe("true");
-      fireEvent.pointerLeave(more, { pointerType: "mouse" });
+      fireEvent.pointerLeave(more, { pointerType: "mouse", relatedTarget: historyGroup });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1_100);
       });
       expect(historyGroup.querySelectorAll("[data-thread-id]")).toHaveLength(8);
 
-      // Обычный mouse click раскрывает порцию сразу и отменяет hover-таймер,
-      // поэтому та же страница не может добавиться повторно через секунду.
       fireEvent.pointerEnter(more, { pointerType: "mouse" });
       expect(more.getAttribute("data-pending")).toBe("true");
       fireEvent.pointerDown(more, { pointerType: "mouse" });
@@ -709,7 +778,7 @@ describe("вкладки чатов", () => {
       expect(historyGroup.querySelectorAll("[data-thread-id]")).toHaveLength(16);
       const [firstPageSeparator] = historyPageSeparators();
       expect(firstPageSeparator?.getAttribute("aria-label")).toBe(
-        "Следующая страница истории",
+        "Next history page",
       );
       expect(
         firstPageSeparator?.previousElementSibling?.getAttribute(
@@ -720,12 +789,15 @@ describe("вкладки чатов", () => {
         firstPageSeparator?.nextElementSibling?.getAttribute("data-thread-id"),
       ).toBe("thr_history_8");
 
-      // Desktop hover раскрывает следующую порцию автоматически через секунду.
       more = menu.querySelector<HTMLElement>(".bb-chat-tabs-list-menu-more");
-      if (more === null) throw new Error("Не найден повторный пункт «Ещё»");
+      if (more === null) throw new Error("Repeated More item was not found");
       fireEvent.pointerEnter(more, { pointerType: "mouse" });
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.advanceTimersByTimeAsync(299);
+      });
+      expect(historyGroup.querySelectorAll("[data-thread-id]")).toHaveLength(16);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
       });
       expect(historyGroup.querySelectorAll("[data-thread-id]")).toHaveLength(24);
       const [, secondPageSeparator] = historyPageSeparators();
@@ -739,10 +811,8 @@ describe("вкладки чатов", () => {
         secondPageSeparator?.nextElementSibling?.getAttribute("data-thread-id"),
       ).toBe("thr_history_16");
 
-      // Tap использует тот же доступный select-path и раскрывает последнюю
-      // порцию сразу, без ожидания desktop hover-таймера.
       more = menu.querySelector<HTMLElement>(".bb-chat-tabs-list-menu-more");
-      if (more === null) throw new Error("Не найден повторный пункт «Ещё»");
+      if (more === null) throw new Error("Repeated More item was not found");
       fireEvent.pointerDown(more, { pointerType: "touch" });
       fireEvent.click(more);
       expect(historyGroup.querySelectorAll("[data-thread-id]")).toHaveLength(26);
@@ -763,21 +833,21 @@ describe("вкладки чатов", () => {
     const historicalItem = menu.querySelector<HTMLElement>(
       '[data-thread-id="thr_history_25"]',
     );
-    if (historicalItem === null) throw new Error("Не найден исторический пункт");
+    if (historicalItem === null) throw new Error("Historical item was not found");
     fireEvent.click(historicalItem);
     expect(slot.inspection.sidebarActionCalls).toEqual([
       { method: "open", threadId: "thr_history_25", options: undefined },
     ]);
   });
 
-  it("оставляет archive/delete history tombstone зачёркнутыми и недоступными", async () => {
+  it("handles behavior 6", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
@@ -789,26 +859,26 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_archived",
           projectId: "proj_api",
-          title: "Старый архивный чат",
+          title: "Old archived chat",
           visitedAt: 3,
           unavailableReason: "archived" as const,
         },
         {
           threadId: "thr_deleted",
           projectId: "proj_api",
-          title: "Старый удалённый чат",
+          title: "Old deleted chat",
           visitedAt: 2,
           unavailableReason: "deleted" as const,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
-        threads: [sidebarThread("thr_current", "proj_api", "Текущий")],
+        threads: [sidebarThread("thr_current", "proj_api", "Current")],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
       rpc: {
@@ -822,13 +892,11 @@ describe("вкладки чатов", () => {
       },
     });
 
-    // В strip остался только доступный current pin: tombstone никогда не
-    // превращается в вкладку или root-pinned item.
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     expect(slot.container.querySelectorAll(".bb-chat-tab")).toHaveLength(1);
 
     const trigger = await slot.findByRole("button", {
-      name: "Список открытых чатов",
+      name: "Open chat list",
     });
     fireEvent.pointerDown(trigger, { button: 0 });
     const menu = await waitFor(() => {
@@ -838,7 +906,7 @@ describe("вкладки чатов", () => {
       expect(next).not.toBeNull();
       return next;
     });
-    if (menu === null) throw new Error("Не открылось подменю списка вкладок");
+    if (menu === null) throw new Error("Tab list submenu did not open");
 
     const archivedItem = menu.querySelector<HTMLElement>(
       '[data-thread-id="thr_archived"]',
@@ -847,58 +915,58 @@ describe("вкладки чатов", () => {
       '[data-thread-id="thr_deleted"]',
     );
     if (archivedItem === null || deletedItem === null) {
-      throw new Error("Не найдены недоступные history-записи");
+      throw new Error("Unavailable history entries were not found");
     }
 
     expect(archivedItem.dataset.unavailable).toBe("archived");
     expect(archivedItem.hasAttribute("data-disabled")).toBe(true);
-    expect(archivedItem.getAttribute("aria-label")).toContain("В архиве");
+    expect(archivedItem.getAttribute("aria-label")).toContain("Archived");
     expect(archivedItem.querySelector('[data-icon="Archive"]')).not.toBeNull();
     expect(
       archivedItem
         .querySelector(".bb-chat-tabs-list-menu-title")
         ?.getAttribute("data-unavailable"),
     ).toBe("archived");
-    expect(archivedItem.textContent).toContain("В архиве");
+    expect(archivedItem.textContent).toContain("Archived");
 
     expect(deletedItem.dataset.unavailable).toBe("deleted");
     expect(deletedItem.hasAttribute("data-disabled")).toBe(true);
-    expect(deletedItem.getAttribute("aria-label")).toContain("Удалён");
+    expect(deletedItem.getAttribute("aria-label")).toContain("Deleted");
     expect(deletedItem.querySelector('[data-icon="Trash2"]')).not.toBeNull();
     expect(
       deletedItem
         .querySelector(".bb-chat-tabs-list-menu-title")
         ?.getAttribute("data-unavailable"),
     ).toBe("deleted");
-    expect(deletedItem.textContent).toContain("Удалён");
+    expect(deletedItem.textContent).toContain("Deleted");
 
     fireEvent.click(archivedItem);
     fireEvent.click(deletedItem);
     expect(slot.inspection.sidebarActionCalls).toEqual([]);
   });
 
-  it("учитывает отдельную видимость верхней полосы на desktop и touch", async () => {
+  it("handles behavior 7", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_other",
           projectId: "proj_api",
-          title: "Другой",
+          title: "Other",
           pinned: true,
           openedAt: 2,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     let desktopListCalls = 0;
     const desktop = renderSlot<{}, typeof rpcContract>(overlay, {}, {
@@ -906,8 +974,8 @@ describe("вкладки чатов", () => {
       settings: { showTabsOnDesktop: false },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_other", "proj_api", "Другой"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_other", "proj_api", "Other"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -939,8 +1007,8 @@ describe("вкладки чатов", () => {
         settings: { showTabsOnMobile: false },
         sidebarThreads: {
           threads: [
-            sidebarThread("thr_current", "proj_api", "Текущий"),
-            sidebarThread("thr_other", "proj_api", "Другой"),
+            sidebarThread("thr_current", "proj_api", "Current"),
+            sidebarThread("thr_other", "proj_api", "Other"),
           ],
           projects: [{ id: "proj_api", name: "API", isPersonal: false }],
         },
@@ -968,21 +1036,21 @@ describe("вкладки чатов", () => {
     }
   });
 
-  it("настраивает состав списка и положение кнопки без изменения tab state", async () => {
+  it("handles behavior 8", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_pinned",
           projectId: "proj_api",
-          title: "Закреплённый",
+          title: "Pinned",
           pinned: true,
           openedAt: 2,
         },
@@ -994,38 +1062,38 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_pinned",
           projectId: "proj_api",
-          title: "Закреплённый",
+          title: "Pinned",
           visitedAt: 3,
         },
         {
           threadId: "thr_history_one",
           projectId: "proj_api",
-          title: "Первый из истории",
+          title: "First from history",
           visitedAt: 2,
         },
         {
           threadId: "thr_history_two",
           projectId: "proj_api",
-          title: "Второй из истории",
+          title: "Second from history",
           visitedAt: 1,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       settings: {
         showTabListPinned: false,
         showTabListHistory: true,
-        tabListButtonPosition: "Справа",
+        tabListButtonPosition: "Right",
       },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_pinned", "proj_api", "Закреплённый"),
-          sidebarThread("thr_history_one", "proj_api", "Первый из истории"),
-          sidebarThread("thr_history_two", "proj_api", "Второй из истории"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_pinned", "proj_api", "Pinned"),
+          sidebarThread("thr_history_one", "proj_api", "First from history"),
+          sidebarThread("thr_history_two", "proj_api", "Second from history"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -1040,7 +1108,7 @@ describe("вкладки чатов", () => {
     });
 
     const trigger = await slot.findByRole("button", {
-      name: "Список открытых чатов",
+      name: "Open chat list",
     });
     const contentRow = slot.container.querySelector(
       ".bb-chat-tabs-content-row",
@@ -1050,41 +1118,73 @@ describe("вкладки чатов", () => {
         '.bb-chat-tabs-list-switcher[data-position="right"]',
       ),
     );
-    fireEvent.pointerDown(trigger, { button: 0 });
+    const strip = slot.container.querySelector(".bb-chat-tabs-strip");
+    expect(strip?.querySelector(".bb-chat-tabs-new-switcher")).toBe(
+      strip?.lastElementChild,
+    );
+    fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
+    expect(document.body.querySelector(".bb-chat-tabs-list-menu")).toBeNull();
     const menu = await waitFor(() => {
       const next = document.body.querySelector<HTMLElement>(
         ".bb-chat-tabs-list-menu",
       );
       expect(next).not.toBeNull();
       return next;
-    });
+    }, { timeout: 900 });
     expect(
       [...menu.querySelectorAll(".bb-chat-tabs-list-menu-group-label")].map(
         (label) => label.textContent,
       ),
-    ).toEqual(["История"]);
-    expect(menu.textContent).not.toContain("Закреплённые");
-    // При отключённом pinned-разделе ранее закреплённый чат остаётся
-    // достижимым из включённой истории, а не пропадает из меню.
-    expect(menu.textContent).toContain("Закреплённый");
-    expect(menu.textContent).toContain("Первый из истории");
+    ).toEqual(["History"]);
+    expect(menu.textContent).toContain("Pinned");
+    expect(menu.textContent).toContain("First from history");
+    const search = menu.querySelector<HTMLInputElement>('input[aria-label="Search chats by title"]');
+    if (search === null) throw new Error("Chat search input was not found");
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    fireEvent.change(search, { target: { value: "seond" } });
+    expect(menu.querySelectorAll(".bb-chat-tabs-list-menu-search-results [data-thread-id]")).toHaveLength(1);
+    expect(menu.querySelector('[data-thread-id="thr_history_one"]')).toBeNull();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(menu.querySelector('[data-selected="true"]')).not.toBeNull();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(slot.sidebarActionCalls).toContainEqual({ method: "open", threadId: "thr_history_two" });
+    fireEvent.keyUp(window, { key: "Shift" });
+    fireEvent.keyUp(window, { key: "Shift" });
+    await waitFor(() => {
+      expect(document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).not.toBeNull();
+    });
+    const reopenedSearch = document.body.querySelector<HTMLInputElement>('input[aria-label="Search chats by title"]');
+    if (reopenedSearch === null) throw new Error("Reopened search was not found");
+    fireEvent.keyDown(reopenedSearch, { key: "Escape" });
+    await waitFor(() => {
+      expect(document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).toBeNull();
+    });
+    const composer = document.createElement("textarea");
+    slot.container.appendChild(composer);
+    composer.focus();
+    fireEvent.keyUp(composer, { key: "Shift" });
+    fireEvent.keyUp(composer, { key: "Shift" });
+    await waitFor(() => {
+      expect(document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).not.toBeNull();
+      expect(document.activeElement).toBe(document.body.querySelector('input[aria-label="Search chats by title"]'));
+    });
   });
 
-  it("может показывать в списке только закреплённые чаты", async () => {
+  it("handles behavior 9", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_pinned",
           projectId: "proj_api",
-          title: "Закреплённый",
+          title: "Pinned",
           pinned: true,
           openedAt: 2,
         },
@@ -1096,21 +1196,21 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_history_one",
           projectId: "proj_api",
-          title: "Первый из истории",
+          title: "First from history",
           visitedAt: 1,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       settings: { showTabListHistory: false },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_pinned", "proj_api", "Закреплённый"),
-          sidebarThread("thr_history_one", "proj_api", "Первый из истории"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_pinned", "proj_api", "Pinned"),
+          sidebarThread("thr_history_one", "proj_api", "First from history"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -1125,7 +1225,7 @@ describe("вкладки чатов", () => {
     });
 
     const trigger = await slot.findByRole("button", {
-      name: "Список открытых чатов",
+      name: "Open chat list",
     });
     fireEvent.pointerDown(trigger, { button: 0 });
     const menu = await waitFor(() => {
@@ -1139,39 +1239,39 @@ describe("вкладки чатов", () => {
       [...menu.querySelectorAll(".bb-chat-tabs-list-menu-group-label")].map(
         (label) => label.textContent,
       ),
-    ).toEqual(["Закреплённые"]);
-    expect(menu.textContent).not.toContain("История");
+    ).toEqual(["Pinned"]);
+    expect(menu.textContent).not.toContain("History");
   });
 
-  it("скрывает кнопку списка отдельной настройкой", async () => {
+  it("handles behavior 10", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_other",
           projectId: "proj_api",
-          title: "Другой",
+          title: "Other",
           pinned: true,
           openedAt: 2,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       settings: { showTabListButton: false },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_other", "proj_api", "Другой"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_other", "proj_api", "Other"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -1184,27 +1284,27 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     expect(
-      slot.queryByRole("button", { name: "Список открытых чатов" }),
+      slot.queryByRole("button", { name: "Open chat list" }),
     ).toBeNull();
   });
 
-  it("закрывает текущую вкладку щелчком колёсика", async () => {
+  it("handles behavior 11", async () => {
     let state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_next",
           projectId: "proj_api",
-          title: "Следующий",
+          title: "Next",
           pinned: true,
           openedAt: 2,
         },
@@ -1212,14 +1312,14 @@ describe("вкладки чатов", () => {
     };
     let closeCalls = 0;
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_next", "proj_api", "Следующий"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_next", "proj_api", "Next"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -1237,12 +1337,12 @@ describe("вкладки чатов", () => {
       },
     });
 
-    const currentTab = await slot.findByRole("button", { name: "Текущий" });
+    const currentTab = await slot.findByRole("button", { name: "Current" });
     expect(currentTab.getAttribute("title")).toContain(
-      "Щелчок колёсиком закрывает вкладку.",
+      "Middle-click to close this tab.",
     );
     expect(currentTab.getAttribute("aria-description")).toContain(
-      "Щелчок колёсиком закрывает вкладку.",
+      "Middle-click closes this tab.",
     );
 
     const middleDown = new MouseEvent("mousedown", {
@@ -1278,27 +1378,27 @@ describe("вкладки чатов", () => {
     ]);
   });
 
-  it("переименовывает pinned tab на месте и даёт все действия в контекстном меню", async () => {
+  it("handles behavior 12", async () => {
     let state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_pinned",
           projectId: "proj_api",
-          title: "Закреплённый чат",
+          title: "Pinned chat",
           pinned: true,
           openedAt: 1,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_pinned" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_pinned", "proj_api", "Закреплённый чат"),
+          sidebarThread("thr_pinned", "proj_api", "Pinned chat"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -1341,45 +1441,42 @@ describe("вкладки чатов", () => {
     });
 
     let pinnedTab = await slot.findByRole("button", {
-      name: "Закреплённый чат",
+      name: "Pinned chat",
     });
     expect(pinnedTab.getAttribute("title")).toContain(
-      "Кликните, чтобы открыть чат.",
+      "Click to open the chat.",
     );
-    expect(pinnedTab.getAttribute("title")).not.toContain("редактирует");
+    expect(pinnedTab.getAttribute("title")).not.toContain("edits");
     const title = pinnedTab.querySelector(".bb-chat-tab-title");
     if (!(title instanceof HTMLSpanElement)) {
-      throw new Error("Не найдено название вкладки");
+      throw new Error("Tab title was not found");
     }
 
-    // Double click ровно по названию pinned tab открывает inline editor,
-    // а не меняет pin state.
     fireEvent.doubleClick(title);
     const inlineInput = await slot.findByRole("textbox", {
-      name: "Переименовать вкладку «Закреплённый чат»",
+      name: "Rename tab “Pinned chat”",
     });
-    fireEvent.change(inlineInput, { target: { value: "Новое inline имя" } });
+    fireEvent.change(inlineInput, { target: { value: "New inline name" } });
     fireEvent.keyDown(inlineInput, { key: "Enter" });
     await waitFor(() => {
       expect(slot.inspection.sidebarActionCalls).toContainEqual({
         method: "rename",
         threadId: "thr_pinned",
-        title: "Новое inline имя",
+        title: "New inline name",
       });
     });
     expect(state.entries[0]?.pinned).toBe(true);
-    pinnedTab = slot.getByRole("button", { name: "Закреплённый чат" });
+    pinnedTab = slot.getByRole("button", { name: "Pinned chat" });
 
-    // Escape не сохраняет текст даже если browser следом посылает blur.
     const titleAfterRename = pinnedTab.querySelector(".bb-chat-tab-title");
     if (!(titleAfterRename instanceof HTMLSpanElement)) {
-      throw new Error("Не найдено название вкладки после inline rename");
+      throw new Error("Tab title after inline rename was not found");
     }
     fireEvent.doubleClick(titleAfterRename);
     const cancelledInput = await slot.findByRole("textbox", {
-      name: "Переименовать вкладку «Закреплённый чат»",
+      name: "Rename tab “Pinned chat”",
     });
-    fireEvent.change(cancelledInput, { target: { value: "Не сохранять" } });
+    fireEvent.change(cancelledInput, { target: { value: "Do not save" } });
     fireEvent.keyDown(cancelledInput, { key: "Escape" });
     fireEvent.blur(cancelledInput);
     expect(
@@ -1387,56 +1484,53 @@ describe("вкладки чатов", () => {
         (call) => call.method === "rename",
       ),
     ).toHaveLength(1);
-    pinnedTab = slot.getByRole("button", { name: "Закреплённый чат" });
+    pinnedTab = slot.getByRole("button", { name: "Pinned chat" });
 
-    // В контекстном меню pinned tab предлагается только «Открепить».
     fireEvent.contextMenu(pinnedTab);
-    const unpin = await slot.findByRole("menuitem", { name: "Открепить" });
-    expect(slot.getByRole("menuitem", { name: "Переименовать" })).toBeTruthy();
+    const unpin = await slot.findByRole("menuitem", { name: "Unpin" });
+    expect(slot.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(
-      slot.getByRole("menuitem", { name: "Скопировать ссылку" }),
+      slot.getByRole("menuitem", { name: "Copy link" }),
     ).toBeTruthy();
     expect(
       slot.getAllByRole("menuitem").map((item) => item.textContent),
     ).toEqual([
-      "Скопировать ссылку",
-      "Пометить непрочитанным",
-      "Открепить",
-      "Переименовать",
-      "Архивировать",
+      "Copy link",
+      "Mark as unread",
+      "Unpin",
+      "Rename",
+      "Archive",
     ]);
     expect(
-      slot.getByRole("menuitem", { name: "Пометить непрочитанным" }),
+      slot.getByRole("menuitem", { name: "Mark as unread" }),
     ).toBeTruthy();
-    expect(slot.getByRole("menuitem", { name: "Архивировать" })).toBeTruthy();
+    expect(slot.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
     fireEvent.click(unpin);
     await waitFor(() => expect(state.entries[0]?.pinned).toBe(false));
 
-    // Для preview меню предлагает обратное действие — «Закрепить».
     fireEvent.contextMenu(pinnedTab);
-    const pin = await slot.findByRole("menuitem", { name: "Закрепить" });
+    const pin = await slot.findByRole("menuitem", { name: "Pin" });
     fireEvent.click(pin);
     await waitFor(() => expect(state.entries[0]?.pinned).toBe(true));
 
-    // Modal переименования использует тот же официальный host action.
     fireEvent.contextMenu(pinnedTab);
-    fireEvent.click(await slot.findByRole("menuitem", { name: "Переименовать" }));
+    fireEvent.click(await slot.findByRole("menuitem", { name: "Rename" }));
     const modalInput = await slot.findByRole("textbox", {
-      name: "Новое название чата",
+      name: "New chat title",
     });
-    fireEvent.change(modalInput, { target: { value: "Новое имя из modal" } });
-    fireEvent.click(slot.getByRole("button", { name: "Сохранить" }));
+    fireEvent.change(modalInput, { target: { value: "New name from modal" } });
+    fireEvent.click(slot.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(slot.inspection.sidebarActionCalls).toContainEqual({
         method: "rename",
         threadId: "thr_pinned",
-        title: "Новое имя из modal",
+        title: "New name from modal",
       });
     });
 
     fireEvent.contextMenu(pinnedTab);
     fireEvent.click(
-      await slot.findByRole("menuitem", { name: "Пометить непрочитанным" }),
+      await slot.findByRole("menuitem", { name: "Mark as unread" }),
     );
     await waitFor(() => {
       expect(slot.inspection.sidebarActionCalls).toContainEqual({
@@ -1447,7 +1541,7 @@ describe("вкладки чатов", () => {
     });
 
     fireEvent.contextMenu(pinnedTab);
-    fireEvent.click(await slot.findByRole("menuitem", { name: "Архивировать" }));
+    fireEvent.click(await slot.findByRole("menuitem", { name: "Archive" }));
     await waitFor(() => {
       expect(slot.inspection.sidebarActionCalls).toContainEqual({
         method: "archive",
@@ -1457,37 +1551,220 @@ describe("вкладки чатов", () => {
     });
   });
 
-  it("отмечает непрочитанные сообщения отдельной точкой, не смешивая их с работой", async () => {
+  it("creates the viewed preview when the open chat is missing from the sidebar", async () => {
+    let state: TabsState = { version: 1, entries: [] };
+    const synced: string[] = [];
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [sidebarThread("thr_other", "proj_api", "Other chat")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state, history: { version: 1, entries: [] } }),
+        tabs_resolve_current: ({ threadId }) => ({ candidate: {
+          threadId, projectId: "proj_api", title: "Viewed but omitted",
+        } }),
+        tabs_sync_activity: ({ threads }) => {
+          synced.push(threads[0]?.threadId ?? "");
+          state = addTabCandidates(state, threads, Date.now());
+          return { state };
+        },
+      },
+    });
+    await waitFor(() => {
+      expect(synced).toContain("thr_current");
+      expect(state.entries.at(-1)).toEqual(expect.objectContaining({
+        threadId: "thr_current", pinned: false,
+      }));
+      expect(slot.getByRole("button", { name: "Viewed but omitted" })).toBeTruthy();
+    });
+  });
+
+  it("restores a missing preview for the same viewed chat after state changes", async () => {
+    let state: TabsState = { version: 1, entries: [] };
+    let syncCount = 0;
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [sidebarThread("thr_current", "proj_api", "Current chat")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state, history: { version: 1, entries: [] } }),
+        tabs_sync_activity: ({ threads }) => {
+          syncCount++;
+          state = addTabCandidates(state, threads, syncCount);
+          return { state };
+        },
+      },
+    });
+    await waitFor(() => expect(syncCount).toBe(1));
+    state = { version: 1, entries: [] };
+    await slot.emitRealtime("tabs-changed", state);
+    await waitFor(() => {
+      expect(syncCount).toBe(2);
+      expect(slot.getByRole("button", { name: "Current chat" })).toBeTruthy();
+    });
+  });
+
+  it("keeps the viewed preview when current chat and work arrive together", async () => {
+    let state: TabsState = { version: 1, entries: [] };
+    let history: TabHistoryState = {
+      version: 1,
+      entries: [{ threadId: "thr_work", projectId: "proj_api", title: "Working chat", visitedAt: 1 }],
+    };
+    const synced: string[] = [];
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [
+          sidebarThread("thr_current", "proj_api", "Current chat"),
+          sidebarThread("thr_work", "proj_api", "Working chat", {
+            updatedAt: 10,
+            indicator: "workflow",
+          }),
+        ],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state, history }),
+        tabs_sync_activity: ({ threads }) => {
+          synced.push(threads[0]?.threadId ?? "");
+          state = addTabCandidates(state, threads, synced.length + 10);
+          return { state };
+        },
+        tabs_history_visit: (candidate) => {
+          history = visitTabHistory(history, candidate, Date.now());
+          return { history };
+        },
+      },
+    });
+    await waitFor(() => {
+      expect(synced).toContain("thr_current");
+      expect(state.entries.at(-1)?.threadId).toBe("thr_current");
+      expect(history.entries[0]?.threadId).toBe("thr_work");
+    });
+    expect(synced).not.toContain("thr_work");
+    expect(await slot.findByRole("button", { name: "Current chat" })).toBeTruthy();
+  });
+
+  it("revisits a chat after another window changes history", async () => {
+    const state: TabsState = {
+      version: 1,
+      entries: [{ threadId: "thr_current", projectId: "proj_api", title: "Current chat", pinned: true, openedAt: 1 }],
+    };
+    let history: TabHistoryState = { version: 1, entries: [] };
+    let visitCalls = 0;
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [sidebarThread("thr_current", "proj_api", "Current chat")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state, history }),
+        tabs_history_visit: (candidate) => {
+          visitCalls += 1;
+          history = visitTabHistory(history, candidate, visitCalls + 10);
+          return { history };
+        },
+      },
+    });
+    await waitFor(() => expect(visitCalls).toBe(1));
+    history = visitTabHistory(history, {
+      threadId: "thr_other", projectId: "proj_api", title: "Other chat",
+    }, 30);
+    await slot.emitRealtime("tabs-history-changed", history);
+    fireEvent.click(slot.getByRole("button", { name: "Current chat" }));
+    await waitFor(() => {
+      expect(visitCalls).toBe(2);
+      expect(history.entries[0]?.threadId).toBe("thr_current");
+    });
+  });
+
+  it("lists every working chat in history while keeping the viewed tab active", async () => {
+    let state: TabsState = {
+      version: 1,
+      entries: [{ threadId: "thr_current", projectId: "proj_api", title: "Current chat", pinned: true, openedAt: 1 }],
+    };
+    let history: TabHistoryState = { version: 1, entries: [] };
+    let visitedAt = 10;
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [
+          sidebarThread("thr_current", "proj_api", "Current chat"),
+          sidebarThread("thr_first", "proj_api", "First job", { updatedAt: 10, indicator: "workflow" }),
+          sidebarThread("thr_second", "proj_api", "Second job", { updatedAt: 20, indicator: "workflow" }),
+        ],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state, history }),
+        tabs_sync_activity: ({ threads }) => {
+          state = addTabCandidates(state, threads, ++visitedAt);
+          return { state };
+        },
+        tabs_history_visit: (candidate) => {
+          history = visitTabHistory(history, candidate, ++visitedAt);
+          return { history };
+        },
+      },
+    });
+    await waitFor(() => {
+      expect(history.entries.slice(0, 2).map((entry) => entry.threadId)).toEqual([
+        "thr_second", "thr_first",
+      ]);
+      expect(state.entries.find((entry) => !entry.pinned)?.threadId).toBe("thr_second");
+    });
+    await waitFor(() => {
+      expect(slot.getByRole("button", { name: "Current chat" }).getAttribute("aria-current")).toBe("page");
+      expect(slot.getByRole("button", { name: "Second job, work is running" }).getAttribute("aria-current")).toBeNull();
+    });
+  });
+
+  it("handles behavior 13", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_unread",
           projectId: "proj_api",
-          title: "Непрочитанный чат",
+          title: "Unread chat",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_working",
           projectId: "proj_api",
-          title: "Рабочий чат",
+          title: "Working chat",
           pinned: true,
           openedAt: 2,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_unread" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_unread", "proj_api", "Непрочитанный чат", {
+          sidebarThread("thr_unread", "proj_api", "Unread chat", {
             isUnread: true,
           }),
-          sidebarThread("thr_working", "proj_api", "Рабочий чат", {
+          sidebarThread("thr_working", "proj_api", "Working chat", {
             isUnread: true,
             activity: {
               workflows: 0,
@@ -1511,7 +1788,7 @@ describe("вкладки чатов", () => {
     });
 
     const unreadTab = await slot.findByRole("button", {
-      name: "Непрочитанный чат, есть непрочитанные сообщения",
+      name: "Unread chat, unread messages",
     });
     expect(unreadTab.closest(".bb-chat-tab")?.getAttribute("data-unread")).toBe(
       "true",
@@ -1519,45 +1796,45 @@ describe("вкладки чатов", () => {
     expect(unreadTab.querySelector(".bb-chat-tab-unread")).not.toBeNull();
     expect(unreadTab.querySelector(".bb-chat-tab-working")).toBeNull();
     expect(unreadTab.getAttribute("title")).toContain(
-      "Есть непрочитанные сообщения.",
+      "There are unread messages.",
     );
 
     const workingTab = slot.getByRole("button", {
-      name: "Рабочий чат, работа выполняется, есть непрочитанные сообщения",
+      name: "Working chat, work is running, unread messages",
     });
     expect(workingTab.querySelector(".bb-chat-tab-working")).not.toBeNull();
     expect(workingTab.querySelector(".bb-chat-tab-unread")).not.toBeNull();
   });
 
-  it("показывает закреплённые чаты на экране «Новый чат» и открывает выбранный", async () => {
+  it("handles behavior 14", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_idle",
           projectId: "proj_api",
-          title: "Спокойный чат",
+          title: "Quiet chat",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_parent",
           projectId: "proj_api",
-          title: "Родительский чат",
+          title: "Parent chat",
           pinned: true,
           openedAt: 2,
         },
         {
           threadId: "thr_running",
           projectId: "proj_web",
-          title: "Активный чат",
+          title: "Active chat",
           pinned: true,
           openedAt: 3,
         },
         {
           threadId: "thr_preview",
           projectId: "proj_api",
-          title: "Временный чат",
+          title: "Temporary chat",
           pinned: false,
           openedAt: 4,
         },
@@ -1567,7 +1844,7 @@ describe("вкладки чатов", () => {
       (section) => section.id === "pinned-tabs",
     );
     if (homepage === undefined) {
-      throw new Error("Не зарегистрирован homepage section закреплённых чатов");
+      throw new Error("Pinned chats homepage section is not registered");
     }
 
     const slot = renderSlot<{ projectId: string | null }, typeof rpcContract>(
@@ -1577,11 +1854,11 @@ describe("вкладки чатов", () => {
         context: { projectId: "proj_api", threadId: null },
         sidebarThreads: {
           threads: [
-            sidebarThread("thr_idle", "proj_api", "Спокойный чат"),
-            sidebarThread("thr_parent", "proj_api", "Родительский чат", {
+            sidebarThread("thr_idle", "proj_api", "Quiet chat"),
+            sidebarThread("thr_parent", "proj_api", "Parent chat", {
               isUnread: true,
             }),
-            sidebarThread("thr_child", "proj_api", "Вложенный workflow", {
+            sidebarThread("thr_child", "proj_api", "Nested workflow", {
               parentThreadId: "thr_parent",
               activity: {
                 workflows: 1,
@@ -1592,7 +1869,7 @@ describe("вкладки чатов", () => {
               },
               indicator: "workflow",
             }),
-            sidebarThread("thr_running", "proj_web", "Активный чат", {
+            sidebarThread("thr_running", "proj_web", "Active chat", {
               activity: {
                 workflows: 0,
                 backgroundAgents: 1,
@@ -1602,7 +1879,7 @@ describe("вкладки чатов", () => {
               },
               indicator: "background-agent",
             }),
-            sidebarThread("thr_preview", "proj_api", "Временный чат"),
+            sidebarThread("thr_preview", "proj_api", "Temporary chat"),
           ],
           projects: [
             { id: "proj_api", name: "API", isPersonal: false },
@@ -1619,7 +1896,7 @@ describe("вкладки чатов", () => {
       },
     );
 
-    const list = await slot.findByRole("list", { name: "Закреплённые чаты" });
+    const list = await slot.findByRole("list", { name: "Pinned chats" });
     const rows = [
       ...list.querySelectorAll(".bb-chat-tabs-homepage-pinned-item"),
     ];
@@ -1629,15 +1906,15 @@ describe("вкладки чатов", () => {
         (row) =>
           row.querySelector(".bb-chat-tabs-homepage-pinned-title")?.textContent,
       ),
-    ).toEqual(["Спокойный чат", "Родительский чат", "Активный чат"]);
-    expect(list.textContent).not.toContain("Нет активности");
+    ).toEqual(["Quiet chat", "Parent chat", "Active chat"]);
+    expect(list.textContent).not.toContain("No activity");
     expect(
       rows[0]?.querySelector(".bb-chat-tabs-homepage-pinned-status"),
     ).toBeNull();
-    expect(list.textContent).toContain("Работает · Непрочитанное");
-    expect(list.textContent).toContain("Работает");
+    expect(list.textContent).toContain("Working · Unread");
+    expect(list.textContent).toContain("Working");
     expect(slot.getByRole("button", {
-      name: "Спокойный чат. Проект: API.",
+      name: "Quiet chat. Project: API.",
     })).toBeTruthy();
     const activeMeta = rows[2]?.querySelector(
       ".bb-chat-tabs-homepage-pinned-meta",
@@ -1656,10 +1933,10 @@ describe("вкладки чатов", () => {
         ?.querySelector(".bb-chat-tabs-homepage-pinned-project")
         ?.getAttribute("title"),
     ).toBe("API");
-    expect(slot.queryByText("Временный чат")).toBeNull();
+    expect(slot.queryByText("Temporary chat")).toBeNull();
 
     const activeChatButton = slot.getByRole("button", {
-      name: "Активный чат. Проект: Web. Работает.",
+      name: "Active chat. Project: Web. Working.",
     });
     fireEvent.click(activeChatButton);
     expect(slot.inspection.sidebarActionCalls).toContainEqual({
@@ -1669,14 +1946,14 @@ describe("вкладки чатов", () => {
     });
   });
 
-  it("скрывает быстрый список на экране «Новый чат» при выключенной настройке", async () => {
+  it("handles behavior 15", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
@@ -1686,7 +1963,7 @@ describe("вкладки чатов", () => {
       (section) => section.id === "pinned-tabs",
     );
     if (homepage === undefined) {
-      throw new Error("Не зарегистрирован homepage section закреплённых чатов");
+      throw new Error("Pinned chats homepage section is not registered");
     }
     let listCalls = 0;
 
@@ -1697,7 +1974,7 @@ describe("вкладки чатов", () => {
         context: { projectId: "proj_api", threadId: null },
         settings: { showPinnedTabsList: false },
         sidebarThreads: {
-          threads: [sidebarThread("thr_current", "proj_api", "Текущий")],
+          threads: [sidebarThread("thr_current", "proj_api", "Current")],
           projects: [{ id: "proj_api", name: "API", isPersonal: false }],
         },
         rpc: {
@@ -1715,32 +1992,32 @@ describe("вкладки чатов", () => {
 
     const list = await slot.findByTestId("bb-chat-tabs-homepage-pinned-list");
     expect(list.getAttribute("data-visible")).toBe("false");
-    expect(slot.queryByRole("button", { name: /Текущий/u })).toBeNull();
+    expect(slot.queryByRole("button", { name: /Current/u })).toBeNull();
     expect(listCalls).toBe(0);
   });
 
-  it("помечает вкладку родителя, когда workflow выполняется во вложенном чате", async () => {
+  it("handles behavior 16", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_parent",
           projectId: "proj_api",
-          title: "Родительский чат",
+          title: "Parent chat",
           pinned: true,
           openedAt: 1,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_parent" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_parent", "proj_api", "Родительский чат"),
-          sidebarThread("thr_workflow", "proj_api", "Вложенный workflow", {
+          sidebarThread("thr_parent", "proj_api", "Parent chat"),
+          sidebarThread("thr_workflow", "proj_api", "Nested workflow", {
             parentThreadId: "thr_parent",
             activity: {
               workflows: 1,
@@ -1765,18 +2042,18 @@ describe("вкладки чатов", () => {
     });
 
     const parentTab = await slot.findByRole("button", {
-      name: "Родительский чат, выполняется вложенная работа",
+      name: "Parent chat, nested work is running",
     });
     expect(parentTab.querySelector(".bb-chat-tab-working")).not.toBeNull();
     expect(parentTab.closest(".bb-chat-tab")?.getAttribute("data-nested-work")).toBe(
       "true",
     );
     expect(parentTab.getAttribute("title")).toContain(
-      "Выполняется вложенная работа.",
+      "Nested work is running.",
     );
   });
 
-  it("показывает durable workflow origin-чата, даже когда sidebar ещё не сообщил activity", async () => {
+  it("handles behavior 17", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
@@ -1790,14 +2067,13 @@ describe("вкладки чатов", () => {
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_system", threadId: "thr_system_all" },
       sidebarThreads: {
         threads: [
           sidebarThread("thr_system_all", "proj_system", "SystemAll 1", {
-            // Именно такой нулевой sidebar snapshot раньше скрывал workflow.
             activity: {
               workflows: 0,
               backgroundAgents: 0,
@@ -1823,32 +2099,32 @@ describe("вкладки чатов", () => {
     });
 
     const systemTab = await slot.findByRole("button", {
-      name: "SystemAll 1, работа выполняется",
+      name: "SystemAll 1, work is running",
     });
     expect(systemTab.querySelector(".bb-chat-tab-working")).not.toBeNull();
   });
 
-  it("сворачивает durable workflow дочернего origin-чата к вкладке родителя", async () => {
+  it("handles behavior 18", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_parent",
           projectId: "proj_api",
-          title: "Родительский чат",
+          title: "Parent chat",
           pinned: true,
           openedAt: 1,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_parent" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_parent", "proj_api", "Родительский чат"),
+          sidebarThread("thr_parent", "proj_api", "Parent chat"),
           sidebarThread("thr_child", "proj_api", "Workflow worker", {
             parentThreadId: "thr_parent",
           }),
@@ -1871,24 +2147,24 @@ describe("вкладки чатов", () => {
     });
 
     const parentTab = await slot.findByRole("button", {
-      name: "Родительский чат, выполняется вложенная работа",
+      name: "Parent chat, nested work is running",
     });
     expect(parentTab.querySelector(".bb-chat-tab-working")).not.toBeNull();
   });
 
-  it("использует родительский чат как preview-кандидат вложенного workflow", async () => {
+  it("handles behavior 19", async () => {
     let received: readonly { threadId: string; projectId: string; title: string }[] = [];
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: null },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_parent", "proj_api", "Родительский чат", {
+          sidebarThread("thr_parent", "proj_api", "Parent chat", {
             updatedAt: 1,
           }),
-          sidebarThread("thr_workflow", "proj_api", "Вложенный workflow", {
+          sidebarThread("thr_workflow", "proj_api", "Nested workflow", {
             parentThreadId: "thr_parent",
             activity: {
               workflows: 1,
@@ -1920,22 +2196,22 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_parent",
           projectId: "proj_api",
-          title: "Родительский чат",
+          title: "Parent chat",
         },
       ]);
     });
   });
 
-  it("отправляет в preview текущий чат и не принимает только непрочитанный итог за активную работу", async () => {
+  it("handles behavior 20", async () => {
     let received: readonly { threadId: string; projectId: string; title: string }[] = [];
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_active" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_active", "proj_api", "Активная сборка", {
+          sidebarThread("thr_active", "proj_api", "Active build", {
             activity: {
               workflows: 0,
               backgroundAgents: 1,
@@ -1946,7 +2222,7 @@ describe("вкладки чатов", () => {
             indicator: "background-agent",
             updatedAt: 2,
           }),
-          sidebarThread("thr_done", "proj_api", "Непрочитанный итог", {
+          sidebarThread("thr_done", "proj_api", "Unread result", {
             isUnread: true,
             indicator: "unread-success",
             updatedAt: 3,
@@ -1980,49 +2256,49 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_active",
           projectId: "proj_api",
-          title: "Активная сборка",
+          title: "Active build",
         },
       ]);
     });
   });
 
-  it("Ctrl+Tab циклически открывает следующую, а Ctrl+Shift+Tab — предыдущую plugin-вкладку", async () => {
+  it("handles behavior 21", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_next",
           projectId: "proj_web",
-          title: "Следующий",
+          title: "Next",
           pinned: true,
           openedAt: 2,
         },
         {
           threadId: "thr_last",
           projectId: "proj_docs",
-          title: "Последний",
+          title: "Last",
           pinned: true,
           openedAt: 3,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_next", "proj_web", "Следующий"),
-          sidebarThread("thr_last", "proj_docs", "Последний"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_next", "proj_web", "Next"),
+          sidebarThread("thr_last", "proj_docs", "Last"),
         ],
         projects: [
           { id: "proj_api", name: "API", isPersonal: false },
@@ -2039,7 +2315,7 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     const next = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,
@@ -2059,8 +2335,6 @@ describe("вкладки чатов", () => {
     window.dispatchEvent(previous);
     expect(previous.defaultPrevented).toBe(true);
 
-    // Контекст в harness не меняется после open, поэтому Ctrl+Shift+Tab
-    // проверяет wrap-around от исходной первой вкладки к последней.
     expect(slot.inspection.sidebarActionCalls).toEqual([
       { method: "open", threadId: "thr_next", options: undefined },
       { method: "open", threadId: "thr_last", options: undefined },
@@ -2077,25 +2351,25 @@ describe("вкладки чатов", () => {
     expect(slot.inspection.sidebarActionCalls).toHaveLength(2);
   });
 
-  it("не перехватывает Ctrl+Tab при единственной plugin-вкладке", async () => {
+  it("handles behavior 22", async () => {
     const state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
-        threads: [sidebarThread("thr_current", "proj_api", "Текущий")],
+        threads: [sidebarThread("thr_current", "proj_api", "Current")],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
       rpc: {
@@ -2107,7 +2381,7 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,
@@ -2119,35 +2393,35 @@ describe("вкладки чатов", () => {
     expect(slot.inspection.sidebarActionCalls).toEqual([]);
   });
 
-  it("Ctrl+W закрывает только текущую plugin-вкладку и открывает соседнюю", async () => {
+  it("handles behavior 23", async () => {
     let state: TabsState = {
       version: 1,
       entries: [
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_next",
           projectId: "proj_api",
-          title: "Следующий",
+          title: "Next",
           pinned: true,
           openedAt: 2,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_next", "proj_api", "Следующий"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_next", "proj_api", "Next"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -2165,7 +2439,7 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     const event = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,
@@ -2183,7 +2457,7 @@ describe("вкладки чатов", () => {
     ]);
   });
 
-  it("отвечает на Desktop close request до нативного закрытия окна", async () => {
+  it("handles behavior 24", async () => {
     const desktop = installDesktopCloseRequestBridge();
     let state: TabsState = {
       version: 1,
@@ -2191,28 +2465,28 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_next",
           projectId: "proj_api",
-          title: "Следующий",
+          title: "Next",
           pinned: true,
           openedAt: 2,
         },
       ],
     };
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_next", "proj_api", "Следующий"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_next", "proj_api", "Next"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -2230,9 +2504,8 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     expect(desktop.listenerCount()).toBe(1);
-    // `true` — синхронный ответ preload, отменяющий BrowserWindow.close().
     expect(desktop.dispatch()).toBe(true);
     await waitFor(() => {
       expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_next"]);
@@ -2242,7 +2515,7 @@ describe("вкладки чатов", () => {
     ]);
   });
 
-  it("уступает Ctrl+W встроенному браузеру, пока тот в фокусе", async () => {
+  it("handles behavior 25", async () => {
     const desktop = installDesktopCloseRequestBridge();
     const state: TabsState = {
       version: 1,
@@ -2250,14 +2523,14 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_current",
           projectId: "proj_api",
-          title: "Текущий",
+          title: "Current",
           pinned: true,
           openedAt: 1,
         },
         {
           threadId: "thr_next",
           projectId: "proj_api",
-          title: "Следующий",
+          title: "Next",
           pinned: true,
           openedAt: 2,
         },
@@ -2265,14 +2538,14 @@ describe("вкладки чатов", () => {
     };
     let closeCalls = 0;
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_next", "proj_api", "Следующий"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_next", "proj_api", "Next"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -2288,12 +2561,10 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Текущий" });
+    await slot.findByRole("button", { name: "Current" });
     expect(desktop.browserFocusListenerCount()).toBe(1);
     desktop.dispatchBrowserViewFocus("browser-current");
 
-    // Если Desktop всё же доставит fallback keydown в host renderer, плагин
-    // также не отменит его и не закроет chat tab.
     const nativeBrowserKeydown = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,
@@ -2304,13 +2575,9 @@ describe("вкладки чатов", () => {
     expect(nativeBrowserKeydown.defaultPrevented).toBe(false);
     expect(closeCalls).toBe(0);
 
-    // `false` передаёт accelerator штатному BB handler, который закрывает
-    // active browser tab. В harness его нет, поэтому проверяем handoff.
     expect(desktop.dispatch()).toBe(false);
     expect(closeCalls).toBe(0);
 
-    // После реального перехода фокуса обратно в renderer plugin tab снова
-    // может обработать shortcut.
     const chatControl = document.createElement("button");
     document.body.append(chatControl);
     fireEvent.focusIn(chatControl);
@@ -2318,9 +2585,6 @@ describe("вкладки чатов", () => {
     await waitFor(() => expect(closeCalls).toBe(1));
     chatControl.remove();
 
-    // Chrome встроенного браузера живёт в renderer, однако Desktop menu
-    // accelerator приходит раньше DOM keydown. Pointer/focus marker оставляет
-    // и этот close request штатному panel.close handler BB.
     const browserChrome = document.createElement("div");
     browserChrome.dataset.appBrowser = "";
     document.body.append(browserChrome);
@@ -2328,7 +2592,6 @@ describe("вкладки чатов", () => {
     expect(desktop.dispatch()).toBe(false);
     expect(closeCalls).toBe(1);
 
-    // DOM fallback сохраняет тот же handoff в non-native окружении.
     const browserChromeKeydown = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,
@@ -2341,7 +2604,7 @@ describe("вкладки чатов", () => {
     expect(closeCalls).toBe(1);
   });
 
-  it("не перехватывает Ctrl+W, если текущий чат не является plugin-вкладкой", async () => {
+  it("handles behavior 26", async () => {
     const desktop = installDesktopCloseRequestBridge();
     const state: TabsState = {
       version: 1,
@@ -2349,7 +2612,7 @@ describe("вкладки чатов", () => {
         {
           threadId: "thr_other",
           projectId: "proj_api",
-          title: "Другой",
+          title: "Other",
           pinned: true,
           openedAt: 1,
         },
@@ -2357,14 +2620,14 @@ describe("вкладки чатов", () => {
     };
     let closeCalls = 0;
     const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("Не зарегистрирован app overlay");
+    if (overlay === undefined) throw new Error("App overlay is not registered");
 
     const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: "thr_current" },
       sidebarThreads: {
         threads: [
-          sidebarThread("thr_current", "proj_api", "Текущий"),
-          sidebarThread("thr_other", "proj_api", "Другой"),
+          sidebarThread("thr_current", "proj_api", "Current"),
+          sidebarThread("thr_other", "proj_api", "Other"),
         ],
         projects: [{ id: "proj_api", name: "API", isPersonal: false }],
       },
@@ -2380,7 +2643,7 @@ describe("вкладки чатов", () => {
       },
     });
 
-    await slot.findByRole("button", { name: "Другой" });
+    await slot.findByRole("button", { name: "Other" });
     expect(desktop.dispatch()).toBe(false);
     const event = new KeyboardEvent("keydown", {
       bubbles: true,

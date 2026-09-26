@@ -11,9 +11,9 @@ const ACTIVE_INDICATORS = new Set([
 ]);
 
 export interface ThreadWorkIndex {
-  /** Чаты, на которых BB непосредственно сообщает активность. */
+  /** Chats for which BB directly reports work activity. */
   directlyWorkingThreadIds: ReadonlySet<string>;
-  /** Предки работающих чатов; их вкладки должны показывать activity. */
+  /** Ancestors of working chats; their tabs should show activity too. */
   nestedWorkingAncestorIds: ReadonlySet<string>;
   threadsById: ReadonlyMap<string, PluginSidebarThread>;
 }
@@ -32,12 +32,12 @@ export function isDirectlyWorkingThread(thread: PluginSidebarThread): boolean {
 }
 
 /**
- * Сворачивает active state ребёнка в каждого доступного предка. Защита `seen`
- * не даёт испорченной циклической parent-связи зациклить renderer.
+ * Folds a child's active state into every available ancestor. The `seen` guard
+ * prevents a corrupted cyclic parent relation from looping the renderer.
  */
 export function buildThreadWorkIndex(
   threads: readonly PluginSidebarThread[],
-  /** Durable runs встроенного workflows, которые могут опережать sidebar. */
+  /** Durable runs from the built-in workflows plugin can precede the sidebar. */
   workflowActiveThreadIds: ReadonlySet<string> = new Set<string>(),
 ): ThreadWorkIndex {
   const threadsById = new Map(threads.map((thread) => [thread.id, thread]));
@@ -89,8 +89,9 @@ export function hasNestedThreadWork(
 }
 
 /**
- * Возвращает самый верхний доступный чат в цепочке. Если предок ещё не попал в
- * sidebar snapshot или связь повреждена, безопасно возвращается ближайший чат.
+ * Returns the highest available chat in a parent chain. If an ancestor has not
+ * reached the sidebar snapshot yet, or the relation is corrupt, it safely
+ * returns the closest known chat.
  */
 export function rootThreadFor(
   thread: PluginSidebarThread,

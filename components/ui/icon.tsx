@@ -7,6 +7,7 @@ import {
 } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
+  Add01Icon,
   Alert02Icon,
   AlertCircleIcon,
   Archive03Icon,
@@ -108,6 +109,7 @@ const SectionAddStrokeRoundedIcon: IconSvgElement = [
 ];
 
 const CORE_ICON_MAP = {
+  Plus: Add01Icon,
   AlertCircle: AlertCircleIcon,
   AlertTriangle: Alert02Icon,
   Archive: Archive03Icon,

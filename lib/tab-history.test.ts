@@ -11,18 +11,18 @@ import {
 const candidate = (id: string) => ({
   threadId: `thr_${id}`,
   projectId: `proj_${id}`,
-  title: `Чат ${id}`,
+  title: `Chat ${id}`,
 });
 
-describe("история вкладок", () => {
-  it("нормализует записи, оставляя последнее посещение каждого чата", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     const history = normalizeTabHistory({
       version: 1,
       entries: [
         { ...candidate("old"), visitedAt: 10 },
         { ...candidate("new"), visitedAt: 30 },
-        { ...candidate("old"), title: "Новое имя", visitedAt: 40 },
-        { threadId: "", projectId: "proj_bad", title: "Плохая", visitedAt: 50 },
+        { ...candidate("old"), title: "New name", visitedAt: 40 },
+        { threadId: "", projectId: "proj_bad", title: "Bad", visitedAt: 50 },
       ],
     });
 
@@ -30,14 +30,14 @@ describe("история вкладок", () => {
       {
         threadId: "thr_old",
         projectId: "proj_old",
-        title: "Новое имя",
+        title: "New name",
         visitedAt: 40,
       },
       { ...candidate("new"), visitedAt: 30 },
     ]);
   });
 
-  it("переносит повторно открытый чат в начало без дубликата", () => {
+  it("handles behavior 2", () => {
     const history: TabHistoryState = {
       version: 1,
       entries: [
@@ -48,14 +48,14 @@ describe("история вкладок", () => {
 
     const visited = visitTabHistory(history, {
       ...candidate("second"),
-      title: "Обновлённый второй",
+      title: "Updated second",
     }, 40);
 
     expect(visited.entries).toEqual([
       {
         threadId: "thr_second",
         projectId: "proj_second",
-        title: "Обновлённый второй",
+        title: "Updated second",
         visitedAt: 40,
       },
       { ...candidate("first"), visitedAt: 30 },
@@ -65,7 +65,7 @@ describe("история вкладок", () => {
     );
   });
 
-  it("оставляет в истории archive/delete tombstone и снимает его при доступности", () => {
+  it("handles behavior 3", () => {
     const history: TabHistoryState = {
       version: 1,
       entries: [
@@ -101,7 +101,6 @@ describe("история вкладок", () => {
     expect(restored.entries[0]).toEqual(
       expect.not.objectContaining({ unavailableReason: expect.anything() }),
     );
-    // Нормальный новый визит также очищает старую причину недоступности.
     expect(
       visitTabHistory(marked, candidate("delete"), 40).entries[0],
     ).toEqual(
@@ -109,7 +108,7 @@ describe("история вкладок", () => {
     );
   });
 
-  it("ограничивает persistent историю безопасным размером", () => {
+  it("handles behavior 4", () => {
     let history: TabHistoryState = { version: 1, entries: [] };
     for (let index = 0; index < MAX_TAB_HISTORY_ENTRIES + 3; index += 1) {
       history = visitTabHistory(history, candidate(String(index)), index);

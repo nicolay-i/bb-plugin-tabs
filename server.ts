@@ -52,7 +52,7 @@ const tabEntrySchema = tabCandidateSchema.extend({
 
 const tabHistoryEntrySchema = tabCandidateSchema.extend({
   visitedAt: z.number().finite().nonnegative(),
-  // Optional сохраняет совместимость с history V1 до tombstone-маркеров.
+  // Optional preserves compatibility with V1 history saved before tombstones.
   unavailableReason: z.enum(["archived", "deleted"]).optional(),
 });
 
@@ -79,9 +79,9 @@ const tabsStateSchema = z
   .strict();
 
 /*
- * `workflows` публикует этот RPC через обычный публичный plugin API. Нам
- * достаточно статуса: полная форма workflow view намеренно не дублируется
- * здесь, чтобы tabs не зависел от деталей его UI.
+ * `workflows` publishes this RPC through its standard public plugin API. Tabs
+ * only needs its status; the full workflow view is intentionally not duplicated
+ * here, so the tabs plugin does not depend on workflow UI details.
  */
 const workflowActiveRunsResponseSchema = z
   .object({
@@ -91,8 +91,8 @@ const workflowActiveRunsResponseSchema = z
 
 export const rpcContract = defineRpcContract({
   tabs_list: {
-    // Frontend передаёт также потомков открытых вкладок, чтобы durable workflow
-    // из вложенного чата мог быть свёрнут к родителю.
+    // The frontend also supplies descendants of open tabs, so durable work in a
+    // nested chat can be folded into its parent.
     input: z
       .object({
         workflowThreadIds: z
@@ -104,31 +104,36 @@ export const rpcContract = defineRpcContract({
     output: z
       .object({
         state: tabsStateSchema,
-        // Optional сохраняет обратную совместимость для уже загруженных app
-        // bundles во время plugin reload.
+        // Optional preserves compatibility with app bundles already loaded when
+        // the plugin reloads.
         activeWorkflowThreadIds: z
           .array(z.string().trim().min(1).max(200))
           .max(100)
           .optional(),
-        // Optional сохраняет совместимость с app bundle, загруженным до
-        // появления plugin-owned истории вкладок.
+        // Optional preserves compatibility with an app bundle loaded before
+        // plugin-owned visit history was added.
         history: tabHistoryStateSchema.optional(),
       })
       .strict(),
   },
-  /** Обновляет единственную preview-вкладку последним активным кандидатом. */
+  /** Resolves the viewed chat when the sidebar snapshot omits it. */
+  tabs_resolve_current: {
+    input: z.object({ threadId: z.string().trim().min(1).max(200) }).strict(),
+    output: z.object({ candidate: tabCandidateSchema.nullable() }).strict(),
+  },
+  /** Updates the one preview tab from the latest active candidate. */
   tabs_sync_activity: {
     input: z
       .object({ threads: z.array(tabCandidateSchema).max(100) })
       .strict(),
     output: z.object({ state: tabsStateSchema }).strict(),
   },
-  /** Переносит посещённый разговор в начало отдельной истории меню. */
+  /** Moves a visited chat to the start of the separate menu history. */
   tabs_history_visit: {
     input: tabCandidateSchema,
     output: z.object({ history: tabHistoryStateSchema }).strict(),
   },
-  /** Явно закрепляет текущий чат, даже если в нём нет активной работы. */
+  /** Explicitly pins the current chat, even if it has no active work. */
   tabs_open: {
     input: tabCandidateSchema,
     output: z.object({ state: tabsStateSchema }).strict(),
@@ -145,7 +150,7 @@ export const rpcContract = defineRpcContract({
       .object({ state: tabsStateSchema, removed: z.boolean() })
       .strict(),
   },
-  /** Переставляет две закреплённые вкладки в общей горизонтальной полосе. */
+  /** Moves two pinned tabs in their shared horizontal strip. */
   tabs_move: {
     input: tabMoveSchema,
     output: z.object({ state: tabsStateSchema }).strict(),
@@ -153,60 +158,58 @@ export const rpcContract = defineRpcContract({
 });
 
 /**
- * Сохраняет список верхних вкладок в plugin-owned KV. Все изменения проходят
- * через одну очередь, поэтому два окна не могут потерять вкладки друг друга
- * между `get` и `set`.
+ * Persists the top-tab list in plugin-owned KV. Every change flows through one
+ * queue so two windows cannot lose each other's tabs between `get` and `set`.
  */
 export default async function plugin(bb: BbPluginApi) {
   bb.settings.define({
     showPinnedTabsList: {
       type: "boolean",
-      label: "Показывать закреплённые чаты на экране «Новый чат»",
+      label: "Show pinned chats on the New chat screen",
       description:
-        "Добавляет быстрый список под полем ввода; строки показывают текущий статус и открывают чат по нажатию.",
+        "Adds a quick list below the composer; rows show the current status and open the chat when selected.",
       default: true,
     },
     showTabsOnDesktop: {
       type: "boolean",
-      label: "Показывать верхние вкладки на desktop",
+      label: "Show top tabs on desktop",
       description:
-        "Скрывает только верхнюю полосу вкладок в desktop-компоновке; закрепления и история сохраняются.",
+        "Hides only the top tab strip in the desktop layout; pins and history are retained.",
       default: true,
     },
     showTabsOnMobile: {
       type: "boolean",
-      label: "Показывать верхние вкладки на телефоне",
+      label: "Show top tabs on mobile",
       description:
-        "Скрывает только верхнюю полосу вкладок в compact/mobile-компоновке; закрепления и история сохраняются.",
+        "Hides only the top tab strip in the compact/mobile layout; pins and history are retained.",
       default: true,
     },
     showTabListButton: {
       type: "boolean",
-      label: "Показывать кнопку списка вкладок",
+      label: "Show the tab list button",
       description:
-        "Показывает кнопку с закреплёнными чатами и историей рядом с верхней полосой.",
+        "Shows a button for pinned chats and history next to the top strip.",
       default: true,
     },
     showTabListPinned: {
       type: "boolean",
-      label: "Показывать закреплённые чаты в списке вкладок",
-      description:
-        "Управляет только разделом «Закреплённые» в выпадающем списке.",
+      label: "Show pinned chats in the tab list",
+      description: "Controls only the Pinned section in the dropdown menu.",
       default: true,
     },
     showTabListHistory: {
       type: "boolean",
-      label: "Показывать историю в списке вкладок",
+      label: "Show history in the tab list",
       description:
-        "Управляет только разделом «История» в выпадающем списке; история продолжает сохраняться.",
+        "Controls only the History section in the dropdown menu; visits continue to be recorded.",
       default: true,
     },
     tabListButtonPosition: {
       type: "select",
-      label: "Расположение кнопки списка вкладок",
-      description: "Выберите сторону верхней полосы, на которой будет кнопка списка.",
-      options: ["Слева", "Справа"],
-      default: "Слева",
+      label: "Tab list button position",
+      description: "Choose the side of the top strip that contains the list button.",
+      options: ["Left", "Right"],
+      default: "Left",
     },
   });
 
@@ -231,8 +234,8 @@ export default async function plugin(bb: BbPluginApi) {
     Promise<{ history: TabHistoryState }>
   >();
   const workflowStatusInFlight = new Map<string, Promise<boolean>>();
-  // Сверка бывает один раз на ID в поколении плагина; после этого изменения
-  // приходят lifecycle-событиями. Это не добавляет polling к tabs_list.
+  // An ID is reconciled once per plugin generation; lifecycle events deliver
+  // subsequent changes. This adds no polling to tabs_list.
   const threadAvailabilityById = new Map<string, TabHistoryAvailability>();
   const threadAvailabilityInFlight = new Map<
     string,
@@ -256,7 +259,7 @@ export default async function plugin(bb: BbPluginApi) {
     return { state, history };
   }
 
-  /** Один concurrent `workflowActiveRuns` на thread между всеми tabs_list. */
+  /** One concurrent workflowActiveRuns query per thread across all tabs_list calls. */
   async function workflowThreadIsActive(threadId: string): Promise<boolean> {
     const existing = workflowStatusInFlight.get(threadId);
     if (existing !== undefined) return existing;
@@ -285,9 +288,9 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * Workflow может выполняться у origin-чата, пока sidebar ещё показывает
-   * `activity: 0`. Запрашиваем официальный RPC встроенного плагина, а при
-   * недоступности/несовместимости тихо деградируем к sidebar activity.
+   * A workflow can run in an origin chat while the sidebar still reports
+   * `activity: 0`. Query the built-in plugin's official RPC, and quietly fall
+   * back to sidebar activity when it is unavailable or incompatible.
    */
   async function activeWorkflowThreadIds(
     entries: readonly TabEntry[],
@@ -330,22 +333,22 @@ export default async function plugin(bb: BbPluginApi) {
     );
 
     if (failed) {
-      // Не превращаем отключённый workflows в ошибку самих вкладок и не
-      // повторяем сотню неуспешных запросов на каждом poll.
+      // A disabled workflows plugin is not a tabs error, and a failure must not
+      // cause a hundred repeated requests on every poll.
       workflowRpcRetryAt = Date.now() + 30_000;
       bb.log.warn(
-        `Не удалось прочитать активные workflows; используется sidebar activity: ${errorMessage(failure)}`,
+        `Could not read active workflows; using sidebar activity: ${errorMessage(failure)}`,
       );
     }
 
-    // Сохраняем порядок вкладок/потомков независимо от порядка ответов RPC.
+    // Preserve tab/descendant order independently of RPC response order.
     return threadIds.filter((threadId) => activeThreadIds.has(threadId));
   }
 
   /**
-   * State и history изменяются одной serial queue. Это важно для lifecycle:
-   * archive → unarchive не должен оставить старый tombstone из-за двух
-   * независимо планируемых KV-mutation.
+   * State and history share one serial queue. This is important for lifecycle:
+   * archive → unarchive must not leave an old tombstone from independently
+   * scheduled KV mutations.
    */
   function mutateSnapshots(
     apply: (current: TabsSnapshot) => TabsSnapshot,
@@ -375,8 +378,8 @@ export default async function plugin(bb: BbPluginApi) {
     return operation;
   }
 
-  // Частые activity/pin/history операции сохраняют прежний минимальный I/O:
-  // atomic пара state+history нужна только lifecycle reconciliation выше.
+  // Frequent activity, pin, and history operations retain their minimal I/O:
+  // an atomic state-and-history pair is only needed for lifecycle reconciliation.
   function mutateHistory(
     apply: (current: TabHistoryState) => TabHistoryState,
   ): Promise<TabHistoryState> {
@@ -430,8 +433,9 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * Возвращает `undefined`, если статус нельзя проверить без риска неверно
-   * назвать чат удалённым (например, временная ошибка или недостаток прав).
+   * Returns `undefined` when the status cannot be verified without a risk of
+   * falsely calling a chat deleted (for example, a transient or permission
+   * failure).
    */
   async function resolveThreadAvailability(
     threadId: string,
@@ -463,8 +467,8 @@ export default async function plugin(bb: BbPluginApi) {
           threadAvailabilityRetryAt.delete(threadId);
           return "deleted";
         }
-        // Не скрываем чат при transient/permission failure. Retry ограничен,
-        // чтобы tabs_list не превратился в частый источник ошибок в логах.
+        // Do not hide a chat after a transient or permission failure. Retry is
+        // bounded so tabs_list does not become a frequent source of log errors.
         threadAvailabilityRetryAt.set(
           threadId,
           Date.now() + THREAD_AVAILABILITY_RETRY_MS,
@@ -511,8 +515,8 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * При холодном старте сверяем не более 200 plugin-owned ID (100 tabs + 100
-   * history). В дальнейшем результат кэшируется до lifecycle-события.
+   * On cold start, reconcile no more than 200 plugin-owned IDs (100 tabs plus
+   * 100 history records). The result remains cached until a lifecycle event.
    */
   async function reconcileTrackedThreadAvailability(
     snapshot: TabsSnapshot,
@@ -542,15 +546,15 @@ export default async function plugin(bb: BbPluginApi) {
       [threadId, availability],
     ]);
     await mutateSnapshots(({ state, history }) => ({
-      // Unarchive делает history-запись снова кликабельной, но намеренно не
-      // возвращает старый pin/preview: архивирование уже закрыло tab-state.
+      // Unarchive makes the history entry clickable again, but deliberately
+      // does not restore its old pin or preview: archive already closed state.
       state: availability === null ? state : closeTabs(state, [threadId]),
       history: setTabHistoryAvailability(history, updates),
     }));
   }
 
-  // События приходят и для cascade-archive дочерних чатов. `closeTabs` —
-  // idempotent, поэтому безопасно реагирует как на root, так и на child.
+  // Events can also arrive for cascade-archived child chats. `closeTabs` is
+  // idempotent, so it safely handles both roots and children.
   bb.events.on("thread.archived", async ({ thread }) => {
     await applyThreadAvailability(thread.id, "archived");
   });
@@ -563,9 +567,9 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.rpc.register(rpcContract, {
     tabs_list: async (input) => {
-      // Несколько renderer surfaces или Strict Mode могут попросить один и тот
-      // же snapshot одновременно. Не дублируем ни KV-read, ни до 100 nested
-      // workflow RPC; mutation/realtime всё равно инвалидируют клиентов.
+      // Multiple renderer surfaces or Strict Mode can request the same snapshot
+      // together. Avoid duplicating KV reads and up to 100 nested workflow RPCs;
+      // mutations and realtime still invalidate clients.
       const requestKey = [...new Set(input?.workflowThreadIds ?? [])]
         .sort()
         .join("\u0000");
@@ -573,9 +577,9 @@ export default async function plugin(bb: BbPluginApi) {
       if (existing !== undefined) return existing;
 
       const operation = (async () => {
-        // В новой server-generation один bounded lookup на сохранённый ID
-        // поднимает старые archive/delete до событийной модели. После этого
-        // cache + lifecycle events не добавляют сетевой работы к polling.
+        // In a fresh server generation, one bounded lookup for each retained ID
+        // lifts old archive/delete state into the event model. Afterwards cache
+        // and lifecycle events add no network activity to polling.
         const snapshot = await reconcileTrackedThreadAvailability(
           await readSnapshotAfterPendingMutations(),
         );
@@ -598,10 +602,22 @@ export default async function plugin(bb: BbPluginApi) {
         }
       }
     },
+    tabs_resolve_current: async ({ threadId }) => {
+      const thread = await bb.sdk.threads.get({ threadId });
+      return {
+        candidate: thread.archivedAt !== null || thread.deletedAt !== null
+          ? null
+          : {
+              threadId: thread.id,
+              projectId: thread.projectId,
+              title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
+            },
+      };
+    },
     tabs_sync_activity: async ({ threads }) => {
-      // Два окна могут увидеть один и тот же sidebar snapshot одновременно.
-      // Объединяем exact input до входа в mutation queue, сохраняя порядок
-      // candidates и therefore семантику «последний становится preview».
+      // Two windows can observe the same sidebar snapshot at once. Coalesce
+      // exact input before the mutation queue while preserving candidate order
+      // and therefore the “latest becomes preview” semantics.
       const requestKey = JSON.stringify(threads);
       const existing = activitySyncInFlight.get(requestKey);
       if (existing !== undefined) return existing;
@@ -663,5 +679,5 @@ export default async function plugin(bb: BbPluginApi) {
     }),
   });
 
-  bb.log.info("вкладки чатов загружены");
+  bb.log.info("Chat tabs loaded");
 }

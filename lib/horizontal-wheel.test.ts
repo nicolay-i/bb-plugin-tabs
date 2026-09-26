@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { consumeHorizontalWheel } from "./horizontal-wheel";
 
-describe("прокрутка полосы вкладок колесом", () => {
-  it("превращает обычное вертикальное колесо в горизонтальную прокрутку", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     const strip = { clientWidth: 100, scrollLeft: 20, scrollWidth: 400 };
 
     expect(
@@ -17,15 +17,13 @@ describe("прокрутка полосы вкладок колесом", () => 
     expect(strip.scrollLeft).toBe(68);
   });
 
-  it("игнорирует остаточный deltaX при смене направления обычного колеса", () => {
+  it("handles behavior 2", () => {
     const strip = { clientWidth: 100, scrollLeft: 150, scrollWidth: 400 };
 
     expect(
       consumeHorizontalWheel(strip, {
         ctrlKey: false,
         deltaMode: 0,
-        // Остаток предыдущего горизонтального жеста не должен перебить новый
-        // более сильный вертикальный wheel в противоположную сторону.
         deltaX: 8,
         deltaY: -48,
         metaKey: false,
@@ -45,7 +43,7 @@ describe("прокрутка полосы вкладок колесом", () => 
     expect(strip.scrollLeft).toBe(150);
   });
 
-  it("сохраняет Ctrl/⌘+wheel для браузера и системных shortcut'ов", () => {
+  it("handles behavior 3", () => {
     const strip = { clientWidth: 100, scrollLeft: 20, scrollWidth: 400 };
 
     expect(

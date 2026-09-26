@@ -1,15 +1,58 @@
-# Вкладки чатов — обзор
+Chat Tabs puts the current conversation and pinned chats within reach in BB,
+without replacing the sidebar or changing BB core. See the [screenshots and
+setup guide](https://github.com/nicolay-i/bb-plugin-tabs#readme).
 
-Плагин добавляет в BB верхнюю полосу чатов и быстрый переход к закреплённым чатам с экрана «Новый чат» — без замены sidebar и без изменений BB core.
+## What you get
 
-- Одна незакреплённая preview-вкладка работает как в VS Code: новый текущий или более свежий активный чат заменяет её, а курсив показывает временный статус. Работа во вложенном workflow сворачивается к родительскому разговору: его вкладка получает рабочую точку, а preview не уходит в технический дочерний чат.
-- Двойной щелчок по preview превращает её в постоянную вкладку. Двойной щелчок по названию закреплённой вкладки редактирует его inline; Escape отменяет изменение. Правый щелчок открывает компактное контекстное меню в метриках native sidebar (текст 12px, иконки 16px) с закреплением/откреплением, переименованием в модальном окне, архивацией, копированием абсолютной ссылки и пометкой непрочитанным. Архивация рекурсивно выполняется host action BB и удаляет запись из полосы.
-- Вкладки образуют единую ручную горизонтальную последовательность: закреплённые tab перетаскиваются в одну подсвечиваемую щель между другими закреплёнными tab и через границы проектов, preview не перетаскивается. Во время drag видны источник, линия активной щели и автопрокрутка у края полосы. Hover-подсказка tab показывает полные названия проекта и чата и сообщает, что click открывает чат. Pointer-курсор действует и на названии, поэтому inline rename остаётся вторичным жестом. У уже открытого чата с непрочитанными сообщениями есть отдельная точка, независимая от статуса выполняющейся работы.
-- Под штатным composer на экране «Новый чат» есть сразу видимый быстрый список закреплённых tab. Он повторяет их глобальный ручной порядок: название находится на первой строке, проект — слева на второй, а справа во второй строке показывается только полезное состояние «Работает» (включая вложенную работу) и/или «Непрочитанное». Спокойный чат не получает пустой индикатор; слишком длинный проект обрезается многоточием. Чат открывается по click, preview в него не попадает. Список включён по умолчанию и скрывается настройкой «Показывать закреплённые чаты на экране „Новый чат“», не затрагивая pin state.
-- На desktop обычный wheel над переполненной полосой листает её влево/вправо даже над активной вкладкой. Единственная native scrollbar находится над вкладками, синхронизирована с content scroller и использует track/thumb из текущей темы; она видна только при overflow, а внутренней вертикальной scrollbar нет. Когда доступны хотя бы два направления перехода, слева на desktop и compact/mobile есть одинаковая icon-кнопка: её подменю сначала показывает закреплённые tab в ручном порядке, затем отдельную историю последних посещений. Каждый пункт повторяет root-карточку: title сверху, проект слева во второй строке, а справа — «Работает»/«Непрочитанное» с точкой только при полезном сигнале. Видны первые 8 history-записей; «Ещё» раскрывает следующую порцию локально по click/tap сразу либо после удержания mouse pointer одну секунду на desktop, а theme-aware разделитель сохраняет границу новой страницы. Архивный или удалённый чат сразу исчезает из tabs и pins, но остаётся в history как disabled строка с зачёркнутым title и иконкой архива либо удаления; разархивирование снимает tombstone, не восстанавливая старый pin. Справа тот же strip на touch прокручивается свайпом без proxy-scrollbar. Подменю и history не меняют сохранённый глобальный порядок вкладок.
-- Текущий tab выделен нейтральным серым из токенов темы, а не чёрной заливкой; средний щелчок (нажатие колёсика) закрывает tab через plugin-owned Close и не запускает browser autoscroll. `Ctrl+Tab`/`Ctrl+Shift+Tab` циклически открывают следующую/предыдущую plugin-вкладку в ручном горизонтальном порядке, не отбирая bare `Shift+Tab` у focus traversal. В BB Desktop `Ctrl+W` (на macOS также `⌘W`) закрывает только текущую plugin-вкладку и не останавливает работу чата, кроме фокуса во встроенном BrowserView: тогда shortcut закрывает активную browser-вкладку BB. В web-клиенте используйте кнопку Close или средний щелчок: `Ctrl+W` принадлежит браузеру.
-- State вкладок и отдельная история последних посещений принадлежат плагину, хранятся в KV и передаются между окнами realtime-событиями. История содержит не более 100 уникальных чатов, сортируется по последнему переходу и не связана с pin/preview lifecycle. Durable workflow проверяется через публичный RPC встроенного `workflows`, поэтому вкладка origin-чата получает точку и при временно пустом sidebar activity. Realtime/sidebar являются основным путём актуализации: client и server объединяют одинаковые in-flight `tabs_list`, неизменённая activity не запускает `tabs_sync_activity`, а редкий visibility-aware fallback poll остановлен в background и после возвращения окна выполняет один refresh.
-- CSS-hybrid работает в single-pane: desktop получает proxy-scrollbar, compact/mobile — отдельную touch-полосу с той же icon-кнопкой подменю и горизонтальным strip. На mobile root overlay поднимается над `z-30` page inset, иначе его закрашивает timeline; при открытом sidebar/right-panel drawer скрываются и overlay, и его portal-подменю. Одиночный native leaf открытой правой панели не считается split: timeline main chat всё ещё резервирует высоту под соответствующий overlay. При открытой правой панели overlay следует за шириной main chat pane, не перекрывает её native tabs и не добавляет ей отступ. В реальном split или при full-screen right panel UI скрыт. Нативный close shortcut в Desktop обрабатывается через capabilities `onCloseWindowRequest` и `browser.onFocus`, без правок BB core.
-- Presentation управляется декларативными настройками: верхняя полоса отдельно включается на desktop и compact/mobile; icon-кнопка списка включается/выключается, ставится слева или справа и независимо показывает «Закреплённые»/«Историю». Скрытие раздела не удаляет pin/history state и не прекращает запись истории. Все поверхности используют только BB theme tokens (`background`, `foreground`, `muted`, `border`, `popover`, `primary`, `ring`) и `color-mix(in oklch)`, поэтому нейтральные поверхности, статусы, focus и scrollbar следуют light/dark и пользовательским палитрам.
-
-Подробные ограничения и проверки описаны в [SPEC.md](./SPEC.md).
+- A single unpinned preview behaves like a VS Code preview tab: a newly current
+  or more recently active chat replaces it, and italic text communicates its
+  temporary state. Work in a nested workflow folds up to the root conversation,
+  so the visible parent tab receives the working marker and previews do not
+  jump to technical child chats.
+- Double-click a preview to pin it. Double-click a pinned tab title to rename
+  it inline, with Escape cancelling the change. A tab context menu sized like
+  BB's native sidebar actions provides Copy link, Mark as unread, Pin/Unpin,
+  modal Rename, and Archive. Archive uses the BB host action and removes the
+  plugin tab immediately.
+- Pinned tabs form one manually ordered horizontal sequence across projects.
+  Desktop drag and drop shows one highlighted slot and edge autoscroll; preview
+  tabs never participate. Hover text gives the complete project and chat titles
+  and explains primary click behavior. Unread state has its own dot, independent
+  of working activity.
+- The **New chat** composer has an immediately visible pinned-chat list. It
+  uses the same global order: title on the first line, project on the left of
+  the second, and only useful **Working** and/or **Unread** status on the right.
+  Calm chats have no filler status. Preview does not enter this list, and the
+  `showPinnedTabsList` setting hides it without changing pins.
+- The desktop strip supports horizontal mouse-wheel scrolling, a theme-aware
+  top scrollbar only when necessary, middle-click close, `Ctrl+Tab` /
+  `Ctrl+Shift+Tab`, and Desktop `Ctrl+W` / `⌘W`. When the embedded BrowserView
+  has focus, the native browser tab close keeps priority. Compact and touch
+  layouts preserve native horizontal swipe, 44×44 targets, and explicit Close
+  actions instead of HTML drag and drop.
+- A borderless plus directly after the last tab opens BB's native composer.
+  Hovering for 300 ms offers the 15 projects with the newest chat activity;
+  **More** reveals subsequent groups of 15 on click or a 300 ms hover. Picking
+  a project preselects it. Both menus animate, with reduced-motion support.
+- The list icon opens the same Radix dropdown by click, after 300 ms of
+  hover, or with a double Shift press. Type to search available chats by title
+  (including unloaded history pages), choose with the arrow keys and open with
+  Enter. Manually ordered **Pinned** chats precede **History** of up to 100
+  visits. Eight history records render at a time; **More** loads the next page
+  on click, tap, keyboard selection or after 300 ms of hover. Section visibility
+  settings do not delete pins or history.
+- Lifecycle data comes from public archive/delete/unarchive events and bounded
+  `bb.sdk.threads.get()` reconciliation, not from sidebar omission. Archive or
+  delete removes a chat from tabs, pins, and the home list while preserving a
+  disabled Archived or Deleted tombstone in history. Unarchiving re-enables it
+  but deliberately does not restore its old pin or preview. Transient and
+  permission errors never hide a chat as deleted.
+- Tabs and history use plugin-owned KV keys and realtime events. Realtime and
+  live sidebar state are the primary source of activity; durable workflow
+  status is a visibility-aware, rate-limited fallback through the built-in
+  `workflows` public RPC. Client and server coalesce equivalent requests.
+- The scoped CSS hybrid operates in a single main pane. It follows the main
+  chat width around a right panel, but hides in true split, full-panel, and
+  drawer states. All presentation uses BB theme tokens (`background`,
+  `foreground`, `muted`, `border`, `popover`, `primary`, and `ring`) with
+  `color-mix(in oklch)`.

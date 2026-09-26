@@ -1,55 +1,108 @@
-# Вкладки чатов для BB
+# Chat Tabs for BB
 
-Плагин выводит горизонтальную полосу чатов **под штатной шапкой** и быстрый список закреплённых чатов под composer на экране **«Новый чат»**. Sidebar BB не заменяется: он по-прежнему отвечает за историю, поиск и навигацию.
+Chat Tabs adds VS Code-style pinned and preview chat tabs beneath BB's native
+header. Switch chats, search recent conversations, or start a new chat in a
+selected project directly from the strip. An optional pinned-chat list also
+appears on the **New chat** screen. The BB sidebar remains available.
 
-## Что делает
+![Pinned and preview chat tabs in BB](docs/screenshots/real-bb-tabs-primary.png)
 
-- Показывает одну временную preview-вкладку по модели VS Code. При переходе на новый чат или появлении более свежей работы она заменяется; заголовок preview отображается *курсивом*.
-- Двойной щелчок по preview закрепляет её. У уже закреплённой вкладки двойной щелчок **по названию** включает inline-редактирование; Enter или потеря фокуса сохраняют новое имя, Escape отменяет его даже при последующем `blur`. Закреплённые вкладки остаются в полосе и не заменяются. Закрепление также доступно в контекстном меню вкладки.
-- Автоматически замечает ожидание ответа пользователя, workflow, фоновые агенты/команды, plan, goal и runtime — в том числе в дочерних чатах. Помимо live sidebar state, для открытых вкладок и их потомков проверяется публичный RPC встроенного `workflows`: durable run отображается даже в коротком промежутке, когда sidebar ещё сообщает нулевую activity. Работа сворачивается к родительской вкладке; она получает рабочую точку, а новый preview-кандидат ведёт к корневому разговору. Только непрочитанные и успешно завершённые чаты не считаются активной работой, но уже открытая вкладка с `isUnread` получает отдельную точку и доступную подпись. Realtime/sidebar остаются главным источником актуальности: одинаковые `tabs_list`/`tabs_sync_activity` объединяются, hidden-вкладка не опрашивает сервер, а fallback durable workflow выполняется редко и возобновляется одним запросом при возврате в foreground.
-- Показывает вкладки в единой ручной горизонтальной последовательности: закреплённые вкладки можно переставлять перетаскиванием в единственную подсвечиваемую щель между ними, в том числе через границы проектов. Preview остаётся временной и не перетаскивается. Название проекта сохраняется в hover-подсказке вместе с названием чата и primary-подсказкой «Кликните, чтобы открыть чат»; pointer-курсор действует и на названии. Эти подписи не занимают место в самой вкладке.
-- На desktop и compact/mobile рядом с полосой появляется одинаковая icon-кнопка списка, когда доступно хотя бы два направления перехода; в настройках можно выключить её, выбрать левую/правую сторону и независимо скрыть «Закреплённые» либо «Историю». Она открывает доступное подменю, а не native `select`: сначала в общем ручном порядке идут «Закреплённые», затем — plugin-owned «История» последних посещений (до 100 уникальных чатов). Пункт меню повторяет карточку главной: title сверху, проект слева во второй строке, справа — «Работает» и/или «Непрочитанное» с точкой; спокойный чат показывает только проект, который при нехватке места обрезается многоточием. Первые 8 исторических чатов видны сразу; «Ещё» догружает следующую порцию локально: по click/tap сразу либо автоматически после удержания указателя одну секунду на desktop. Между уже показанной и новой порцией остаётся theme-aware разделитель, поэтому граница страницы видна и после повторного раскрытия. Архивирование или удаление сразу убирает чат из полосы, закреплённых и root-списка; в истории остаётся disabled tombstone с зачёркнутым названием, подписью и иконкой архива либо удаления. После разархивирования запись истории снова доступна, но прежний pin намеренно не возвращается. История не меняет pin/preview state или ручной порядок полосы. Справа на touch-устройствах остаётся горизонтально прокручиваемый swipe-strip.
-- На главном экране **«Новый чат»**, непосредственно под штатным полем ввода, показывает быстрый список закреплённых чатов. Карточка имеет две строки: название сверху, во второй строке проект слева и короткий статус справа. Полезные состояния называются «Работает» (включая вложенную работу) и «Непрочитанное»; у спокойного чата статус не выводится. Если название проекта не помещается рядом со статусом, оно обрезается многоточием, а полное имя доступно по hover. Нажатие на карточку штатно открывает нужный чат; preview в список не попадает. Настройка плагина «Показывать закреплённые чаты на экране „Новый чат“» включена по умолчанию и скрывает section целиком, не меняя сами закрепления.
-- На desktop обычное колесо мыши над переполненной полосой листает вкладки влево/вправо — в том числе над активной кнопкой. Единственная theme-aware горизонтальная scrollbar находится **над** вкладками и синхронизирована с полосой, но показывается только при фактическом горизонтальном переполнении; иначе она не занимает место. На touch-устройствах вместо proxy-scrollbar работает нативный горизонтальный свайп полосы. Внутренней вертикальной прокрутки у вкладок нет. `Ctrl/⌘+wheel` не перехватывается.
-- Активная вкладка имеет нейтрально-серую заливку из токенов текущей темы, а не близкий к чёрному foreground.
-- Правый щелчок по вкладке открывает компактное контекстное меню в стиле native sidebar BB: «Скопировать ссылку», «Пометить непрочитанным», «Закрепить»/«Открепить», переименование в модальном окне и «Архивировать». Открепление заменяет прежнюю preview-вкладку, а архивирование использует штатный рекурсивный action BB. Любое archive/delete lifecycle-событие (включая действие вне плагина) убирает чат из plugin tabs и pins. Ссылка копируется как абсолютный URL с fallback для заблокированного Clipboard API.
-- Позволяет открыть чат или убрать его из полосы. Средний щелчок (нажатие колёсика) по вкладке закрывает её, не запускает browser autoscroll и не срабатывает от других auxiliary-кнопок. `Ctrl+Tab`/`Ctrl+Shift+Tab` циклически переключают следующую/предыдущую plugin-вкладку в её текущем горизонтальном порядке; bare `Shift+Tab` остаётся стандартным переходом фокуса. В BB Desktop `Ctrl+W` (на macOS также `⌘W`) закрывает текущую plugin-вкладку через desktop bridge, **кроме фокуса во встроенном браузере**: тогда shortcut штатно закрывает активную browser-вкладку BB, не chat tab плагина. Close **не архивирует, не удаляет и не останавливает работу чата**. В web-клиенте этот shortcut принадлежит браузеру, поэтому используйте кнопку закрытия на вкладке либо средний щелчок.
-- Сохраняет состояние в `bb.storage.kv` и синхронизирует окна через plugin realtime.
+![Choose a project from the plus button to create a new chat](docs/screenshots/real-bb-new-chat-projects.png)
 
-## Настройки
+![Search pinned and recent chats from the tab list](docs/screenshots/real-bb-thread-tabs.png)
 
-Все настройки доступны в **Settings → Installed plugins → Вкладки чатов** или
-через `bb plugin config tabs set <ключ> <значение>`. Они меняют только
-представление: порядок закреплений, preview и сохранённая история не удаляются.
+![Pinned chats below the New chat composer](docs/screenshots/real-bb-pinned-list.png)
 
-| Ключ | По умолчанию | Назначение |
+The screenshots show the real BB UI and the real plugin rendering with
+synthetic demonstration data.
+
+## Highlights
+
+- **VS Code-style preview tab.** One unpinned preview represents the current or
+  latest active chat. Opening another eligible chat replaces it; its italic
+  title makes the temporary state clear.
+- **Pinned chats with a global manual order.** Double-click a preview tab to
+  pin it. Drag pinned tabs between projects in one shared horizontal sequence;
+  the preview always remains last and is never draggable. Double-click a pinned
+  tab title to rename it inline.
+- **Useful activity and unread signals.** The plugin detects pending input,
+  workflows, background agents and commands, plan mode, goals, and runtime
+  activity. Work in nested chats is folded into the visible root chat. Calm
+  chats do not receive an empty status or decorative dot.
+- **Create a chat from the strip.** A borderless plus after the last tab opens
+  BB's native composer with the prompt focused. Hover for 300 ms to see the 15
+  most recently active projects; **More** reveals the next 15 on click or after
+  another 300 ms of hover. Choosing a project preselects it in the composer.
+- **Pinned and recent navigation menu.** Open it by click, a 300 ms mouse
+  hover, or two quick Shift presses. Search chat titles fuzzily, select a match
+  with the arrow keys, and press Enter to open it. The menu lists **Pinned**
+  chats and a plugin-owned **History** of up to 100 visits. The first eight
+  history entries appear immediately; **More** loads the next page on click,
+  tap, keyboard selection, or a 300 ms desktop hover. Both menus animate in
+  and out and respect reduced-motion preferences.
+- **Safe lifecycle handling.** Archive and delete events immediately remove a
+  chat from tabs, pins, and the home list. A disabled history tombstone remains
+  with an Archived or Deleted label. Unarchiving makes that history item
+  clickable again but intentionally does not restore its old pin or preview.
+- **Desktop and touch behavior.** Desktop supports drag and drop, horizontal
+  mouse-wheel scrolling, a conditional top scrollbar, middle-click close,
+  `Ctrl+Tab` / `Ctrl+Shift+Tab`, and `Ctrl+W` / `⌘W` in BB Desktop. Touch
+  layouts keep a 44×44 target, native horizontal swipe, and explicit Close
+  buttons instead of HTML drag and drop.
+- **Native-feeling actions.** The tab context menu offers Copy link, Mark as
+  unread, Pin/Unpin, Rename, and Archive. Links are absolute and retain a
+  textarea fallback when the Clipboard API is unavailable.
+- **Theme-aware presentation.** The stylesheet uses BB semantic theme tokens
+  and `color-mix(in oklch)` rather than hard-coded UI colors. It follows light,
+  dark, and custom BB themes.
+
+## Settings
+
+All settings are available in **Settings → Installed plugins → Chat Tabs** or
+through `bb plugin config tabs set <key> <value>`. They affect only the
+presentation: pins, preview state, manual order, and visit history remain
+stored.
+
+| Key | Default | Purpose |
 | --- | --- | --- |
-| `showPinnedTabsList` | `true` | Быстрый список закреплённых чатов под composer на экране «Новый чат». |
-| `showTabsOnDesktop` | `true` | Верхняя полоса вкладок в desktop-компоновке. |
-| `showTabsOnMobile` | `true` | Верхняя полоса в compact/mobile-компоновке (`≤767px` или coarse pointer). |
-| `showTabListButton` | `true` | Icon-кнопка выпадающего списка рядом с полосой. |
-| `showTabListPinned` | `true` | Раздел «Закреплённые» внутри списка. |
-| `showTabListHistory` | `true` | Раздел «История» внутри списка; скрытие не прекращает запись истории. |
-| `tabListButtonPosition` | `Слева` | Сторона icon-кнопки: `Слева` или `Справа`. |
+| `showPinnedTabsList` | `true` | Quick pinned-chat list below the composer on the New chat screen. |
+| `showTabsOnDesktop` | `true` | Top tab strip in the desktop layout. |
+| `showTabsOnMobile` | `true` | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer). |
+| `showTabListButton` | `true` | Icon button for the dropdown list next to the strip. |
+| `showTabListPinned` | `true` | Pinned section in the dropdown list. |
+| `showTabListHistory` | `true` | History section in the dropdown list; hiding it does not stop recording visits. |
+| `tabListButtonPosition` | `Left` | Side for the icon button: `Left` or `Right`. |
 
-Кнопка списка автоматически скрывается, если она выключена настройкой либо в
-разрешённых разделах осталось меньше двух чатов для перехода.
+The list button hides automatically when it is disabled or fewer than two
+allowed navigation targets remain.
 
-## Технические границы
+## Design boundaries
 
-Реализация использует публичный `homepageSection` и experimental API `experimental_appOverlay`, а настройку списка — декларативный `bb.settings.define`. Для нативного `Ctrl+W` в Desktop она capability-detect'ит публичные renderer bridge `onCloseWindowRequest` и `browser.onFocus`: фокус BrowserView передаёт shortcut штатному handler BB. В web-клиенте bridge отсутствует. Ядро BB, sidebar slot и `threads.tabs.update` не затрагиваются; content scripts, DOM-reparenting и инъекции в штатную шапку не используются.
+Tabs and history live in plugin-owned `bb.storage.kv` state and synchronize
+across windows through plugin realtime channels. They are not derived from the
+BB sidebar and never replace it.
 
-У BB пока нет публичного layout-slot внутри native thread chrome. Поэтому резервирование места под полосой сделано как явно ограниченный CSS-hybrid:
+The implementation uses the public `homepageSection` API, the experimental
+`experimental_appOverlay` API, and declarative `bb.settings.define`. It does
+not modify BB core, replace sidebar slots, call `threads.tabs.update`, reparent
+host DOM, inject into the native header, or use content scripts.
 
-- desktop с точным указателем и compact/mobile используют одну icon-кнопку, открывающую меню закреплённых вкладок и истории; touch-компоновка также сохраняет горизонтальный свайп;
-- только один chat pane; одиночный native leaf открытой правой панели не считается split и не отменяет резерв высоты под соответствующую полосу;
-- при открытой правой панели полоса привязана к ширине **основного чата** и не перекрывает native tabs правой панели;
-- при открытом mobile sidebar/right-panel drawer, разворачивании правой панели на весь экран или в реальном split-pane полоса скрывается, а timeline не получает пустой отступ;
-- CSS anchor следует за шириной sidebar и main chat pane без JavaScript-доступа к DOM.
+BB does not currently expose a public layout slot inside the native thread
+chrome. The visual reservation for the overlay is therefore a deliberately
+scoped CSS hybrid:
 
-При изменении внутренней разметки BB этот слой надо проверить вручную. Функциональное состояние вкладок при этом остаётся plugin-owned и не зависит от CSS.
+- a single main chat pane reserves space for the tab strip;
+- a regular right panel does not count as a split and is not overlapped;
+- a true split pane, full-screen right panel, sidebar drawer, or mobile right
+  panel drawer hides the overlay and its portal menu;
+- desktop uses a synchronized top proxy scrollbar only when the strip actually
+  overflows; touch layouts retain native horizontal swipe;
+- CSS anchors follow the main chat pane and sidebar without DOM mutation.
 
-## Разработка
+If BB changes its internal layout, validate the visual integration manually.
+The plugin state itself remains independent of that layout.
+
+## Development
 
 ```bash
 npm install
@@ -58,21 +111,23 @@ npm test
 npm run build
 ```
 
-Для live-цикла в установленном BB:
+For a live development cycle in BB:
 
 ```bash
 bb plugin dev
 ```
 
-После сборки установить локальный плагин можно так:
+To install the local plugin after building it:
 
 ```bash
 bb plugin install .
 ```
 
-Требуется BB `0.43+` и Plugin SDK `0.4.97+`.
+Chat Tabs requires BB `0.43+` and Plugin SDK `0.4.97+`.
 
-## Лицензия
+See the [English changelog](CHANGELOG.md) for version history.
 
-[MIT](LICENSE). Можно использовать, копировать, изменять, распространять и
-публиковать форки при сохранении текста лицензии и copyright notice.
+## License
+
+[MIT](LICENSE). You may use, copy, modify, distribute, and publish forks while
+retaining the license text and copyright notice.

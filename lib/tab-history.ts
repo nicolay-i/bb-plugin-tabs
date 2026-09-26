@@ -1,14 +1,14 @@
 import type { TabCandidate } from "./tabs-model";
 
-/** Отдельная от preview/pinned история посещённых разговоров. */
+/** A visit history separate from preview and pinned tabs. */
 export const TAB_HISTORY_VERSION = 1 as const;
 export const MAX_TAB_HISTORY_ENTRIES = 100;
 export const TABS_HISTORY_CHANGED_CHANNEL = "tabs-history-changed";
 
 /**
- * Недоступный чат остаётся в истории как tombstone, но больше не открывается.
- * Отсутствие значения означает доступный чат: это совместимо с уже сохранённой
- * V1-историей до появления признака архивирования/удаления.
+ * An unavailable chat remains in history as a tombstone but can no longer be
+ * opened. An absent value means an available chat, which remains compatible
+ * with V1 history saved before archive/delete markers existed.
  */
 export const TAB_HISTORY_UNAVAILABLE_REASONS = [
   "archived",
@@ -18,13 +18,13 @@ export const TAB_HISTORY_UNAVAILABLE_REASONS = [
 export type TabHistoryUnavailableReason =
   (typeof TAB_HISTORY_UNAVAILABLE_REASONS)[number];
 
-/** `null` означает, что чат снова доступен. */
+/** `null` means that the chat is available again. */
 export type TabHistoryAvailability = TabHistoryUnavailableReason | null;
 
 export interface TabHistoryEntry extends TabCandidate {
-  /** Время последнего перехода в этот чат. */
+  /** The timestamp of the latest navigation to this chat. */
   visitedAt: number;
-  /** Причина, по которой запись нельзя открыть, если она известна. */
+  /** The known reason this entry cannot be opened, if any. */
   unavailableReason?: TabHistoryUnavailableReason;
 }
 
@@ -95,8 +95,8 @@ export function createEmptyTabHistory(): TabHistoryState {
 }
 
 /**
- * История всегда уникальна по threadId и отсортирована от последнего визита
- * к старому. Стабильный sort удерживает исходный порядок при равных time.
+ * History is always unique by threadId and ordered from the latest visit to the
+ * oldest. Stable sorting retains input order when timestamps are equal.
  */
 export function normalizeTabHistory(value: unknown): TabHistoryState {
   if (!isRecord(value) || value.version !== TAB_HISTORY_VERSION) {
@@ -124,7 +124,7 @@ export function normalizeTabHistory(value: unknown): TabHistoryState {
   };
 }
 
-/** Перемещает посещённый чат в начало истории и обновляет его метаданные. */
+/** Moves a visited chat to the front of history and updates its metadata. */
 export function visitTabHistory(
   state: TabHistoryState,
   candidate: TabCandidate,
@@ -137,8 +137,8 @@ export function visitTabHistory(
   return {
     version: TAB_HISTORY_VERSION,
     entries: trim([
-      // Визит возможен только для открываемого чата, поэтому прежний
-      // tombstone намеренно снимается вместе с обновлением metadata.
+      // A visit can only target an openable chat, so it deliberately clears a
+      // prior tombstone along with its metadata.
       { ...normalized, visitedAt: readTimestamp(now) },
       ...current.entries.filter((entry) => entry.threadId !== normalized.threadId),
     ]),
@@ -146,8 +146,8 @@ export function visitTabHistory(
 }
 
 /**
- * Помечает уже существующие history-записи как архивные/удалённые либо снова
- * доступные. Не создаёт новую запись: lifecycle-событие не является визитом.
+ * Marks existing history records as archived/deleted or available again. It
+ * does not create an entry because a lifecycle event is not a visit.
  */
 export function setTabHistoryAvailability(
   state: TabHistoryState,

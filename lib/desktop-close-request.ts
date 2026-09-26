@@ -1,9 +1,9 @@
 /**
- * Минимальная публично экспонированная Desktop capability BB.
+ * The smallest publicly exposed BB Desktop capability.
  *
- * Plugin SDK пока не оборачивает этот callback, поэтому не импортируем
- * внутренний desktop-contract: в web-клиенте bridge отсутствует, а в Desktop
- * используем только проверяемую структурную возможность contextBridge.
+ * The Plugin SDK does not wrap this callback yet, so this module does not
+ * import an internal desktop contract. The bridge is absent in web BB, while
+ * Desktop uses only a feature-detected contextBridge shape.
  */
 type DesktopUnsubscribe = () => void;
 type DesktopBrowserFocusListener = (tabId: string) => void;
@@ -33,8 +33,9 @@ export function subscribeToDesktopCloseWindowRequest(
 }
 
 /**
- * Нативный BrowserView не посылает DOM keydown в renderer. Эта capability
- * сообщает именно о фокусе WebContents встроенного браузера, а не его chrome.
+ * A native BrowserView does not dispatch DOM keydown events to the renderer.
+ * This capability reports focus in the embedded browser WebContents, not its
+ * renderer-side chrome.
  */
 export function subscribeToDesktopBrowserViewFocus(
   listener: DesktopBrowserFocusListener,

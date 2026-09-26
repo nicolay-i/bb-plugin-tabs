@@ -6,19 +6,19 @@ export interface ChatStatusInput {
 }
 
 export interface ChatStatus {
-  /** Working wins the colour when both signals are present. */
+  /** Working takes precedence for the status colour when both signals exist. */
   kind: ChatStatusKind;
   text: string;
 }
 
 /**
- * Единый короткий язык статусов для root-карточек и меню вкладок.
- * Спокойный чат не получает декоративную строку «Нет активности».
+ * A shared, concise status vocabulary for home cards and the tabs menu. Calm
+ * chats intentionally receive neither a decorative status nor a dot.
  */
 export function chatStatusFor(input: ChatStatusInput): ChatStatus | null {
   const parts: string[] = [];
-  if (input.isWorking) parts.push("Работает");
-  if (input.isUnread) parts.push("Непрочитанное");
+  if (input.isWorking) parts.push("Working");
+  if (input.isUnread) parts.push("Unread");
   if (parts.length === 0) return null;
 
   return {

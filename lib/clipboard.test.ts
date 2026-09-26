@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("copyTextToClipboard", () => {
-  it("использует современный Clipboard API", async () => {
+  it("handles behavior 1", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -31,7 +31,7 @@ describe("copyTextToClipboard", () => {
     expect(writeText).toHaveBeenCalledWith("https://bb.test/thread");
   });
 
-  it("переходит на textarea fallback, если Clipboard API отклонён", async () => {
+  it("handles behavior 2", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -48,7 +48,7 @@ describe("copyTextToClipboard", () => {
     expect(execCommand).toHaveBeenCalledWith("copy");
   });
 
-  it("переходит на textarea fallback, если Clipboard API недоступен", async () => {
+  it("handles behavior 3", async () => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: undefined,

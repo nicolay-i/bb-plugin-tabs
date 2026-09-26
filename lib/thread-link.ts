@@ -1,13 +1,13 @@
-/** Данные, достаточные для canonical route обычного проектного чата. */
+/** Data sufficient to create the canonical route for a regular project chat. */
 export interface ThreadLinkTarget {
   projectId: string;
   threadId: string;
 }
 
 /**
- * Строит абсолютную ссылку без доступа к private route helpers BB.
- * Для текущего чата сохраняет его фактический route: это покрывает personal
- * project, у которого BB использует projectless URL.
+ * Builds an absolute link without accessing BB's private route helpers. For
+ * the current chat it preserves the actual route, including BB's projectless
+ * personal-project URL.
  */
 export function threadLinkUrl(
   target: ThreadLinkTarget,

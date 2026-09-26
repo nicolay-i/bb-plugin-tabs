@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 
 const styles = await readFile(new URL("./tabs.css", import.meta.url), "utf8");
 
-describe("CSS-геометрия верхних вкладок", () => {
-  it("оставляет вручную отсортированные вкладки в одной горизонтальной линии", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     const strip = styles.match(
       /\.bb-chat-tabs-strip\s*\{([\s\S]*?)\n\}/u,
     )?.[1];
@@ -14,17 +14,17 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(strip).toContain("overflow-y: hidden;");
     expect(styles).not.toContain(".bb-chat-tabs-project-tabs");
     expect(styles).not.toContain(".bb-chat-tabs-project {");
-    expect(styles).toContain("flex: 0 0 11rem;");
+    expect(styles).toContain("flex: 0 0 9rem;");
     expect(styles).not.toContain('#bb-chat-tabs-overlay[data-row-count="3"]');
   });
 
-  it("оставляет у Close безопасный правый отступ внутри tab", () => {
+  it("handles behavior 2", () => {
     expect(styles).toMatch(
       /\.bb-chat-tab-action\s*\{[\s\S]*?margin-inline-end: 0\.25rem;/u,
     );
   });
 
-  it("показывает одну активную щель, а не две половины tab при drag-and-drop", () => {
+  it("handles behavior 3", () => {
     expect(styles).toContain('.bb-chat-tab[data-dragging="true"]');
     expect(styles).toContain("opacity: 0.52;");
     expect(styles).toContain(".bb-chat-tab-drop-slot {");
@@ -41,7 +41,7 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain("background: var(--ring, var(--primary));");
   });
 
-  it("не содержит жёстких цветов и опирается на токены BB темы", () => {
+  it("handles behavior 4", () => {
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/iu);
     expect(styles).toContain("var(--background)");
     expect(styles).toContain("var(--foreground)");
@@ -56,7 +56,7 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain("color-mix(in oklch");
   });
 
-  it("делает активную поверхность нейтрально-серой из токенов темы", () => {
+  it("handles behavior 5", () => {
     expect(styles).toContain("--bb-chat-tabs-active-background: color-mix(");
     expect(styles).toContain("var(--foreground) 20%");
     expect(styles).toContain("--bb-chat-tabs-active-border:");
@@ -69,7 +69,7 @@ describe("CSS-геометрия верхних вкладок", () => {
     );
   });
 
-  it("показывает theme-aware горизонтальную scrollbar сверху", () => {
+  it("handles behavior 6", () => {
     expect(styles).toMatch(
       /\.bb-chat-tabs-top-scrollbar\s*\{[\s\S]*?overflow-x: scroll;/u,
     );
@@ -86,12 +86,15 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain(
       '.bb-chat-tabs-shell[data-scrollable="false"] .bb-chat-tabs-top-scrollbar',
     );
-    expect(styles).toContain("--bb-chat-tabs-strip-height: 46px;");
+    expect(styles).toContain("--bb-chat-tabs-strip-height: 38px;");
+    expect(styles).toContain("--bb-chat-tabs-strip-height: 48px;");
+    expect(styles).toMatch(/\.bb-chat-tabs-strip\s*\{[^}]*padding: 0\.25rem 0\.5rem;/u);
+    expect(styles).not.toMatch(/\.bb-chat-tabs-shell\s*\{[^}]*border-bottom:/u);
     expect(styles).toContain("background: var(--bb-chat-tabs-scrollbar-track);");
     expect(styles).toContain("background: var(--bb-chat-tabs-scrollbar-thumb);");
   });
 
-  it("выводит быстрый список закреплённых чатов под root composer", () => {
+  it("handles behavior 7", () => {
     expect(styles).toContain(".bb-chat-tabs-homepage-pinned-list");
     expect(styles).toContain("section:has(");
     expect(styles).toContain('[data-bb-plugin="tabs"]');
@@ -114,7 +117,7 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).not.toContain(".bb-chat-tabs-pinned-list-menu {");
   });
 
-  it("повторяет компактную геометрию context menu из native sidebar", () => {
+  it("handles behavior 8", () => {
     expect(styles).toMatch(
       /\.bb-chat-tab-context-menu\s*\{[\s\S]*?min-width: 7rem;/u,
     );
@@ -133,7 +136,7 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain("margin: 0.25rem -0.25rem;");
   });
 
-  it("стилизует inline rename, context menu и rename modal токенами темы", () => {
+  it("handles behavior 9", () => {
     expect(styles).toContain(".bb-chat-tab-inline-rename {");
     expect(styles).toContain(".bb-chat-tab-title {\n  cursor: pointer;\n}");
     expect(styles).toMatch(
@@ -145,7 +148,7 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain(".bb-chat-tab-rename-overlay {");
   });
 
-  it("рисует отдельную theme-derived точку для непрочитанных сообщений", () => {
+  it("handles behavior 10", () => {
     expect(styles).toContain(".bb-chat-tab-unread {");
     expect(styles).toContain("background: var(--bb-chat-tabs-status-unread);");
     expect(styles).toContain(
@@ -153,15 +156,14 @@ describe("CSS-геометрия верхних вкладок", () => {
     );
   });
 
-  it("привязывает overlay к main chat pane, а не к правому aside", () => {
+  it("handles behavior 11", () => {
     expect(styles).toContain(
       "[data-thread-window]:not(aside [data-thread-window])",
     );
     expect(styles).toContain("position-anchor: --bb-chat-tabs-thread-window");
-    expect(styles).toContain("Правый `<aside>` намеренно исключён");
   });
 
-  it("оставляет место под overlay при одиночном leaf правой панели", () => {
+  it("handles behavior 12", () => {
     expect(styles).toContain(
       ":not(:has([data-split-resize-grid-boundary]))",
     );
@@ -169,16 +171,24 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain(
       "padding-block-start: var(--bb-chat-tabs-strip-height);",
     );
-    expect(styles).toContain(
-      "Одиночный leaf правой панели тоже несёт `[data-split-pane-id]`",
-    );
   });
 
-  it("даёт единый icon-trigger и подменю списка на desktop и compact/mobile", () => {
+  it("handles behavior 13", () => {
     expect(styles).toContain(".bb-chat-tabs-list-switcher {");
     expect(styles).toContain('.bb-chat-tabs-list-switcher[data-position="right"]');
-    expect(styles).toContain("padding: 0.125rem 0.5rem 0.25rem 0;");
+    expect(styles).toContain("padding: 0.25rem 0.5rem 0.25rem 0;");
     expect(styles).toContain(".bb-chat-tabs-list-trigger {");
+    expect(styles).toContain(".bb-chat-tabs-new-trigger {");
+    expect(styles).toMatch(/\.bb-chat-tabs-new-trigger\s*\{[^}]*background: transparent;[^}]*border: 0;/u);
+    expect(styles).toMatch(/\.bb-chat-tabs-new-switcher\s*\{[^}]*align-items: center;\s*\}/u);
+    expect(styles).toContain('.bb-chat-tabs-list-menu[data-state="closed"]');
+    expect(styles).toContain('.bb-chat-tabs-new-menu[data-state="closed"]');
+    expect(styles).toContain('.bb-chat-tabs-new-menu-more[data-pending="true"]::after');
+    expect(styles).toContain('.bb-chat-tabs-list-menu-search-input {');
+    expect(styles).toContain('.bb-chat-tabs-list-menu-search-results .bb-chat-tabs-list-menu-item[data-selected="true"]');
+    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(styles).toMatch(/\.bb-chat-tabs-list-trigger\s*\{[^}]*width: var\(--bb-chat-tabs-tab-height\);[^}]*height: var\(--bb-chat-tabs-tab-height\);/u);
+    expect(styles).toMatch(/\.bb-chat-tab\s*\{[^}]*height: var\(--bb-chat-tabs-tab-height\);/u);
     expect(styles).toContain(".bb-chat-tabs-list-menu {");
     expect(styles).toContain(".bb-chat-tabs-list-menu-meta {");
     expect(styles).toMatch(
@@ -193,18 +203,18 @@ describe("CSS-геометрия верхних вкладок", () => {
     expect(styles).toContain(".bb-chat-tabs-list-menu-unavailable-label {");
     expect(styles).toContain("max-height: min(\n    44rem,");
     expect(styles).toContain("--radix-dropdown-menu-content-available-height");
-    expect(styles).toContain("Radix portal: подменю остаётся одним и тем же");
     expect(styles).not.toContain(".bb-chat-tabs-mobile-switcher");
     expect(styles).not.toContain(".bb-chat-tabs-mobile-switcher-select");
     expect(styles).toContain("@media (max-width: 767px), (pointer: coarse)");
     expect(styles).toContain(
       '#bb-chat-tabs-overlay[data-docked="true"] {\n    z-index: 31;\n    display: block;',
     );
-    expect(styles).toContain("main page inset поднимается в свой слой `z-30`");
     expect(styles).toContain('[data-sidebar-shelf="open"]');
     expect(styles).toContain('[data-panel-shelf="shelf"]');
     expect(styles).toContain('[data-panel-shelf="full"]');
-    expect(styles).toContain("--bb-chat-tabs-strip-height: 3.25rem;");
+    expect(styles).toContain("--bb-chat-tabs-strip-height: 3.5rem;");
+    expect(styles).toContain("padding: 0.375rem 0.5rem;");
+    expect(styles).toContain("--bb-chat-tabs-tab-height: 2.75rem;");
     expect(styles).toContain("scroll-snap-type: x proximity;");
     expect(styles).toContain("-webkit-overflow-scrolling: touch;");
     expect(styles).toContain("width: 2.75rem;");
@@ -217,7 +227,7 @@ describe("CSS-геометрия верхних вкладок", () => {
       "background: color-mix(in oklch, var(--foreground) 20%, var(--border));",
     );
     expect(styles).toContain('data-pending="true"');
-    expect(styles).toContain("bb-chat-tabs-history-more-progress 1s linear forwards");
+    expect(styles).toContain("bb-chat-tabs-history-more-progress 300ms linear forwards");
     expect(styles).toContain(".bb-chat-tab-drop-slot {\n    display: none !important;");
   });
 });

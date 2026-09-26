@@ -9,22 +9,22 @@ import {
   setTabPinned,
 } from "./tabs-model";
 
-describe("модель вкладок", () => {
-  it("восстанавливает повреждённое состояние, дедуплицирует чат и сохраняет pin", () => {
+describe("Chat Tabs", () => {
+  it("handles behavior 1", () => {
     const state = normalizeTabsState({
       version: 1,
       entries: [
         {
           threadId: "thr_1",
           projectId: "proj_1",
-          title: "Первая подпись",
+          title: "First label",
           pinned: true,
           openedAt: 10,
         },
         {
           threadId: "thr_1",
           projectId: "proj_1",
-          title: "Новая подпись",
+          title: "New label",
           pinned: false,
           openedAt: 20,
         },
@@ -36,35 +36,35 @@ describe("модель вкладок", () => {
       {
         threadId: "thr_1",
         projectId: "proj_1",
-        title: "Новая подпись",
+        title: "New label",
         pinned: true,
         openedAt: 10,
       },
     ]);
   });
 
-  it("мигрирует несколько старых незакреплённых вкладок в одну последнюю preview", () => {
+  it("handles behavior 2", () => {
     const state = normalizeTabsState({
       version: 1,
       entries: [
         {
           threadId: "thr_old",
           projectId: "proj_a",
-          title: "Старая",
+          title: "Old",
           pinned: false,
           openedAt: 10,
         },
         {
           threadId: "thr_fixed",
           projectId: "proj_a",
-          title: "Закреплённая",
+          title: "Pinned",
           pinned: true,
           openedAt: 11,
         },
         {
           threadId: "thr_new",
           projectId: "proj_b",
-          title: "Новая",
+          title: "New",
           pinned: false,
           openedAt: 20,
         },
@@ -77,12 +77,12 @@ describe("модель вкладок", () => {
     ]);
   });
 
-  it("заменяет preview последним активным кандидатом, но не вытесняет её закреплённым чатом", () => {
+  it("handles behavior 3", () => {
     const preview = addTabCandidates(
       { version: 1, entries: [] },
       [
-        { threadId: "thr_a", projectId: "proj_a", title: "Сборка" },
-        { threadId: "thr_b", projectId: "proj_a", title: "Проверка" },
+        { threadId: "thr_a", projectId: "proj_a", title: "Build" },
+        { threadId: "thr_b", projectId: "proj_a", title: "Check" },
       ],
       100,
     );
@@ -90,7 +90,7 @@ describe("модель вкладок", () => {
       {
         threadId: "thr_b",
         projectId: "proj_a",
-        title: "Проверка",
+        title: "Check",
         pinned: false,
         openedAt: 100,
       },
@@ -99,12 +99,12 @@ describe("модель вкладок", () => {
     const pinned = setTabPinned(preview, "thr_b", true);
     const nextPreview = addTabCandidates(
       pinned,
-      [{ threadId: "thr_a", projectId: "proj_a", title: "Сборка API" }],
+      [{ threadId: "thr_a", projectId: "proj_a", title: "API build" }],
       200,
     );
     const refreshedPinned = addTabCandidates(
       nextPreview,
-      [{ threadId: "thr_b", projectId: "proj_a", title: "Проверка релиза" }],
+      [{ threadId: "thr_b", projectId: "proj_a", title: "Release check" }],
       300,
     );
 
@@ -112,34 +112,34 @@ describe("модель вкладок", () => {
       {
         threadId: "thr_b",
         projectId: "proj_a",
-        title: "Проверка релиза",
+        title: "Release check",
         pinned: true,
         openedAt: 100,
       },
       {
         threadId: "thr_a",
         projectId: "proj_a",
-        title: "Сборка API",
+        title: "API build",
         pinned: false,
         openedAt: 200,
       },
     ]);
   });
 
-  it("явное добавление закрепляет preview, а следующий чат создаёт новую", () => {
+  it("handles behavior 4", () => {
     const preview = addTabCandidates(
       { version: 1, entries: [] },
-      [{ threadId: "thr_a", projectId: "proj_a", title: "Сборка" }],
+      [{ threadId: "thr_a", projectId: "proj_a", title: "Build" }],
       100,
     );
     const fixed = openTabCandidate(
       preview,
-      { threadId: "thr_a", projectId: "proj_a", title: "Сборка" },
+      { threadId: "thr_a", projectId: "proj_a", title: "Build" },
       101,
     );
     const next = addTabCandidates(
       fixed,
-      [{ threadId: "thr_b", projectId: "proj_b", title: "Ревью" }],
+      [{ threadId: "thr_b", projectId: "proj_b", title: "Review" }],
       102,
     );
 
@@ -149,13 +149,13 @@ describe("модель вкладок", () => {
     ]);
   });
 
-  it("жёстко ограничивает даже повреждённое состояние только с pin", () => {
+  it("handles behavior 5", () => {
     const state = normalizeTabsState({
       version: 1,
       entries: Array.from({ length: 101 }, (_, index) => ({
         threadId: `thr_${index}`,
         projectId: "proj_a",
-        title: `Чат ${index}`,
+        title: `Chat ${index}`,
         pinned: true,
         openedAt: index,
       })),
@@ -165,7 +165,7 @@ describe("модель вкладок", () => {
     expect(state.entries.some((entry) => entry.threadId === "thr_0")).toBe(false);
   });
 
-  it("переставляет закреплённые вкладки в общем горизонтальном порядке", () => {
+  it("handles behavior 6", () => {
     const state = {
       version: 1 as const,
       entries: [
@@ -179,7 +179,7 @@ describe("модель вкладок", () => {
         {
           threadId: "thr_other",
           projectId: "proj_b",
-          title: "Другой проект",
+          title: "Other project",
           pinned: true,
           openedAt: 2,
         },
@@ -215,7 +215,6 @@ describe("модель вкладок", () => {
       "thr_preview",
       "thr_b",
     ]);
-    // Preview не становится drop-target'ом, но другой проект — становится.
     expect(
       movePinnedTab(state, "thr_a", "thr_preview", "before"),
     ).toEqual(state);
@@ -226,7 +225,7 @@ describe("модель вкладок", () => {
     ).toEqual(["thr_other", "thr_a", "thr_b", "thr_preview", "thr_c"]);
   });
 
-  it("закрывает сразу несколько вкладок независимо от их pin", () => {
+  it("handles behavior 7", () => {
     const state = closeTabs(
       {
         version: 1,
@@ -234,7 +233,7 @@ describe("модель вкладок", () => {
           {
             threadId: "thr_pinned",
             projectId: "proj_a",
-            title: "Закреплённая",
+            title: "Pinned",
             pinned: true,
             openedAt: 1,
           },
@@ -248,7 +247,7 @@ describe("модель вкладок", () => {
           {
             threadId: "thr_kept",
             projectId: "proj_b",
-            title: "Оставить",
+            title: "Keep",
             pinned: true,
             openedAt: 3,
           },
@@ -260,7 +259,7 @@ describe("модель вкладок", () => {
     expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_kept"]);
   });
 
-  it("закрывает только выбранную вкладку", () => {
+  it("handles behavior 8", () => {
     const state = closeTab(
       {
         version: 1,

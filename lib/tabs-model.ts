@@ -1,12 +1,12 @@
 /**
- * Детерминированная модель верхних вкладок.
+ * A deterministic model for the top chat tabs.
  *
- * Состояние содержит закреплённые вкладки и не более одной предварительной
- * (preview) вкладки. Preview — это запись с `pinned: false`: следующий новый
- * активный чат заменяет её, как временная вкладка в VS Code.
+ * State contains pinned tabs and no more than one temporary preview tab. A
+ * preview is an entry with `pinned: false`; the next new active chat replaces
+ * it, like VS Code's preview tab.
  *
- * Модуль не зависит от BB или React: сервер использует его для записи,
- * а фронтенд — для безопасного отображения состояния, пришедшего по RPC.
+ * This module does not depend on BB or React: the server writes the state and
+ * the frontend safely renders state received through RPC.
  */
 
 export const TAB_STATE_VERSION = 1 as const;
@@ -16,11 +16,11 @@ export const TABS_CHANGED_CHANNEL = "tabs-changed";
 export interface TabEntry {
   threadId: string;
   projectId: string;
-  /** Последний известный заголовок: нужен, пока sidebar ещё загружается. */
+  /** The latest known title, used while the sidebar is still loading. */
   title: string;
-  /** `false` обозначает единственную временную preview-вкладку. */
+  /** `false` identifies the one temporary preview tab. */
   pinned: boolean;
-  /** Момент первого добавления в верхнюю полосу. */
+  /** The time of first insertion into the top strip. */
   openedAt: number;
 }
 
@@ -81,14 +81,14 @@ function readCandidate(value: TabCandidate): TabCandidate | null {
   return { threadId, projectId, title };
 }
 
-/** Возвращает пустое состояние без разделяемого изменяемого массива. */
+/** Returns empty state without a shared mutable entries array. */
 export function createEmptyTabsState(): TabsState {
   return { ...EMPTY_STATE, entries: [] };
 }
 
 /**
- * Оставляет самый новый preview. Это также миграция прежней V1-модели,
- * в которой могло накопиться несколько незакреплённых вкладок.
+ * Keeps the newest preview. This also migrates old V1 state that accumulated
+ * more than one unpinned tab.
  */
 function keepLatestPreview(entries: readonly TabEntry[]): TabEntry[] {
   let previewIndex = -1;
@@ -96,8 +96,8 @@ function keepLatestPreview(entries: readonly TabEntry[]): TabEntry[] {
 
   entries.forEach((entry, index) => {
     if (entry.pinned) return;
-    // При одинаковом времени выбираем запись, расположенную позже: она была
-    // последним кандидатом в серверской очереди.
+    // Equal timestamps choose the later entry because it was the latest
+    // candidate in the server queue.
     if (entry.openedAt >= previewOpenedAt) {
       previewOpenedAt = entry.openedAt;
       previewIndex = index;
@@ -108,9 +108,9 @@ function keepLatestPreview(entries: readonly TabEntry[]): TabEntry[] {
 }
 
 /**
- * Приводит не доверенное KV/RPC-значение к V1, дедуплицируя одинаковые чаты.
- * Более поздняя запись побеждает по метаданным, но pin сохраняется, если он
- * присутствовал хотя бы в одной повреждённой дублирующей записи.
+ * Coerces an untrusted KV/RPC value to V1 while deduplicating identical chats.
+ * Later entries win their metadata, while a pin survives if at least one
+ * corrupt duplicate was pinned.
  */
 export function normalizeTabsState(value: unknown): TabsState {
   if (!isRecord(value) || value.version !== TAB_STATE_VERSION) {
@@ -148,11 +148,11 @@ function latestCandidate(candidates: readonly TabCandidate[]): TabCandidate | nu
 }
 
 /**
- * Синхронизирует временную preview-вкладку с последним кандидатом.
+ * Syncs the temporary preview tab with the latest candidate.
  *
- * Если чат уже закреплён, обновляются только его метаданные: выбор такого
- * чата не должен вытеснять незакреплённую preview-вкладку. Новый чат заменяет
- * прежнюю preview, но не затрагивает закреплённые записи.
+ * If the chat is already pinned, only its metadata changes; selecting it must
+ * not evict an unpinned preview. A new chat replaces the old preview without
+ * affecting pinned entries.
  */
 export function addTabCandidates(
   state: TabsState,
@@ -185,8 +185,8 @@ export function addTabCandidates(
 }
 
 /**
- * Явно добавляет чат как закреплённую вкладку. Если это была preview-вкладка,
- * она становится обычной и больше не будет заменена следующим активным чатом.
+ * Explicitly adds a chat as a pinned tab. If it was the preview tab, it becomes
+ * ordinary and will no longer be replaced by the next active chat.
  */
 export function openTabCandidate(
   state: TabsState,
@@ -241,8 +241,8 @@ export function setTabPinned(
     };
   }
 
-  // В публичном RPC оставляем обратимый unpin для совместимости, но сохраняем
-  // инвариант одной preview: раззакрепляемый чат заменяет старую preview.
+  // Preserve reversible unpinning in the public RPC for compatibility, while
+  // preserving the one-preview invariant: the unpinned chat replaces preview.
   return {
     version: TAB_STATE_VERSION,
     entries: [
@@ -255,10 +255,10 @@ export function setTabPinned(
 }
 
 /**
- * Перемещает закреплённую вкладку перед или после другой закреплённой вкладки
- * в общей горизонтальной последовательности. Проект не ограничивает ручной
- * порядок: имя проекта остаётся только метаданными/hover-подсказкой. Preview
- * намеренно не участвует, потому что она временная и всегда одна.
+ * Moves a pinned tab before or after another pinned tab in the one shared
+ * horizontal sequence. A project never constrains the manual order; its name
+ * is metadata and a hover hint only. Preview is deliberately excluded because
+ * it is temporary and there can be only one.
  */
 export function movePinnedTab(
   state: TabsState,
@@ -318,7 +318,7 @@ export function closeTab(state: TabsState, threadId: string): TabsState {
   return closeTabs(state, [threadId]);
 }
 
-/** Убирает несколько вкладок одним переходом состояния. */
+/** Removes several tabs in one state transition. */
 export function closeTabs(
   state: TabsState,
   threadIds: Iterable<string>,
@@ -350,8 +350,8 @@ export function tabsStatesEqual(left: TabsState, right: TabsState): boolean {
 }
 
 /**
- * Держим KV заведомо маленьким. При обычном переполнении удаляются только
- * самые старые незакреплённые вкладки; pin имеет приоритет.
+ * Keeps the KV deliberately small. Normal overflow removes only the oldest
+ * unpinned tabs; pins take priority.
  */
 function trimEntries(entries: readonly TabEntry[]): TabEntry[] {
   if (entries.length <= MAX_TAB_ENTRIES) return [...entries];
@@ -363,9 +363,9 @@ function trimEntries(entries: readonly TabEntry[]): TabEntry[] {
     .slice(0, excess)
     .map((entry) => entry.threadId);
 
-  // Обычный путь никогда не создаёт больше 100 pinned entries. Эта ветка
-  // нужна только для повреждённого/устаревшего KV: жёсткий лимит важнее
-  // сохранения всех pin, иначе состояние не пройдёт RPC-схему и не загрузится.
+  // The normal path never creates more than 100 pins. This branch only serves
+  // corrupt or stale KV; the strict limit is more important than retaining all
+  // pins, otherwise state cannot satisfy the RPC schema and load at all.
   if (removable.length < excess) {
     removable.push(
       ...entries
