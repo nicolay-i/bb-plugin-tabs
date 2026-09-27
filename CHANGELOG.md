@@ -2,6 +2,12 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## 0.1.2 — 2026-09-27
+
+### Fixed
+
+- Pinning the current preview no longer causes background activity in another chat to open a new temporary tab. Only opening an unpinned chat creates or replaces the preview; background work remains visible in history and working indicators.
+
 ## 0.1.1 — 2026-09-27
 
 ### Added

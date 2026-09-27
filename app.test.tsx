@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
-import { addTabCandidates, movePinnedTab, type TabsState } from "./lib/tabs-model";
+import { addTabCandidates, movePinnedTab, setTabPinned, type TabsState } from "./lib/tabs-model";
 import { visitTabHistory, type TabHistoryState } from "./lib/tab-history";
 import { recentProjects } from "./lib/recent-projects";
 
@@ -1691,6 +1691,53 @@ describe("Chat Tabs", () => {
     });
   });
 
+  it("does not replace a just-pinned preview with background work", async () => {
+    let state: TabsState = {
+      version: 1,
+      entries: [{ threadId: "thr_current", projectId: "proj_api", title: "Current chat", pinned: false, openedAt: 1 }],
+    };
+    let history: TabHistoryState = { version: 1, entries: [] };
+    const synced: string[] = [];
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [
+          sidebarThread("thr_current", "proj_api", "Current chat"),
+          sidebarThread("thr_work", "proj_api", "Background job", { indicator: "workflow", updatedAt: 20 }),
+        ],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state, history }),
+        tabs_sync_activity: ({ threads }) => {
+          synced.push(...threads.map((thread) => thread.threadId));
+          state = addTabCandidates(state, threads, 20);
+          return { state };
+        },
+        tabs_set_pinned: ({ threadId, pinned }) => {
+          state = setTabPinned(state, threadId, pinned);
+          return { state };
+        },
+        tabs_history_visit: (candidate) => {
+          history = visitTabHistory(history, candidate, 20);
+          return { history };
+        },
+      },
+    });
+    const tab = await slot.findByRole("button", { name: "Current chat" });
+    expect(tab.closest(".bb-chat-tab")?.getAttribute("data-preview")).toBe("true");
+    fireEvent.doubleClick(tab);
+    await waitFor(() => {
+      expect(state.entries).toEqual([expect.objectContaining({ threadId: "thr_current", pinned: true })]);
+      expect(history.entries.some((entry) => entry.threadId === "thr_work")).toBe(true);
+    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(slot.container.querySelectorAll('[data-preview="true"]')).toHaveLength(0);
+    expect(synced).not.toContain("thr_work");
+  });
+
   it("lists every working chat in history while keeping the viewed tab active", async () => {
     let state: TabsState = {
       version: 1,
@@ -1726,11 +1773,11 @@ describe("Chat Tabs", () => {
       expect(history.entries.slice(0, 2).map((entry) => entry.threadId)).toEqual([
         "thr_second", "thr_first",
       ]);
-      expect(state.entries.find((entry) => !entry.pinned)?.threadId).toBe("thr_second");
+      expect(state.entries.every((entry) => entry.pinned)).toBe(true);
     });
     await waitFor(() => {
       expect(slot.getByRole("button", { name: "Current chat" }).getAttribute("aria-current")).toBe("page");
-      expect(slot.getByRole("button", { name: "Second job, work is running" }).getAttribute("aria-current")).toBeNull();
+      expect(slot.queryByRole("button", { name: "Second job, work is running" })).toBeNull();
     });
   });
 
@@ -2152,12 +2199,12 @@ describe("Chat Tabs", () => {
     expect(parentTab.querySelector(".bb-chat-tab-working")).not.toBeNull();
   });
 
-  it("handles behavior 19", async () => {
+  it("does not create a preview for a background workflow without a viewed chat", async () => {
     let received: readonly { threadId: string; projectId: string; title: string }[] = [];
     const overlay = app.appOverlays[0];
     if (overlay === undefined) throw new Error("App overlay is not registered");
 
-    renderSlot<{}, typeof rpcContract>(overlay, {}, {
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
       context: { projectId: "proj_api", threadId: null },
       sidebarThreads: {
         threads: [
@@ -2191,15 +2238,9 @@ describe("Chat Tabs", () => {
       },
     });
 
-    await waitFor(() => {
-      expect(received).toEqual([
-        {
-          threadId: "thr_parent",
-          projectId: "proj_api",
-          title: "Parent chat",
-        },
-      ]);
-    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(received).toEqual([]);
+    expect(slot.container.querySelectorAll('[data-preview="true"]')).toHaveLength(0);
   });
 
   it("handles behavior 20", async () => {

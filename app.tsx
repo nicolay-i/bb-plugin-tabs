@@ -84,23 +84,6 @@ function candidateKey(candidate: TabCandidate | null): string {
     : `${candidate.threadId}\u0000${candidate.projectId}\u0000${candidate.title}`;
 }
 
-function latestWorkingCandidate(
-  threads: readonly PluginSidebarThread[],
-  workIndex: ThreadWorkIndex,
-): { candidate: TabCandidate; updatedAt: number } | null {
-  let latest: PluginSidebarThread | null = null;
-  for (const thread of threads) {
-    if (!workIndex.directlyWorkingThreadIds.has(thread.id)) continue;
-    if (latest === null || thread.updatedAt >= latest.updatedAt) latest = thread;
-  }
-  return latest === null
-    ? null
-    : {
-        candidate: candidateForThread(rootThreadFor(latest, workIndex)),
-        updatedAt: latest.updatedAt,
-      };
-}
-
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
@@ -1206,17 +1189,6 @@ function ChatTabsOverlay() {
     void recordHistory(currentCandidate);
   }, [currentHistoryId, recordHistory, showTabsOnCurrentLayout]);
 
-  const workingActivity = useMemo(
-    () =>
-      sidebar.status === "ready"
-        ? latestWorkingCandidate(sidebar.threads, workIndex)
-        : null,
-    [sidebar.status, sidebar.threads, workIndex],
-  );
-  const latestActivity = workingActivity?.candidate ?? null;
-  const activityKey = workingActivity === null
-    ? ""
-    : `${candidateKey(workingActivity.candidate)}\u0000${workingActivity.updatedAt}`;
   const workingHistory = useMemo(() => {
     const roots = new Map<string, { candidate: TabCandidate; updatedAt: number }>();
     if (sidebar.status !== "ready") return roots;
@@ -1263,46 +1235,21 @@ function ChatTabsOverlay() {
   }, [context.threadId === null, recordHistory, showTabsOnCurrentLayout, workingHistory]);
 
   const lastCurrentKey = useRef<string | null>(null);
-  const lastActivityKey = useRef<string | null>(null);
   useEffect(() => {
-    if (!showTabsOnCurrentLayout && context.threadId !== null) return;
-    if (state === null && context.threadId !== null) return;
+    if (!showTabsOnCurrentLayout || state === null) return;
 
     const currentChanged = currentKey !== lastCurrentKey.current;
-    const activityChanged = activityKey !== lastActivityKey.current;
     lastCurrentKey.current = currentKey;
+    // Only an explicitly viewed, unpinned chat may claim the preview. Keep
+    // the missing-preview recovery without turning background work into a tab.
     if (
       currentCandidate !== null &&
-      (currentChanged || !state?.entries.some((entry) => !entry.pinned)) &&
+      (currentChanged || !state.entries.some((entry) => !entry.pinned)) &&
       !stateContainsCandidate(state, currentCandidate)
     ) {
       void syncActivity([currentCandidate]);
-      return;
     }
-
-    // The viewed chat owns the single preview. Background work can use it
-    // only when the viewed chat is already pinned (or there is no current chat).
-    const currentIsPinned = state?.entries.some(
-      (entry) => entry.threadId === currentCandidate?.threadId && entry.pinned,
-    );
-    if (currentCandidate !== null && !currentIsPinned) return;
-    lastActivityKey.current = activityKey;
-    if (
-      latestActivity !== null &&
-      activityChanged &&
-      !stateContainsCandidate(state, latestActivity)
-    ) {
-      void syncActivity([latestActivity]);
-    }
-  }, [
-    activityKey,
-    currentCandidate,
-    currentKey,
-    latestActivity,
-    showTabsOnCurrentLayout,
-    state,
-    syncActivity,
-  ]);
+  }, [currentCandidate, currentKey, showTabsOnCurrentLayout, state, syncActivity]);
 
   const tabs = useMemo(
     () =>
