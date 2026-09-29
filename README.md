@@ -20,7 +20,8 @@ synthetic demonstration data.
 
 - **VS Code-style preview tab.** One unpinned preview represents a chat you opened but
   have not pinned. Opening another unpinned chat replaces it; background work
-  never opens a preview. Its italic title makes the temporary state clear.
+  never opens a preview. Closing it stays closed across reloads and other windows
+  until you explicitly open that chat again. Its italic title makes the temporary state clear.
 - **Pinned chats with a global manual order.** Double-click a preview tab to
   pin it. Drag pinned tabs between projects in one shared horizontal sequence;
   the preview always remains last and is never draggable. Double-click a pinned

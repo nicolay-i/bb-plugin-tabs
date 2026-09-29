@@ -98,6 +98,27 @@ describe("Chat Tabs", () => {
     ).toHaveLength(3);
   });
 
+  it("does not let a stale renderer recreate a closed preview", async () => {
+    const host = await loadPlugin();
+    const candidate = { threadId: "thr_closed", projectId: "proj_api", title: "Closed chat" };
+
+    await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+    const closed = await host.harness.behavior.callRpc("tabs_close", { threadId: candidate.threadId });
+    expect(closed.removed).toBe(true);
+    expect(closed.state.entries).toEqual([]);
+
+    const stale = await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+    expect(stale.state.entries).toEqual([]);
+    expect((await host.harness.behavior.callRpc("tabs_list", null)).state.entries).toEqual([]);
+
+    const reopened = await host.harness.behavior.callRpc("tabs_sync_activity", {
+      threads: [candidate], reopen: true,
+    });
+    expect(reopened.state.entries).toEqual([
+      expect.objectContaining({ threadId: candidate.threadId, pinned: false }),
+    ]);
+  });
+
   it("handles behavior 4", async () => {
     const host = await loadPlugin();
 

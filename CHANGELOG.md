@@ -2,6 +2,13 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## 0.1.3 — 2026-09-28
+
+### Fixed
+
+- Closing a temporary preview now persists across page reloads and other windows. Stale clients can no longer recreate a closed tab through automatic sync; explicitly opening the chat still restores it.
+- Background activity no longer opens temporary tabs; only navigation to an unpinned chat does.
+
 ## 0.1.2 — 2026-09-27
 
 ### Fixed

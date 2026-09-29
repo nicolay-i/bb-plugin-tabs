@@ -29,6 +29,7 @@ import {
 
 const STATE_KEY = "tabs.state.v1";
 const HISTORY_KEY = "tabs.history.v1";
+const CLOSED_THREADS_KEY = "tabs.closedThreads.v1";
 const MAX_WORKFLOW_RPC_CONCURRENCY = 8;
 const MAX_THREAD_AVAILABILITY_CONCURRENCY = 8;
 const THREAD_AVAILABILITY_RETRY_MS = 30_000;
@@ -124,7 +125,11 @@ export const rpcContract = defineRpcContract({
   /** Updates the one preview tab from the latest active candidate. */
   tabs_sync_activity: {
     input: z
-      .object({ threads: z.array(tabCandidateSchema).max(100) })
+      .object({
+        threads: z.array(tabCandidateSchema).max(100),
+        // A real route transition may reopen a closed tab; a stale renderer may not.
+        reopen: z.boolean().optional(),
+      })
       .strict(),
     output: z.object({ state: tabsStateSchema }).strict(),
   },
@@ -246,6 +251,13 @@ export default async function plugin(bb: BbPluginApi) {
   async function readState(): Promise<TabsState> {
     const stored = await bb.storage.kv.get<unknown>(STATE_KEY);
     return stored === undefined ? createEmptyTabsState() : normalizeTabsState(stored);
+  }
+
+  async function readClosedThreadIds(): Promise<string[]> {
+    const stored = await bb.storage.kv.get<unknown>(CLOSED_THREADS_KEY);
+    return Array.isArray(stored)
+      ? [...new Set(stored.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(-100)
+      : [];
   }
 
   async function readHistory(): Promise<TabHistoryState> {
@@ -400,11 +412,19 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   function mutate(
-    apply: (current: TabsState) => TabsState,
+    apply: (current: TabsState, closedIds: readonly string[]) => TabsState,
+    updateClosedIds?: (current: TabsState, next: TabsState, closedIds: readonly string[]) => string[],
   ): Promise<TabsState> {
     const operation = mutationTail.then(async () => {
       const current = await readState();
-      const next = normalizeTabsState(apply(current));
+      const closedIds = updateClosedIds === undefined ? [] : await readClosedThreadIds();
+      const next = normalizeTabsState(apply(current, closedIds));
+      const updatedClosedIds = updateClosedIds?.(current, next, closedIds);
+      if (updatedClosedIds !== undefined &&
+          (updatedClosedIds.length !== closedIds.length ||
+            updatedClosedIds.some((id, index) => id !== closedIds[index]))) {
+        await bb.storage.kv.set(CLOSED_THREADS_KEY, updatedClosedIds);
+      }
       if (!tabsStatesEqual(current, next)) {
         await bb.storage.kv.set(STATE_KEY, next);
         bb.realtime.publish(TABS_CHANGED_CHANNEL, next);
@@ -614,17 +634,26 @@ export default async function plugin(bb: BbPluginApi) {
             },
       };
     },
-    tabs_sync_activity: async ({ threads }) => {
+    tabs_sync_activity: async ({ threads, reopen }) => {
       // Two windows can observe the same sidebar snapshot at once. Coalesce
       // exact input before the mutation queue while preserving candidate order
       // and therefore the “latest becomes preview” semantics.
-      const requestKey = JSON.stringify(threads);
+      const requestKey = JSON.stringify({ threads, reopen: reopen === true });
       const existing = activitySyncInFlight.get(requestKey);
       if (existing !== undefined) return existing;
 
       const operation = (async () => ({
-        state: await mutate((current) =>
-          addTabCandidates(current, threads as TabCandidate[], Date.now()),
+        state: await mutate(
+          (current, closedIds) => {
+            const candidate = threads.at(-1);
+            if (candidate !== undefined && reopen !== true && closedIds.includes(candidate.threadId)) {
+              return current;
+            }
+            return addTabCandidates(current, threads as TabCandidate[], Date.now());
+          },
+          (_current, _next, closedIds) => reopen === true
+            ? closedIds.filter((id) => id !== threads.at(-1)?.threadId)
+            : [...closedIds],
         ),
       }))();
       activitySyncInFlight.set(requestKey, operation);
@@ -656,8 +685,9 @@ export default async function plugin(bb: BbPluginApi) {
       }
     },
     tabs_open: async (thread) => ({
-      state: await mutate((current) =>
-        openTabCandidate(current, thread as TabCandidate, Date.now()),
+      state: await mutate(
+        (current) => openTabCandidate(current, thread as TabCandidate, Date.now()),
+        (_current, _next, closedIds) => closedIds.filter((id) => id !== thread.threadId),
       ),
     }),
     tabs_set_pinned: async ({ threadId, pinned }) => ({
@@ -665,11 +695,16 @@ export default async function plugin(bb: BbPluginApi) {
     }),
     tabs_close: async ({ threadId }) => {
       let removed = false;
-      const state = await mutate((current) => {
-        const next = closeTab(current, threadId);
-        removed = next.entries.length !== current.entries.length;
-        return next;
-      });
+      const state = await mutate(
+        (current) => {
+          const next = closeTab(current, threadId);
+          removed = next.entries.length !== current.entries.length;
+          return next;
+        },
+        (_current, _next, closedIds) => removed
+          ? [...closedIds.filter((id) => id !== threadId), threadId].slice(-100)
+          : [...closedIds],
+      );
       return { state, removed };
     },
     tabs_move: async ({ sourceThreadId, targetThreadId, position }) => ({

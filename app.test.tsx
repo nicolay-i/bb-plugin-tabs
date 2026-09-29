@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot, type RenderSlotOptions } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import { addTabCandidates, movePinnedTab, setTabPinned, type TabsState } from "./lib/tabs-model";
@@ -1551,7 +1551,7 @@ describe("Chat Tabs", () => {
     });
   });
 
-  it("creates the viewed preview when the open chat is missing from the sidebar", async () => {
+  it("does not invent a preview for an unchanged route omitted from the sidebar", async () => {
     let state: TabsState = { version: 1, entries: [] };
     const synced: string[] = [];
     const overlay = app.appOverlays[0];
@@ -1574,17 +1574,17 @@ describe("Chat Tabs", () => {
         },
       },
     });
-    await waitFor(() => {
-      expect(synced).toContain("thr_current");
-      expect(state.entries.at(-1)).toEqual(expect.objectContaining({
-        threadId: "thr_current", pinned: false,
-      }));
-      expect(slot.getByRole("button", { name: "Viewed but omitted" })).toBeTruthy();
-    });
+    await waitFor(() => expect(slot.inspection.rpcCalls.some((call) => call.method === "tabs_resolve_current")).toBe(true));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(synced).toEqual([]);
+    expect(state.entries).toEqual([]);
+    expect(slot.queryByRole("button", { name: "Viewed but omitted" })).toBeNull();
   });
 
-  it("restores a missing preview for the same viewed chat after state changes", async () => {
-    let state: TabsState = { version: 1, entries: [] };
+  it("does not reopen a preview closed in another window while the route stays unchanged", async () => {
+    let state: TabsState = { version: 1, entries: [
+      { threadId: "thr_current", projectId: "proj_api", title: "Current chat", pinned: false, openedAt: 1 },
+    ] };
     let syncCount = 0;
     const overlay = app.appOverlays[0];
     if (overlay === undefined) throw new Error("App overlay is not registered");
@@ -1603,17 +1603,72 @@ describe("Chat Tabs", () => {
         },
       },
     });
-    await waitFor(() => expect(syncCount).toBe(1));
+    await slot.findByRole("button", { name: "Current chat" });
     state = { version: 1, entries: [] };
     await slot.emitRealtime("tabs-changed", state);
-    await waitFor(() => {
-      expect(syncCount).toBe(2);
-      expect(slot.getByRole("button", { name: "Current chat" })).toBeTruthy();
-    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(syncCount).toBe(0);
+    expect(slot.queryByRole("button", { name: "Current chat" })).toBeNull();
   });
 
-  it("keeps the viewed preview when current chat and work arrive together", async () => {
-    let state: TabsState = { version: 1, entries: [] };
+  it("keeps a closed preview closed after page reload, even with a pinned fallback", async () => {
+    let state: TabsState = {
+      version: 1,
+      entries: [
+        { threadId: "thr_other", projectId: "proj_api", title: "Other chat", pinned: true, openedAt: 1 },
+        { threadId: "thr_current", projectId: "proj_api", title: "Current chat", pinned: false, openedAt: 2 },
+      ],
+    };
+    const synced: string[] = [];
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const options = {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [
+          sidebarThread("thr_current", "proj_api", "Current chat"),
+          sidebarThread("thr_other", "proj_api", "Other chat"),
+        ],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state }),
+        tabs_sync_activity: ({ threads }) => {
+          synced.push(...threads.map((thread) => thread.threadId));
+          state = addTabCandidates(state, threads, Date.now());
+          return { state };
+        },
+        tabs_close: ({ threadId }) => {
+          const removed = state.entries.some((entry) => entry.threadId === threadId);
+          state = { ...state, entries: state.entries.filter((entry) => entry.threadId !== threadId) };
+          return { state, removed };
+        },
+      },
+    } satisfies RenderSlotOptions<typeof rpcContract>;
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, options);
+    await slot.findByRole("button", { name: "Current chat" });
+    fireEvent.click(slot.getByRole("button", { name: "Close tab “Current chat”" }));
+    await waitFor(() => expect(slot.inspection.sidebarActionCalls).toContainEqual({
+      method: "open", threadId: "thr_other", options: undefined,
+    }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_other"]);
+    expect(synced).toEqual([]);
+    expect(slot.queryByRole("button", { name: "Current chat" })).toBeNull();
+
+    slot.unmount();
+    const reloaded = renderSlot<{}, typeof rpcContract>(overlay, {}, options);
+    await reloaded.findByRole("button", { name: "Other chat" });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(synced).toEqual([]);
+    expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_other"]);
+    expect(reloaded.queryByRole("button", { name: "Current chat" })).toBeNull();
+  });
+
+  it("keeps a persisted preview when current chat and work arrive together", async () => {
+    let state: TabsState = { version: 1, entries: [
+      { threadId: "thr_current", projectId: "proj_api", title: "Current chat", pinned: false, openedAt: 1 },
+    ] };
     let history: TabHistoryState = {
       version: 1,
       entries: [{ threadId: "thr_work", projectId: "proj_api", title: "Working chat", visitedAt: 1 }],
@@ -1647,11 +1702,10 @@ describe("Chat Tabs", () => {
       },
     });
     await waitFor(() => {
-      expect(synced).toContain("thr_current");
       expect(state.entries.at(-1)?.threadId).toBe("thr_current");
       expect(history.entries[0]?.threadId).toBe("thr_work");
     });
-    expect(synced).not.toContain("thr_work");
+    expect(synced).toEqual([]);
     expect(await slot.findByRole("button", { name: "Current chat" })).toBeTruthy();
   });
 
@@ -2243,7 +2297,7 @@ describe("Chat Tabs", () => {
     expect(slot.container.querySelectorAll('[data-preview="true"]')).toHaveLength(0);
   });
 
-  it("handles behavior 20", async () => {
+  it("does not turn work on the current unchanged route into a preview", async () => {
     let received: readonly { threadId: string; projectId: string; title: string }[] = [];
     const overlay = app.appOverlays[0];
     if (overlay === undefined) throw new Error("App overlay is not registered");
@@ -2292,15 +2346,8 @@ describe("Chat Tabs", () => {
       },
     });
 
-    await waitFor(() => {
-      expect(received).toEqual([
-        {
-          threadId: "thr_active",
-          projectId: "proj_api",
-          title: "Active build",
-        },
-      ]);
-    });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(received).toEqual([]);
   });
 
   it("handles behavior 21", async () => {

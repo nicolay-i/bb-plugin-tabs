@@ -161,6 +161,7 @@ interface TabsListRequest {
 interface ActivitySyncRequest {
   key: string;
   threads: TabCandidate[];
+  reopen: boolean;
 }
 
 interface HistoryVisitRequest {
@@ -363,12 +364,13 @@ function useTabsState(enabled = true) {
   });
 
   const syncActivity = useCallback(
-    (threads: readonly TabCandidate[]): Promise<void> => {
+    (threads: readonly TabCandidate[], reopen = false): Promise<void> => {
       const candidates = [...threads];
       if (candidates.length === 0) return Promise.resolve();
       const request: ActivitySyncRequest = {
-        key: activityRequestKey(candidates),
+        key: `${activityRequestKey(candidates)}\u0000${reopen}`,
         threads: candidates,
+        reopen,
       };
       const inFlight = activitySyncInFlightRef.current;
       if (inFlight !== null) {
@@ -397,6 +399,7 @@ function useTabsState(enabled = true) {
             try {
               const result = await rpcRef.current.call("tabs_sync_activity", {
                 threads: next.threads,
+                reopen: next.reopen,
               });
               acceptState(result.state);
             } catch (cause) {
@@ -1181,8 +1184,6 @@ function ChatTabsOverlay() {
     return resolvedCurrent?.threadId === context.threadId
       ? resolvedCurrent.candidate : null;
   }, [context.threadId, sidebar.status, sidebarCurrent, resolvedCurrent]);
-  const currentKey = candidateKey(currentCandidate);
-
   const currentHistoryId = currentCandidate?.threadId ?? null;
   useEffect(() => {
     if (!showTabsOnCurrentLayout || currentCandidate === null) return;
@@ -1234,22 +1235,25 @@ function ChatTabsOverlay() {
     })();
   }, [context.threadId === null, recordHistory, showTabsOnCurrentLayout, workingHistory]);
 
-  const lastCurrentKey = useRef<string | null>(null);
+  const lastRouteThreadId = useRef(context.threadId);
+  const pendingOpenedThreadId = useRef<string | null>(null);
   useEffect(() => {
-    if (!showTabsOnCurrentLayout || state === null) return;
-
-    const currentChanged = currentKey !== lastCurrentKey.current;
-    lastCurrentKey.current = currentKey;
-    // Only an explicitly viewed, unpinned chat may claim the preview. Keep
-    // the missing-preview recovery without turning background work into a tab.
-    if (
-      currentCandidate !== null &&
-      (currentChanged || !state.entries.some((entry) => !entry.pinned)) &&
-      !stateContainsCandidate(state, currentCandidate)
-    ) {
-      void syncActivity([currentCandidate]);
+    if (context.threadId !== lastRouteThreadId.current) {
+      lastRouteThreadId.current = context.threadId;
+      pendingOpenedThreadId.current = context.threadId;
     }
-  }, [currentCandidate, currentKey, showTabsOnCurrentLayout, state, syncActivity]);
+    if (
+      !showTabsOnCurrentLayout || state === null || currentCandidate === null ||
+      pendingOpenedThreadId.current !== currentCandidate.threadId
+    ) return;
+
+    pendingOpenedThreadId.current = null;
+    // The persisted entries are the authority on which tabs are open. A page
+    // reload of an unchanged route must not reopen a previously closed preview.
+    if (!stateContainsCandidate(state, currentCandidate)) {
+      void syncActivity([currentCandidate], true);
+    }
+  }, [context.threadId, currentCandidate, showTabsOnCurrentLayout, state, syncActivity]);
 
   const tabs = useMemo(
     () =>
@@ -1444,9 +1448,14 @@ function ChatTabsOverlay() {
   const openThread = useCallback(
     (candidate: TabCandidate) => {
       void recordHistory(candidate);
+      // Selecting the current chat from History is still an explicit open,
+      // even if the host does not change the route for a same-thread action.
+      if (candidate.threadId === context.threadId && !stateContainsCandidate(state, candidate)) {
+        void syncActivity([candidate], true);
+      }
       threadActions.open(candidate.threadId);
     },
-    [recordHistory, threadActions],
+    [context.threadId, recordHistory, state, syncActivity, threadActions],
   );
 
   const closeTab = useCallback(
