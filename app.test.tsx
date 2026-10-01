@@ -1122,6 +1122,40 @@ describe("Chat Tabs", () => {
     expect(strip?.querySelector(".bb-chat-tabs-new-switcher")).toBe(
       strip?.lastElementChild,
     );
+    const openMenu = () => document.body.querySelector<HTMLElement>('.bb-chat-tabs-list-menu[data-state="open"]');
+    const waitPastLeaveDelay = () => act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    });
+    fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
+    await waitFor(() => expect(openMenu()).not.toBeNull(), { timeout: 900 });
+    // Crossing from the icon into the list must not dismiss the hover preview.
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    fireEvent.pointerEnter(openMenu()!, { pointerType: "mouse" });
+    await waitPastLeaveDelay();
+    expect(openMenu()).not.toBeNull();
+    fireEvent.pointerLeave(openMenu()!, { pointerType: "mouse" });
+    await waitFor(() => expect(openMenu()).toBeNull());
+
+    fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
+    await waitFor(() => expect(openMenu()).not.toBeNull(), { timeout: 900 });
+    // First click latches the hover preview and cancels a pending dismissal.
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
+    fireEvent.pointerLeave(openMenu()!, { pointerType: "mouse" });
+    await waitPastLeaveDelay();
+    expect(openMenu()).not.toBeNull();
+    fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
+    await waitFor(() => expect(openMenu()).toBeNull());
+
+    // Click-open stays open after leaving; an outside click dismisses it.
+    fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
+    await waitFor(() => expect(openMenu()).not.toBeNull());
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    await waitPastLeaveDelay();
+    expect(openMenu()).not.toBeNull();
+    fireEvent.pointerDown(document.body, { pointerType: "mouse", button: 0 });
+    await waitFor(() => expect(openMenu()).toBeNull());
+
     fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
     expect(document.body.querySelector(".bb-chat-tabs-list-menu")).toBeNull();
     const menu = await waitFor(() => {
@@ -1141,7 +1175,30 @@ describe("Chat Tabs", () => {
     const search = menu.querySelector<HTMLInputElement>('input[aria-label="Search chats by title"]');
     if (search === null) throw new Error("Chat search input was not found");
     await waitFor(() => expect(document.activeElement).toBe(search));
+    const historyItem = menu.querySelector<HTMLElement>('[data-thread-id="thr_history_one"]');
+    if (historyItem === null) throw new Error("History item was not found");
+    fireEvent.pointerMove(historyItem, { pointerType: "mouse", clientX: 50 });
+    expect(document.activeElement).toBe(search);
+    fireEvent.pointerLeave(historyItem, { pointerType: "mouse" });
+    expect(document.activeElement).toBe(search);
+    // Arrow navigation also works before entering a search query, without moving input focus.
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(menu.querySelector('[data-selected="true"]')?.getAttribute("data-thread-id")).toBe("thr_history_two");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(menu.querySelector('[data-selected="true"]')?.getAttribute("data-thread-id")).toBe("thr_pinned");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(menu.querySelector('[data-selected="true"]')?.getAttribute("data-thread-id")).toBe("thr_history_one");
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(menu.querySelector('[data-selected="true"]')?.getAttribute("data-thread-id")).toBe("thr_pinned");
+    expect(document.activeElement).toBe(search);
+    expect(search.getAttribute("aria-activedescendant")).toBe(menu.querySelector('[data-selected="true"]')?.id);
     fireEvent.change(search, { target: { value: "seond" } });
+    const searchResult = menu.querySelector<HTMLElement>('[data-thread-id="thr_history_two"]');
+    if (searchResult === null) throw new Error("Search result was not found");
+    fireEvent.pointerMove(searchResult, { pointerType: "mouse", clientX: 60 });
+    expect(document.activeElement).toBe(search);
+    fireEvent.pointerLeave(searchResult, { pointerType: "mouse" });
+    expect(document.activeElement).toBe(search);
     expect(menu.querySelectorAll(".bb-chat-tabs-list-menu-search-results [data-thread-id]")).toHaveLength(1);
     expect(menu.querySelector('[data-thread-id="thr_history_one"]')).toBeNull();
     fireEvent.keyDown(search, { key: "ArrowDown" });

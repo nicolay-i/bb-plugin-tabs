@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 const styles = await readFile(new URL("./tabs.css", import.meta.url), "utf8");
 
 describe("Chat Tabs", () => {
+  it("highlights pointer hover independently of menu item focus", () => {
+    expect(styles).toContain('.bb-chat-tabs-list-menu-item:not([data-disabled]):hover,');
+    expect(styles).toContain('.bb-chat-tabs-list-menu-more:hover,');
+    expect(styles).toMatch(/\.bb-chat-tabs-list-menu-item\[data-selected="true"\]\s*\{[^}]*background: var\(--muted\);/u);
+  });
   it("handles behavior 1", () => {
     const strip = styles.match(
       /\.bb-chat-tabs-strip\s*\{([\s\S]*?)\n\}/u,
@@ -185,7 +190,7 @@ describe("Chat Tabs", () => {
     expect(styles).toContain('.bb-chat-tabs-new-menu[data-state="closed"]');
     expect(styles).toContain('.bb-chat-tabs-new-menu-more[data-pending="true"]::after');
     expect(styles).toContain('.bb-chat-tabs-list-menu-search-input {');
-    expect(styles).toContain('.bb-chat-tabs-list-menu-search-results .bb-chat-tabs-list-menu-item[data-selected="true"]');
+    expect(styles).toContain('.bb-chat-tabs-list-menu-item[data-selected="true"]');
     expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
     expect(styles).toMatch(/\.bb-chat-tabs-list-trigger\s*\{[^}]*width: var\(--bb-chat-tabs-tab-height\);[^}]*height: var\(--bb-chat-tabs-tab-height\);/u);
     expect(styles).toMatch(/\.bb-chat-tab\s*\{[^}]*height: var\(--bb-chat-tabs-tab-height\);/u);
@@ -219,7 +224,9 @@ describe("Chat Tabs", () => {
     expect(styles).toContain("-webkit-overflow-scrolling: touch;");
     expect(styles).toContain("width: 2.75rem;");
     expect(styles).toContain("min-height: 2.75rem;");
-    expect(styles).toContain(".bb-chat-tabs-list-menu-more {");
+    expect(styles).toMatch(
+      /\.bb-chat-tabs-list-menu-more\s*\{[^}]*font-size: 0\.75rem;[^}]*font-weight: 500;[^}]*line-height: 1rem;/u,
+    );
     expect(styles).toContain(
       ".bb-chat-tabs-list-menu-history-page-separator {",
     );

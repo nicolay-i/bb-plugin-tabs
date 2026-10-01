@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type PointerEvent,
 } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
@@ -891,10 +892,10 @@ function ChatTabsOverlay() {
     if (pointerType !== "mouse") return;
     if (listHoverOpenTimerRef.current !== null) window.clearTimeout(listHoverOpenTimerRef.current);
     listHoverOpenTimerRef.current = null;
-    if (!tabListMenuOpen) return;
+    if (!tabListMenuOpen || !listOpenedByHoverRef.current) return;
     listHoverCloseTimerRef.current = window.setTimeout(() => {
       listHoverCloseTimerRef.current = null;
-      setTabListMenuOpen(false);
+      if (listOpenedByHoverRef.current) setTabListMenuOpen(false);
     }, MENU_LEAVE_DELAY_MS);
   };
 
@@ -1316,6 +1317,8 @@ function ChatTabsOverlay() {
   );
   const visibleHistoryMenuTabs = menuHistoryTabs.slice(0, historyVisibleCount);
   const hasMoreHistory = visibleHistoryMenuTabs.length < menuHistoryTabs.length;
+  const navigableMenuTabs = (searchActive ? searchResults : [...menuPinnedTabs, ...visibleHistoryMenuTabs])
+    .filter((tab) => tab.unavailableReason === null);
   const tabListMenuHasNavigation =
     showTabListButton && menuPinnedTabs.length + menuHistoryTabs.length > 1;
 
@@ -1610,6 +1613,7 @@ function ChatTabsOverlay() {
         event.preventDefault();
         event.stopPropagation();
         clearListHoverTimers();
+        listOpenedByHoverRef.current = false;
         setTabListMenuOpen(true);
         searchInputRef.current?.focus();
       } else {
@@ -1671,7 +1675,12 @@ function ChatTabsOverlay() {
     );
   };
 
-  const renderTabListMenuItem = (tab: PresentedTab, searchIndex?: number) => {
+  const preserveChatSearchFocus = (event: PointerEvent<HTMLElement>) => {
+    if (document.activeElement === searchInputRef.current) event.preventDefault();
+  };
+
+  const renderTabListMenuItem = (tab: PresentedTab) => {
+    const searchIndex = navigableMenuTabs.findIndex((item) => item.entry.threadId === tab.entry.threadId);
     const unavailableReason = tab.unavailableReason;
     const unavailableLabel =
       unavailableReason === null
@@ -1683,7 +1692,7 @@ function ChatTabsOverlay() {
     return (
       <DropdownMenu.Item
         key={tab.entry.threadId}
-        id={searchIndex === undefined ? undefined : `bb-chat-tabs-search-result-${searchIndex}`}
+        id={searchIndex < 0 ? undefined : `bb-chat-tabs-search-result-${searchIndex}`}
         data-selected={searchIndex === selectedSearchIndex ? "true" : undefined}
         className="bb-chat-tabs-list-menu-item"
         disabled={unavailableReason !== null}
@@ -1696,6 +1705,8 @@ function ChatTabsOverlay() {
         data-active={active ? "true" : "false"}
         data-thread-id={tab.entry.threadId}
         data-unavailable={unavailableReason ?? undefined}
+        onPointerMove={preserveChatSearchFocus}
+        onPointerLeave={preserveChatSearchFocus}
         onSelect={
           unavailableReason === null
             ? () => {
@@ -1774,8 +1785,10 @@ function ChatTabsOverlay() {
       data-position={tabListButtonPosition}
     >
       <DropdownMenu.Root
+        modal={false}
         open={tabListMenuOpen}
         onOpenChange={(open) => {
+          if (open) listOpenedByHoverRef.current = false;
           setTabListMenuOpen(open);
           if (!open) {
             clearListHoverTimers();
@@ -1789,7 +1802,13 @@ function ChatTabsOverlay() {
             className="bb-chat-tabs-list-trigger"
             aria-label="Open chat list"
             title="Open tab list"
-            onPointerDown={() => { listOpenedByHoverRef.current = false; clearListHoverTimers(); }}
+            onPointerDown={(event) => {
+              if (event.button !== 0 || event.ctrlKey) return;
+              // The first click latches a hover-open menu instead of toggling it closed.
+              if (tabListMenuOpen && listOpenedByHoverRef.current) event.preventDefault();
+              listOpenedByHoverRef.current = false;
+              clearListHoverTimers();
+            }}
             onPointerEnter={(event) => enterTabListMenu(event.pointerType)}
             onPointerLeave={(event) => leaveTabListMenu(event.pointerType)}
             onPointerCancel={clearListHoverTimers}
@@ -1799,14 +1818,25 @@ function ChatTabsOverlay() {
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
+            id="bb-chat-tabs-menu-content"
             className="bb-chat-tabs-list-menu"
             aria-label="Open chat list"
             side="bottom"
             align={tabListButtonPosition === "right" ? "end" : "start"}
             sideOffset={6}
             collisionPadding={8}
+            onInteractOutside={(event) => {
+              // Trigger clicks are handled by its own toggle/latch logic, not dismissal.
+              if (event.target instanceof Element && event.target.closest(".bb-chat-tabs-list-trigger")) {
+                event.preventDefault();
+              }
+            }}
             onCloseAutoFocus={(event) => {
               if (listOpenedByHoverRef.current) event.preventDefault();
+            }}
+            onPointerDown={() => {
+              listOpenedByHoverRef.current = false;
+              clearListHoverTimers();
             }}
             onPointerEnter={(event) => enterTabListMenu(event.pointerType)}
             onPointerLeave={(event) => leaveTabListMenu(event.pointerType)}
@@ -1818,8 +1848,8 @@ function ChatTabsOverlay() {
                 type="search"
                 className="bb-chat-tabs-list-menu-search-input"
                 aria-label="Search chats by title"
-                aria-controls={searchActive ? "bb-chat-tabs-search-results" : undefined}
-                aria-activedescendant={searchActive && selectedSearchIndex >= 0
+                aria-controls="bb-chat-tabs-menu-content"
+                aria-activedescendant={selectedSearchIndex >= 0 && selectedSearchIndex < navigableMenuTabs.length
                   ? `bb-chat-tabs-search-result-${selectedSearchIndex}` : undefined}
                 placeholder="Search chats..."
                 value={tabSearch}
@@ -1830,16 +1860,17 @@ function ChatTabsOverlay() {
                 onKeyDown={(event) => {
                   if (event.key === "Escape") return;
                   event.stopPropagation();
-                  if (!searchActive) return;
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
-                    setSelectedSearchIndex((current) => searchResults.length === 0 ? -1 :
-                      event.key === "ArrowDown"
-                        ? (current + 1) % searchResults.length
-                        : (current - 1 + searchResults.length) % searchResults.length);
-                  } else if (event.key === "Enter" && searchResults.length > 0) {
+                    setSelectedSearchIndex((current) => navigableMenuTabs.length === 0 ? -1 :
+                      current < 0
+                        ? (event.key === "ArrowDown" ? 0 : navigableMenuTabs.length - 1)
+                        : event.key === "ArrowDown"
+                          ? (current + 1) % navigableMenuTabs.length
+                          : (current - 1 + navigableMenuTabs.length) % navigableMenuTabs.length);
+                  } else if (event.key === "Enter" && navigableMenuTabs.length > 0) {
                     event.preventDefault();
-                    const result = searchResults[selectedSearchIndex] ?? searchResults[0];
+                    const result = navigableMenuTabs[selectedSearchIndex] ?? navigableMenuTabs[0];
                     if (result !== undefined) {
                       setTabListMenuOpen(false);
                       openThread({ threadId: result.entry.threadId,
@@ -1851,9 +1882,7 @@ function ChatTabsOverlay() {
             </div>
             {searchActive ? (
               <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label="Search results">
-                {searchResults.length > 0 ? searchResults.map((tab, index) =>
-                  renderTabListMenuItem(tab, index)
-                ) : <span className="bb-chat-tabs-list-menu-search-empty">No matching chats</span>}
+                {searchResults.length > 0 ? searchResults.map(renderTabListMenuItem) : <span className="bb-chat-tabs-list-menu-search-empty">No matching chats</span>}
               </DropdownMenu.Group>
             ) : null}
             {!searchActive && menuPinnedTabs.length > 0 ? (
@@ -1893,7 +1922,11 @@ function ChatTabsOverlay() {
                 onPointerEnter={(event) => {
                   if (event.pointerType === "mouse") scheduleHistoryMore();
                 }}
-                onPointerLeave={clearHistoryMoreTimer}
+                onPointerMove={preserveChatSearchFocus}
+                onPointerLeave={(event) => {
+                  preserveChatSearchFocus(event);
+                  clearHistoryMoreTimer();
+                }}
                 onPointerCancel={clearHistoryMoreTimer}
                 onSelect={(event) => {
                   event.preventDefault();

@@ -423,7 +423,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   font-size: 0.75rem;
 }
 
-.bb-chat-tabs-list-menu-search-results .bb-chat-tabs-list-menu-item[data-selected="true"] {
+.bb-chat-tabs-list-menu-item[data-selected="true"] {
   background: var(--muted);
 }
 
@@ -462,6 +462,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   user-select: none;
 }
 
+.bb-chat-tabs-list-menu-item:not([data-disabled]):hover,
 .bb-chat-tabs-list-menu-item[data-highlighted],
 .bb-chat-tabs-list-menu-item[data-active="true"] {
   color: var(--foreground);
@@ -598,8 +599,12 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   cursor: pointer;
   outline: none;
   user-select: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
 }
 
+.bb-chat-tabs-list-menu-more:hover,
 .bb-chat-tabs-list-menu-more[data-highlighted] {
   color: var(--foreground);
   background: var(--muted);

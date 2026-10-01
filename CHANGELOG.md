@@ -2,6 +2,15 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## 0.1.4
+
+### Fixed
+
+- Hover-open chat lists dismiss when the pointer leaves; clicking the trigger keeps the list open until another trigger click, an outside click, or normal selection/dismissal.
+- Moving the pointer over chat items no longer steals focus from the search input; hover highlighting remains visible independently of focus.
+- Arrow-key navigation works in both the unfiltered chat list and search results while preserving input focus; Enter opens the selected chat.
+- The history **More** label now uses the same font size as ordinary chat titles.
+
 ## 0.1.3 — 2026-09-28
 
 ### Fixed
