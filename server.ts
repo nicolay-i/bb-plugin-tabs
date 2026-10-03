@@ -1,5 +1,6 @@
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { LANGUAGE_OPTIONS } from "./lib/languages";
+import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { z } from "zod";
 import {
   createEmptyTabHistory,
@@ -92,6 +93,10 @@ const workflowActiveRunsResponseSchema = z
   .passthrough();
 
 export const rpcContract = defineRpcContract({
+  tabs_search: {
+    input: z.object({ query: z.string().trim().min(1).max(300), includeArchived: z.boolean().optional() }).strict(),
+    output: z.object({ candidates: z.array(tabCandidateSchema.extend({ archived: z.boolean().optional() })).max(30) }).strict(),
+  },
   tabs_list: {
     // The frontend also supplies descendants of open tabs, so durable work in a
     // nested chat can be folded into its parent.
@@ -178,6 +183,12 @@ export default async function plugin(bb: BbPluginApi) {
       description: "Auto follows the BB page or browser language.",
       options: [...LANGUAGE_OPTIONS],
       default: "Auto",
+    },
+    searchArchivedChats: {
+      type: "boolean",
+      label: "Include archived chats in search",
+      description: "Show archived chats in search results with a struck-through title and Archived status. Deleted chats remain excluded.",
+      default: false,
     },
     showPinnedTabsList: {
       type: "boolean",
@@ -596,7 +607,43 @@ export default async function plugin(bb: BbPluginApi) {
     await applyThreadAvailability(thread.id, null);
   });
 
+  // Read only title metadata, not message content. Lazy, shared across renderers.
+  type SearchCandidate = TabCandidate & { archived?: boolean };
+  const searchCache = new Map<boolean, { candidates: SearchCandidate[]; expiresAt: number }>();
+  const searchInFlight = new Map<boolean, Promise<SearchCandidate[]>>();
+  const searchCandidates = async (includeArchived: boolean): Promise<SearchCandidate[]> => {
+    const cached = searchCache.get(includeArchived);
+    if (cached !== undefined && cached.expiresAt > Date.now()) return cached.candidates;
+    const existing = searchInFlight.get(includeArchived);
+    if (existing !== undefined) return existing;
+    const operation = (async () => {
+      const candidates: SearchCandidate[] = [];
+      const seen = new Set<string>();
+      const pageSize = 200;
+      for (const archived of includeArchived ? [false, true] : [false]) {
+        for (let offset = 0; ; offset += pageSize) {
+          const page = await bb.sdk.threads.list({ archived, includeHidden: false, limit: pageSize, offset });
+          for (const thread of page) {
+            if ((!includeArchived && thread.archivedAt !== null) || thread.deletedAt !== null || thread.visibility === "hidden" || seen.has(thread.id)) continue;
+            seen.add(thread.id);
+            candidates.push({ threadId: thread.id, projectId: thread.projectId,
+              title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
+              ...(thread.archivedAt !== null ? { archived: true } : {}),
+            });
+          }
+          if (page.length < pageSize) break;
+        }
+      }
+      searchCache.set(includeArchived, { candidates, expiresAt: Date.now() + 30_000 });
+      return candidates;
+    })();
+    searchInFlight.set(includeArchived, operation);
+    try { return await operation; }
+    finally { searchInFlight.delete(includeArchived); }
+  };
+
   bb.rpc.register(rpcContract, {
+    tabs_search: async ({ query, includeArchived }) => ({ candidates: fuzzyChatSearch(await searchCandidates(includeArchived === true), query) }),
     tabs_list: async (input) => {
       // Multiple renderer surfaces or Strict Mode can request the same snapshot
       // together. Avoid duplicating KV reads and up to 100 nested workflow RPCs;

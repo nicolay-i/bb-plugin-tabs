@@ -19,6 +19,46 @@ async function loadPlugin() {
 }
 
 describe("Chat Tabs", () => {
+  it("optionally searches archived chats with separate caches and never includes deleted or hidden chats", async () => {
+    const list = vi.fn(async (args?: { archived?: boolean }) => args?.archived ? [
+      makeThreadResponse({ id: "thr_archived_search", title: "Old task", archivedAt: 1 }),
+      makeThreadResponse({ id: "thr_deleted_search", title: "Old task", deletedAt: 1, archivedAt: 1 }),
+      makeThreadResponse({ id: "thr_hidden_search", title: "Old task", visibility: "hidden", archivedAt: 1 }),
+    ] : [makeThreadResponse({ id: "thr_active_search", title: "Old task" })]);
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    await expect(host.harness.behavior.setSettings({ searchArchivedChats: true })).resolves.toBeUndefined();
+    await expect(host.harness.behavior.setSettings({ searchArchivedChats: "true" })).rejects.toThrow();
+    const active = await host.harness.behavior.callRpc("tabs_search", { query: "Old task" });
+    expect(active.candidates.map((item) => item.threadId)).toEqual(["thr_active_search"]);
+    const all = await host.harness.behavior.callRpc("tabs_search", { query: "Old task", includeArchived: true });
+    expect(all.candidates.map((item) => item.threadId)).toEqual(["thr_active_search", "thr_archived_search"]);
+    expect(all.candidates[1]?.archived).toBe(true);
+    expect((await host.harness.behavior.callRpc("tabs_search", { query: "Old task", includeArchived: false })).candidates).toEqual(active.candidates);
+    expect(list).toHaveBeenCalledTimes(3);
+  });
+
+  it("searches titles beyond plugin history and the first BB page, caches only metadata, and excludes unavailable chats", async () => {
+    const title = "Обновить систему до версии 0.43.3 — office";
+    const page = Array.from({ length: 200 }, (_, i) => makeThreadResponse({ id: `thr_page_${i}`, title: "Unrelated chat" }));
+    const list = vi.fn(async (args?: { offset?: number }) => args?.offset === 0 ? page : [
+      makeThreadResponse({ id: "thr_office", projectId: "proj_office", title }),
+      makeThreadResponse({ id: "thr_archived", title, archivedAt: 1 }),
+      makeThreadResponse({ id: "thr_deleted", title, deletedAt: 1 }),
+      makeThreadResponse({ id: "thr_hidden", title, visibility: "hidden" }),
+    ]);
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    const result = await host.harness.behavior.callRpc("tabs_search", { query: "43" });
+    expect(result.candidates).toEqual([{ threadId: "thr_office", projectId: "proj_office", title }]);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list).toHaveBeenNthCalledWith(2, { archived: false, includeHidden: false, limit: 200, offset: 200 });
+    expect((await host.harness.behavior.callRpc("tabs_search", { query: title })).candidates).toEqual(result.candidates);
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps static setting labels and descriptions in English without Russian duplicates", async () => {
     const host = createFakePluginHost({ pluginId: "tabs" });
     loadedHosts.push(host);

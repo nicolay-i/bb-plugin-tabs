@@ -474,19 +474,13 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 
 .bb-chat-tabs-list-menu-item[data-disabled] {
   color: var(--muted-foreground);
+  background: transparent;
   cursor: not-allowed;
 }
 
 .bb-chat-tabs-list-menu-item[data-disabled][data-highlighted] {
   color: var(--muted-foreground);
   background: transparent;
-}
-
-.bb-chat-tabs-list-menu-unavailable-icon {
-  width: 1rem;
-  height: 1rem;
-  flex: 0 0 auto;
-  color: color-mix(in oklch, var(--muted-foreground) 84%, var(--foreground));
 }
 
 .bb-chat-tabs-list-menu-copy {

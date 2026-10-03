@@ -202,7 +202,8 @@ describe("Chat Tabs", () => {
     expect(styles).toContain(".bb-chat-tabs-list-menu-status-dot {");
     expect(styles).toContain(".bb-chat-tabs-list-menu-item[data-disabled] {");
     expect(styles).toContain("cursor: not-allowed;");
-    expect(styles).toContain(".bb-chat-tabs-list-menu-unavailable-icon {");
+    expect(styles).not.toContain(".bb-chat-tabs-list-menu-unavailable-icon");
+    expect(styles).toMatch(/\.bb-chat-tabs-list-menu-item\[data-disabled\]\s*\{[^}]*background: transparent;/u);
     expect(styles).toContain(".bb-chat-tabs-list-menu-title[data-unavailable] {");
     expect(styles).toContain("text-decoration-line: line-through;");
     expect(styles).toContain(".bb-chat-tabs-list-menu-unavailable-label {");

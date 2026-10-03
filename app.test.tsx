@@ -140,6 +140,63 @@ afterEach(() => {
 });
 
 describe("Chat Tabs", () => {
+  it.each([false, true])("includes archived search results only when the checkbox is %s", async (enabled) => {
+    const state: TabsState = { version: 1, entries: [
+      { threadId: "thr_current", projectId: "proj_api", title: "Current", pinned: true, openedAt: 1 },
+      { threadId: "thr_other", projectId: "proj_api", title: "Other", pinned: true, openedAt: 2 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (!overlay) throw new Error("App overlay is not registered");
+    const query = vi.fn(() => ({ candidates: [{ threadId: "thr_archived_search", projectId: "proj_api", title: "Old archived task", archived: true }] }));
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      settings: { searchArchivedChats: enabled },
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: { threads: [sidebarThread("thr_current", "proj_api", "Current"), sidebarThread("thr_other", "proj_api", "Other")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }] },
+      rpc: { tabs_list: () => ({ state }), tabs_search: query },
+    });
+    fireEvent.pointerDown(await slot.findByRole("button", { name: "Open chat list" }), { button: 0 });
+    fireEvent.change(await slot.findByRole("searchbox", { name: "Search chats by title" }), { target: { value: "Old archived task" } });
+    await waitFor(() => expect(query).toHaveBeenCalledWith({ query: "Old archived task", includeArchived: enabled }));
+    if (enabled) {
+      const item = await slot.findByRole("menuitem", { name: /Old archived task.*Archived/ });
+      expect(item.hasAttribute("data-disabled")).toBe(true);
+      expect(item.getAttribute("data-selected")).not.toBe("true");
+      expect(item.querySelector("svg")).toBeNull();
+      expect(item.querySelector('.bb-chat-tabs-list-menu-title[data-unavailable="archived"]')).not.toBeNull();
+    } else {
+      expect(await slot.findByText("No matching chats")).toBeTruthy();
+      expect(slot.queryByRole("menuitem", { name: /Old archived task/ })).toBeNull();
+    }
+  });
+
+  it("finds an older chat outside pins, history, and sidebar by its title and version fragment", async () => {
+    const title = "Обновить систему до версии 0.43.3 — office";
+    const state: TabsState = { version: 1, entries: [
+      { threadId: "thr_current", projectId: "proj_api", title: "Current", pinned: true, openedAt: 1 },
+      { threadId: "thr_other", projectId: "proj_api", title: "Other", pinned: true, openedAt: 2 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (!overlay) throw new Error("App overlay is not registered");
+    const query = vi.fn(() => ({ candidates: [{ threadId: "thr_office", projectId: "proj_office", title }] }));
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: { threads: [sidebarThread("thr_current", "proj_api", "Current"), sidebarThread("thr_other", "proj_api", "Other")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }, { id: "proj_office", name: "Office", isPersonal: false }] },
+      rpc: { tabs_list: () => ({ state }), tabs_search: query },
+    });
+    fireEvent.pointerDown(await slot.findByRole("button", { name: "Open chat list" }), { button: 0 });
+    const search = await slot.findByRole("searchbox", { name: "Search chats by title" });
+    fireEvent.change(search, { target: { value: "43" } });
+    const match = await slot.findByRole("menuitem", { name: new RegExp(title.replace(/\./g, "\\.")) });
+    expect(match.getAttribute("data-thread-id")).toBe("thr_office");
+    expect(query).toHaveBeenCalledWith({ query: "43", includeArchived: false });
+    fireEvent.change(search, { target: { value: title } });
+    await waitFor(() => expect(query).toHaveBeenCalledWith({ query: title, includeArchived: false }));
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(slot.inspection.sidebarActionCalls).toContainEqual({ method: "open", threadId: "thr_office" });
+  });
+
   it("marks a pending question or approval in the strip and list instead of showing endless work", async () => {
     const state: TabsState = { version: 1, entries: [
       { threadId: "thr_parent", projectId: "proj_api", title: "Parent", pinned: true, openedAt: 1 },
@@ -981,7 +1038,8 @@ describe("Chat Tabs", () => {
     expect(archivedItem.dataset.unavailable).toBe("archived");
     expect(archivedItem.hasAttribute("data-disabled")).toBe(true);
     expect(archivedItem.getAttribute("aria-label")).toContain("Archived");
-    expect(archivedItem.querySelector('[data-icon="Archive"]')).not.toBeNull();
+    expect(archivedItem.querySelector('svg')).toBeNull();
+    expect(archivedItem.getAttribute("data-selected")).not.toBe("true");
     expect(
       archivedItem
         .querySelector(".bb-chat-tabs-list-menu-title")
@@ -992,7 +1050,8 @@ describe("Chat Tabs", () => {
     expect(deletedItem.dataset.unavailable).toBe("deleted");
     expect(deletedItem.hasAttribute("data-disabled")).toBe(true);
     expect(deletedItem.getAttribute("aria-label")).toContain("Deleted");
-    expect(deletedItem.querySelector('[data-icon="Trash2"]')).not.toBeNull();
+    expect(deletedItem.querySelector('svg')).toBeNull();
+    expect(deletedItem.getAttribute("data-selected")).not.toBe("true");
     expect(
       deletedItem
         .querySelector(".bb-chat-tabs-list-menu-title")

@@ -836,6 +836,7 @@ function ChatTabsOverlay() {
   const showTabListButton = settings.values?.showTabListButton !== false;
   const showTabListPinned = settings.values?.showTabListPinned !== false;
   const showTabListHistory = settings.values?.showTabListHistory !== false;
+  const searchArchivedChats = settings.values?.searchArchivedChats === true;
   const tabListButtonPosition =
     settings.values?.tabListButtonPosition === "Right" ||
     settings.values?.tabListButtonPosition === LEGACY_RIGHT_TAB_LIST_BUTTON_POSITION
@@ -865,6 +866,7 @@ function ChatTabsOverlay() {
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
   const [tabListMenuOpen, setTabListMenuOpen] = useState(false);
   const [tabSearch, setTabSearch] = useState("");
+  const [remoteSearch, setRemoteSearch] = useState<{ query: string; candidates: (TabCandidate & { archived?: boolean })[]; pending: boolean }>({ query: "", candidates: [], pending: false });
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastShiftReleaseRef = useRef<number | null>(null);
@@ -1337,16 +1339,53 @@ function ChatTabsOverlay() {
   const searchableTabs = useMemo(() => {
     const seen = new Set<string>();
     return [...menuPinnedTabs, ...menuHistoryTabs].filter((tab) => {
-      if (tab.unavailableReason !== null || seen.has(tab.entry.threadId)) return false;
+      if (tab.unavailableReason === "deleted" || (tab.unavailableReason === "archived" && !searchArchivedChats) || seen.has(tab.entry.threadId)) return false;
       seen.add(tab.entry.threadId);
       return true;
     });
-  }, [menuPinnedTabs, menuHistoryTabs]);
+  }, [menuPinnedTabs, menuHistoryTabs, searchArchivedChats]);
   const searchActive = tabSearch.trim().length > 0;
-  const searchResults = useMemo(
-    () => fuzzyChatSearch(searchableTabs, tabSearch),
-    [searchableTabs, tabSearch],
-  );
+  useEffect(() => {
+    if (!tabListMenuOpen || !searchActive) return;
+    let cancelled = false;
+    const query = tabSearch.trim().slice(0, 300);
+    setRemoteSearch({ query, candidates: [], pending: true });
+    const timer = window.setTimeout(() => {
+      void resolveRpcRef.current.call("tabs_search", { query, includeArchived: searchArchivedChats }).then(({ candidates }) => {
+        if (!cancelled) setRemoteSearch({ query, candidates, pending: false });
+      }).catch(() => {
+        // Keep immediate local results if an older server or a request is unavailable.
+        if (!cancelled) setRemoteSearch({ query, candidates: [], pending: false });
+      });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [tabListMenuOpen, searchActive, tabSearch, searchArchivedChats]);
+  const searchPending = searchActive && remoteSearch.query === tabSearch.trim().slice(0, 300) && remoteSearch.pending;
+  const searchResults = useMemo(() => {
+    const excluded = new Set(history.entries.filter((entry) => entry.unavailableReason === "deleted" || (entry.unavailableReason === "archived" && !searchArchivedChats)).map((entry) => entry.threadId));
+    for (const thread of sidebar.threads) if (thread.isArchived && !searchArchivedChats) excluded.add(thread.id);
+    const sidebarCandidates = sidebar.threads.filter((thread) => !thread.isArchived || searchArchivedChats).map((thread) => ({
+      threadId: thread.id, projectId: thread.projectId,
+      title: thread.title?.trim() || thread.titleFallback?.trim() || translate(locale, "Untitled"),
+      archived: thread.isArchived,
+    }));
+    const remoteCandidates = remoteSearch.query === tabSearch.trim().slice(0, 300)
+      ? remoteSearch.candidates.filter((candidate) => !candidate.archived || searchArchivedChats) : [];
+    const mergedCandidates = [...sidebarCandidates, ...remoteCandidates];
+    const archivedIds = new Set(mergedCandidates.filter((candidate) => candidate.archived).map((candidate) => candidate.threadId));
+    const additional = buildPresentedTabs({ version: 1, entries: mergedCandidates.map((candidate) => ({
+      ...candidate, pinned: false, openedAt: 0,
+    })) }, sidebar.threads, sidebar.projects, workIndex, locale).map((tab) => ({
+      ...tab, unavailableReason: archivedIds.has(tab.entry.threadId) ? "archived" as const : tab.unavailableReason,
+    }));
+    const seen = new Set<string>();
+    const candidates = [...searchableTabs, ...additional].filter((tab) => {
+      if (excluded.has(tab.entry.threadId) || seen.has(tab.entry.threadId)) return false;
+      seen.add(tab.entry.threadId);
+      return true;
+    });
+    return fuzzyChatSearch(candidates, tabSearch);
+  }, [searchableTabs, tabSearch, remoteSearch, sidebar.threads, sidebar.projects, workIndex, locale, history.entries, searchArchivedChats]);
   const visibleHistoryMenuTabs = menuHistoryTabs.slice(0, historyVisibleCount);
   const hasMoreHistory = visibleHistoryMenuTabs.length < menuHistoryTabs.length;
   const navigableMenuTabs = (searchActive ? searchResults : [...menuPinnedTabs, ...visibleHistoryMenuTabs])
@@ -1725,7 +1764,7 @@ function ChatTabsOverlay() {
       <DropdownMenu.Item
         key={tab.entry.threadId}
         id={searchIndex < 0 ? undefined : `bb-chat-tabs-search-result-${searchIndex}`}
-        data-selected={searchIndex === selectedSearchIndex ? "true" : undefined}
+        data-selected={searchIndex >= 0 && searchIndex === selectedSearchIndex ? "true" : undefined}
         className="bb-chat-tabs-list-menu-item"
         disabled={unavailableReason !== null}
         aria-current={active ? "page" : undefined}
@@ -1752,13 +1791,6 @@ function ChatTabsOverlay() {
             : undefined
         }
       >
-        {unavailableReason !== null ? (
-          <Icon
-            name={unavailableReason === "archived" ? "Archive" : "Trash2"}
-            className="bb-chat-tabs-list-menu-unavailable-icon"
-            aria-hidden
-          />
-        ) : null}
         <span className="bb-chat-tabs-list-menu-copy">
           <span
             className="bb-chat-tabs-list-menu-title"
@@ -1914,8 +1946,8 @@ function ChatTabsOverlay() {
               />
             </div>
             {searchActive ? (
-              <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label={t("Search results")}>
-                {searchResults.length > 0 ? searchResults.map(renderTabListMenuItem) : <span className="bb-chat-tabs-list-menu-search-empty">{t("No matching chats")}</span>}
+              <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label={t("Search results")} aria-busy={searchPending}>
+                {searchResults.length > 0 ? searchResults.map(renderTabListMenuItem) : <span className="bb-chat-tabs-list-menu-search-empty">{t(searchPending ? "Search chats..." : "No matching chats")}</span>}
               </DropdownMenu.Group>
             ) : null}
             {!searchActive && menuPinnedTabs.length > 0 ? (

@@ -40,7 +40,10 @@ synthetic demonstration data.
   most recently active projects; **More** reveals the next 15 on click or after
   another 300 ms of hover. Choosing a project preselects it in the composer.
 - **Pinned and recent navigation menu.** Open it by click, a 300 ms mouse
-  hover, or two quick Shift presses. Search chat titles fuzzily, select a match
+  hover, or two quick Shift presses. Search titles across available BB chats,
+  including older chats outside the last 100 visits. Enable **Include archived
+  chats in search** to also find archived chats with struck-through titles and
+  an Archived status. Deleted and hidden chats are always excluded. Select a fuzzy match
   with the arrow keys, and press Enter to open it. The menu lists **Pinned**
   chats and a plugin-owned **History** of up to 100 visits. The first eight
   history entries appear immediately; **More** loads the next page on click,
@@ -72,6 +75,7 @@ stored.
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `language` | `Auto` | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
+| `searchArchivedChats` | `false` | Include archived chats in title search. Results remain disabled with a struck-through title and Archived status; deleted chats stay excluded. |
 | `showPinnedTabsList` | `true` | Quick pinned-chat list below the composer on the New chat screen. |
 | `showTabsOnDesktop` | `true` | Top tab strip in the desktop layout. |
 | `showTabsOnMobile` | `true` | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer). |
