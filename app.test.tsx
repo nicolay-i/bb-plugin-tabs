@@ -165,7 +165,8 @@ describe("Chat Tabs", () => {
     });
     const tab = await slot.findByRole("button", { name: /Parent, В дочернем чате требуется ваш ответ/ });
     expect(tab.closest(".bb-chat-tab")?.getAttribute("data-waiting")).toBe("true");
-    expect(tab.querySelector(".bb-chat-tab-waiting")?.textContent).toBe("Нужен ответ");
+    expect(tab.querySelector(".bb-chat-tab-waiting")?.textContent).toBe("?");
+    expect(tab.querySelector(".bb-chat-tab-waiting")?.getAttribute("title")).toBe("В дочернем чате требуется ваш ответ или подтверждение.");
     expect(tab.querySelector(".bb-chat-tab-working")).toBeNull();
     fireEvent.pointerDown(slot.getByRole("button", { name: "Открыть список чатов" }), { button: 0 });
     await waitFor(() => expect(document.querySelector('.bb-chat-tabs-list-menu-status[data-status="waiting"]')).not.toBeNull());

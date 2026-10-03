@@ -2,6 +2,24 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## 0.1.5
+
+### Added
+
+- Fifteen interface languages: English, Russian, Spanish, Brazilian Portuguese, French, German, Simplified Chinese, Hindi, Arabic, Japanese, Indonesian, Turkish, Korean, Vietnamese, and Italian. Auto follows the supported BB page language, then the browser language, with English as fallback.
+- A compact **?** indicator when BB is waiting for a question answer or approval, including in nested chats. A tooltip explains the pending input; lists and pinned cards show the full **Needs input** status instead of **Working**.
+- A theme-aware SVG icon for the plugin settings and catalog.
+
+### Fixed
+
+- A newly created chat immediately receives its preview tab, even before it reaches the sidebar. Explicitly closed previews still stay closed.
+- Static plugin setting labels and descriptions remain in English, without bilingual duplicates.
+- The pending-input marker no longer truncates to an unreadable text badge or crowds the chat title.
+
+### Notes
+
+- Additional language packs are machine-assisted first drafts; native-speaker review is recommended.
+
 ## 0.1.4
 
 ### Fixed

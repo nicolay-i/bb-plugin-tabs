@@ -174,56 +174,56 @@ export default async function plugin(bb: BbPluginApi) {
   bb.settings.define({
     language: {
       type: "select",
-      label: "Language / Язык",
-      description: "Auto follows the BB page or browser language / Авто использует язык страницы BB или браузера.",
+      label: "Language",
+      description: "Auto follows the BB page or browser language.",
       options: [...LANGUAGE_OPTIONS],
       default: "Auto",
     },
     showPinnedTabsList: {
       type: "boolean",
-      label: "Show pinned chats on New chat / Закреплённые на экране нового чата",
+      label: "Show pinned chats on New chat",
       description:
-        "Quick pinned-chat list below the composer / Список закреплённых чатов под полем ввода.",
+        "Quick pinned-chat list below the composer.",
       default: true,
     },
     showTabsOnDesktop: {
       type: "boolean",
-      label: "Show top tabs on desktop / Вкладки на компьютере",
+      label: "Show top tabs on desktop",
       description:
-        "Only hides the desktop tab strip; pins and history remain / Скрывает вкладки на компьютере; закрепления и история сохраняются.",
+        "Only hides the desktop tab strip; pins and history remain.",
       default: true,
     },
     showTabsOnMobile: {
       type: "boolean",
-      label: "Show top tabs on mobile / Вкладки на телефоне",
+      label: "Show top tabs on mobile",
       description:
-        "Only hides the mobile tab strip; pins and history remain / Скрывает вкладки на телефоне; закрепления и история сохраняются.",
+        "Only hides the mobile tab strip; pins and history remain.",
       default: true,
     },
     showTabListButton: {
       type: "boolean",
-      label: "Show the tab list button / Кнопка списка вкладок",
+      label: "Show the tab list button",
       description:
-        "Opens pinned chats and history / Открывает закреплённые чаты и историю.",
+        "Opens pinned chats and history.",
       default: true,
     },
     showTabListPinned: {
       type: "boolean",
-      label: "Show pinned chats in the tab list / Закреплённые в списке",
-      description: "Controls the Pinned section / Управляет разделом «Закреплённые».",
+      label: "Show pinned chats in the tab list",
+      description: "Controls the Pinned section.",
       default: true,
     },
     showTabListHistory: {
       type: "boolean",
-      label: "Show history in the tab list / История в списке",
+      label: "Show history in the tab list",
       description:
-        "Controls the History section; visits remain recorded / Управляет разделом «История»; посещения продолжают записываться.",
+        "Controls the History section; visits remain recorded.",
       default: true,
     },
     tabListButtonPosition: {
       type: "select",
-      label: "Tab list button position / Положение кнопки списка",
-      description: "Choose left or right / Выберите положение слева или справа.",
+      label: "Tab list button position",
+      description: "Choose left or right.",
       options: ["Left", "Right"],
       default: "Left",
     },

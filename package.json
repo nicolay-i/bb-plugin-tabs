@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.4",
-  "description": "A BB plugin with a current-chat preview tab, pinned chats, and navigation history.",
+  "version": "0.1.5",
+  "description": "Pinned and preview chat tabs with history, input-needed indicators, and 15 interface languages.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,9 +31,9 @@
   },
   "bb": {
     "name": "Chat Tabs",
-    "description": "Shows a preview tab for the current chat, manually ordered pinned chats, and quick navigation to pinned chats and history.",
+    "description": "Keep important BB conversations one click away with pinned and preview tabs. Search recent chats, spot questions awaiting your reply, and choose from 15 interface languages.",
     "branding": {
-      "icon": "NewTab"
+      "icon": "./assets/icon.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx"

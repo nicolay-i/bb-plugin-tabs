@@ -2173,7 +2173,7 @@ function ChatTabsOverlay() {
                               }}
                             >
                               {isWaiting ? (
-                                <span className="bb-chat-tab-waiting" aria-hidden>{t("Needs input")}</span>
+                                <span className="bb-chat-tab-waiting" title={waitingLabel} aria-hidden>?</span>
                               ) : isWorking ? (
                                 <span className="bb-chat-tab-working" aria-hidden />
                               ) : null}

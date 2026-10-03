@@ -18,6 +18,9 @@ synthetic demonstration data.
 
 ## Highlights
 
+- **15 interface languages.** Follow the BB page or browser language, or select
+  a language explicitly. User-authored chat titles and project names stay unchanged.
+
 - **VS Code-style preview tab.** One unpinned preview represents a chat you opened but
   have not pinned. Opening another unpinned chat replaces it; background work
   never opens a preview. Closing it stays closed across reloads and other windows
@@ -27,8 +30,9 @@ synthetic demonstration data.
   the preview always remains last and is never draggable. Double-click a pinned
   tab title to rename it inline.
 - **Distinct input, activity, and unread signals.** When BB is waiting for a
-  question to be answered or a permission to be approved, a visible **Needs
-  input** badge replaces the working dot. This also works for nested chats.
+  question to be answered or a permission to be approved, a compact **?**
+  marker replaces the working dot. Its tooltip explains the pending input;
+  chat lists and pinned cards show the full **Needs input** status. This also works for nested chats.
   Active workflows, background agents and commands, plan mode, goals, and
   runtime activity have their own working indicator; calm chats have no dot.
 - **Create a chat from the strip.** A borderless plus after the last tab opens
@@ -79,8 +83,8 @@ stored.
 The list button hides automatically when it is disabled or fewer than two
 allowed navigation targets remain. The additional language packs are
 machine-assisted first drafts; native-speaker review is recommended before a
-public localization release. BB's static plugin-setting labels are shown in
-English/Russian because the settings descriptor has no locale hook.
+public localization release. BB's static plugin-setting labels and descriptions remain in English because
+the settings descriptor has no locale hook.
 
 ## Design boundaries
 

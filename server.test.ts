@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
@@ -19,6 +19,19 @@ async function loadPlugin() {
 }
 
 describe("Chat Tabs", () => {
+  it("keeps static setting labels and descriptions in English without Russian duplicates", async () => {
+    const host = createFakePluginHost({ pluginId: "tabs" });
+    loadedHosts.push(host);
+    const define = vi.spyOn(host.bb.settings, "define");
+    await plugin(host.bb);
+    const schema = define.mock.calls[0]?.[0];
+    expect(schema).toBeDefined();
+    for (const setting of Object.values(schema!)) {
+      expect(setting.label).not.toMatch(/[А-Яа-яЁё]/u);
+      expect(setting.description ?? "").not.toMatch(/[А-Яа-яЁё]/u);
+    }
+  });
+
   it("handles behavior 1", async () => {
     const host = await loadPlugin();
 
