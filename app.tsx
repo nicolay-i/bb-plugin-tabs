@@ -153,6 +153,8 @@ const HISTORY_MORE_HOVER_DELAY_MS = 300;
 const DOUBLE_SHIFT_INTERVAL_MS = 350;
 const MENU_HOVER_DELAY_MS = 300;
 const MENU_LEAVE_DELAY_MS = 120;
+// A newly created chat can be the first route seen by a freshly mounted overlay.
+const NEW_THREAD_ROUTE_WINDOW_MS = 2 * 60_000;
 
 interface TabsListRequest {
   key: string;
@@ -1155,6 +1157,7 @@ function ChatTabsOverlay() {
   const [resolvedCurrent, setResolvedCurrent] = useState<{
     threadId: string;
     candidate: TabCandidate | null;
+    createdAt: number | null;
   } | null>(null);
   useEffect(() => {
     if (context.threadId === null || sidebar.status !== "ready" || sidebarCurrent !== null) return;
@@ -1163,8 +1166,8 @@ function ChatTabsOverlay() {
     let retryTimer: number | null = null;
     const resolve = () => {
       void resolveRpcRef.current.call("tabs_resolve_current", { threadId }).then(
-        ({ candidate }) => {
-          if (!cancelled) setResolvedCurrent({ threadId, candidate });
+        ({ candidate, createdAt }) => {
+          if (!cancelled) setResolvedCurrent({ threadId, candidate, createdAt: createdAt ?? null });
         },
         () => {
           // Transient SDK failures must neither create a fake chat nor leave
@@ -1238,23 +1241,37 @@ function ChatTabsOverlay() {
 
   const lastRouteThreadId = useRef(context.threadId);
   const pendingOpenedThreadId = useRef<string | null>(null);
+  const initialThreadId = useRef(context.threadId);
+  const initialRouteHandled = useRef(false);
   useEffect(() => {
     if (context.threadId !== lastRouteThreadId.current) {
       lastRouteThreadId.current = context.threadId;
       pendingOpenedThreadId.current = context.threadId;
     }
-    if (
-      !showTabsOnCurrentLayout || state === null || currentCandidate === null ||
-      pendingOpenedThreadId.current !== currentCandidate.threadId
-    ) return;
+    if (!showTabsOnCurrentLayout || state === null || currentCandidate === null) return;
 
+    const explicitNavigation = pendingOpenedThreadId.current === currentCandidate.threadId;
+    const firstRoute = !initialRouteHandled.current && initialThreadId.current === currentCandidate.threadId;
+    if (!explicitNavigation && !firstRoute) return;
     pendingOpenedThreadId.current = null;
-    // The persisted entries are the authority on which tabs are open. A page
-    // reload of an unchanged route must not reopen a previously closed preview.
-    if (!stateContainsCandidate(state, currentCandidate)) {
+    initialRouteHandled.current = true;
+
+    if (stateContainsCandidate(state, currentCandidate)) return;
+    if (explicitNavigation) {
       void syncActivity([currentCandidate], true);
+      return;
     }
-  }, [context.threadId, currentCandidate, showTabsOnCurrentLayout, state, syncActivity]);
+
+    // BB can mount the overlay directly on a newly created thread, without
+    // ever rendering the root route in this component instance. The server's
+    // closed-ID guard rejects this automatic sync after an explicit close.
+    const createdAt = sidebarCurrent?.createdAt ??
+      (resolvedCurrent?.threadId === currentCandidate.threadId ? resolvedCurrent.createdAt : null);
+    if (createdAt !== null && createdAt <= Date.now() &&
+        Date.now() - createdAt <= NEW_THREAD_ROUTE_WINDOW_MS) {
+      void syncActivity([currentCandidate]);
+    }
+  }, [context.threadId, currentCandidate, resolvedCurrent, showTabsOnCurrentLayout, sidebarCurrent, state, syncActivity]);
 
   const tabs = useMemo(
     () =>

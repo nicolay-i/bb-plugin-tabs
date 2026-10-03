@@ -1608,6 +1608,89 @@ describe("Chat Tabs", () => {
     });
   });
 
+  it("opens a newly created chat when the first mounted route is already its thread", async () => {
+    let state: TabsState = { version: 1, entries: [
+      { threadId: "thr_old", projectId: "proj_api", title: "Old preview", pinned: false, openedAt: 1 },
+    ] };
+    const syncs: Array<{ threadId: string; reopen?: boolean }> = [];
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_new" },
+      sidebarThreads: {
+        threads: [sidebarThread("thr_new", "proj_api", "New conversation", { createdAt: Date.now() - 5_000 })],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state }),
+        tabs_sync_activity: ({ threads, reopen }) => {
+          syncs.push({ threadId: threads[0]?.threadId ?? "", reopen });
+          state = addTabCandidates(state, threads, Date.now());
+          return { state };
+        },
+      },
+    });
+    await slot.findByRole("button", { name: "New conversation" });
+    expect(syncs).toEqual([{ threadId: "thr_new", reopen: false }]);
+    expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_new"]);
+  });
+
+  it("does not reopen a freshly created chat that was explicitly closed", async () => {
+    const state: TabsState = { version: 1, entries: [] };
+    let syncCount = 0;
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_closed" },
+      sidebarThreads: {
+        threads: [sidebarThread("thr_closed", "proj_api", "Closed chat", { createdAt: Date.now() - 5_000 })],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state }),
+        // The persisted closed-ID guard rejects this automatic sync.
+        tabs_sync_activity: ({ reopen }) => {
+          expect(reopen).toBe(false);
+          syncCount += 1;
+          return { state };
+        },
+      },
+    });
+    await waitFor(() => expect(syncCount).toBe(1));
+    expect(slot.queryByRole("button", { name: "Closed chat" })).toBeNull();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(syncCount).toBe(1);
+  });
+
+  it("opens a new current chat even when the sidebar omits it", async () => {
+    let state: TabsState = { version: 1, entries: [] };
+    let syncCount = 0;
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_new" },
+      sidebarThreads: {
+        threads: [],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: {
+        tabs_list: () => ({ state }),
+        tabs_resolve_current: ({ threadId }) => ({
+          candidate: { threadId, projectId: "proj_api", title: "Just created" },
+          createdAt: Date.now() - 5_000,
+        }),
+        tabs_sync_activity: ({ threads, reopen }) => {
+          expect(reopen).toBe(false);
+          syncCount += 1;
+          state = addTabCandidates(state, threads, Date.now());
+          return { state };
+        },
+      },
+    });
+    await slot.findByRole("button", { name: "Just created" });
+    expect(syncCount).toBe(1);
+  });
+
   it("does not invent a preview for an unchanged route omitted from the sidebar", async () => {
     let state: TabsState = { version: 1, entries: [] };
     const synced: string[] = [];

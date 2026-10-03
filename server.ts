@@ -120,7 +120,10 @@ export const rpcContract = defineRpcContract({
   /** Resolves the viewed chat when the sidebar snapshot omits it. */
   tabs_resolve_current: {
     input: z.object({ threadId: z.string().trim().min(1).max(200) }).strict(),
-    output: z.object({ candidate: tabCandidateSchema.nullable() }).strict(),
+    output: z.object({
+      candidate: tabCandidateSchema.nullable(),
+      createdAt: z.number().finite().nonnegative().optional(),
+    }).strict(),
   },
   /** Updates the one preview tab from the latest active candidate. */
   tabs_sync_activity: {
@@ -625,6 +628,7 @@ export default async function plugin(bb: BbPluginApi) {
     tabs_resolve_current: async ({ threadId }) => {
       const thread = await bb.sdk.threads.get({ threadId });
       return {
+        createdAt: thread.createdAt,
         candidate: thread.archivedAt !== null || thread.deletedAt !== null
           ? null
           : {

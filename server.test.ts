@@ -244,12 +244,12 @@ describe("Chat Tabs", () => {
     await plugin(host.bb);
     await expect(host.harness.behavior.callRpc("tabs_resolve_current", {
       threadId: "thr_open",
-    })).resolves.toEqual({ candidate: {
+    })).resolves.toEqual({ createdAt: expect.any(Number), candidate: {
       threadId: "thr_open", projectId: "proj_api", title: "Missing from sidebar",
     } });
     await expect(host.harness.behavior.callRpc("tabs_resolve_current", {
       threadId: "thr_archived",
-    })).resolves.toEqual({ candidate: null });
+    })).resolves.toEqual({ candidate: null, createdAt: expect.any(Number) });
   });
 
   it("handles behavior 6", async () => {
