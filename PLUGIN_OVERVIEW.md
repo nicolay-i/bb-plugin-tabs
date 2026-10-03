@@ -9,13 +9,13 @@ Keep the conversations you return to in a manually ordered strip beneath BB's he
 
 ## Navigation
 
-- Search up to 100 recently visited chats by title from the list menu. Open it by click, a 300 ms hover, or a double Shift press. Arrow keys select a result and Enter opens it. Pinned chats precede history; **More** reveals another eight history entries.
+- Search titles across available BB chats from the list menu, including older chats outside the last 100 visits. Enable **Include archived chats in search** to find archived chats as disabled results with struck-through titles; deleted and hidden chats remain excluded. Open the menu by click, a 300 ms hover, or a double Shift press. Arrow keys select an available result and Enter opens it. Pinned chats precede history; **More** reveals another eight of the last 100 visits.
 - The plus after the last tab opens BB's native new-chat composer. Hover for 300 ms to choose from the 15 most recently active projects; **More** reveals the next group. Selecting a project preselects it in the composer.
 - Desktop supports horizontal wheel scrolling, a conditional top scrollbar, middle-click close, `Ctrl+Tab` / `Ctrl+Shift+Tab`, and BB Desktop `Ctrl+W` / `⌘W`. An embedded browser with focus keeps its native close behavior. Compact and touch layouts use horizontal swipe, 44×44 targets, and explicit close buttons.
 
 ## Language and presentation
 
-Choose from 15 interface languages: English, Russian, Spanish, Brazilian Portuguese, French, German, Simplified Chinese, Hindi, Arabic, Japanese, Indonesian, Turkish, Korean, Vietnamese, and Italian. **Auto** follows a supported BB page language, then the browser language, then English. Chat titles and project names are not translated. Static plugin-setting labels remain in English. Additional translations are machine-assisted first drafts.
+Choose from 15 interface languages: English, Russian, Spanish, Brazilian Portuguese, French, German, Simplified Chinese, Hindi, Arabic, Japanese, Indonesian, Turkish, Korean, Vietnamese, and Italian. **Auto** follows a supported BB page language, then the browser language, then English. Chat titles and project names are not translated. The settings panel follows the selected language immediately, with concrete descriptions of what each option shows and where. Setting keys and stored values stay compatible with the CLI; the static English form remains a fallback if the localized section cannot mount. Additional translations are machine-assisted first drafts.
 
 The plugin includes a theme-aware SVG icon. Controls and status markers follow BB theme colors; animations respect reduced-motion preferences. The strip follows the main chat width around a right panel and hides in true split, full-panel, and drawer layouts.
 

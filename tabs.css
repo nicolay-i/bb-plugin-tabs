@@ -1361,3 +1361,75 @@ body:has([inert] [data-thread-window]:not(aside [data-thread-window]))
 body:has([data-split-resize-grid-boundary]) #bb-chat-tabs-overlay {
   display: none;
 }
+
+/* Only suppress this plugin's declarative form while its replacement is mounted.
+   If the slot crashes/unmounts, the host form remains an available fallback. */
+[data-testid="plugin-detail-tabs"]:has(.bb-chat-tabs-settings)
+  > :first-child:not(:has(.bb-chat-tabs-settings)) {
+  display: none;
+}
+
+.bb-chat-tabs-settings-heading {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.bb-chat-tabs-settings fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.bb-chat-tabs-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-block: 0.75rem;
+}
+
+.bb-chat-tabs-settings-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bb-chat-tabs-settings-copy label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-settings-copy p {
+  margin: 0.25rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.bb-chat-tabs-settings input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+}
+
+.bb-chat-tabs-settings select {
+  max-width: 45%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  background: var(--background);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.bb-chat-tabs-settings :is(input, select):focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+
+.bb-chat-tabs-settings-error {
+  color: var(--destructive);
+  font-size: 0.8125rem;
+}

@@ -68,6 +68,7 @@ import {
 } from "./components/tab-actions";
 import { PinnedTabsList } from "./components/pinned-tabs-list";
 import { NewChatSwitcher } from "./components/new-chat-switcher";
+import { LocalizedSettings } from "./components/localized-settings";
 import { recentProjects } from "./lib/recent-projects";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
@@ -2334,6 +2335,7 @@ function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
 }
 
 export default definePluginApp((app) => {
+  app.slots.settingsSection({ id: "localized-settings", component: LocalizedSettings });
   app.slots.homepageSection({
     id: "pinned-tabs",
     title: "Pinned chats",

@@ -19,6 +19,19 @@ async function loadPlugin() {
 }
 
 describe("Chat Tabs", () => {
+  it("saves localized settings through validated patches without resetting unrelated fields", async () => {
+    const host = await loadPlugin();
+    await host.harness.behavior.setSettings({ showTabsOnDesktop: false });
+    const updated = await host.harness.behavior.callRpc("tabs_settings_update", { language: "Русский", searchArchivedChats: true });
+    expect(updated.values.language).toBe("Русский");
+    expect(updated.values.searchArchivedChats).toBe(true);
+    expect(updated.values.showTabsOnDesktop).toBe(false);
+    for (const invalid of [{ language: "Unknown" }, { searchArchivedChats: "true" }, { unexpected: true }, {}]) {
+      await expect(host.harness.behavior.callRpc("tabs_settings_update", invalid)).rejects.toThrow();
+    }
+    expect((await host.harness.behavior.callRpc("tabs_settings_update", { tabListButtonPosition: "Right" })).values.language).toBe("Русский");
+  });
+
   it("optionally searches archived chats with separate caches and never includes deleted or hidden chats", async () => {
     const list = vi.fn(async (args?: { archived?: boolean }) => args?.archived ? [
       makeThreadResponse({ id: "thr_archived_search", title: "Old task", archivedAt: 1 }),

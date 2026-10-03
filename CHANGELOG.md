@@ -4,12 +4,16 @@ All notable changes to Chat Tabs are documented here.
 
 ## Unreleased
 
+## 0.1.6
+
 ### Added
 
+- A localized settings panel in all 15 interface languages. Labels, descriptions, Auto, and position choices update immediately. Validated setting patches preserve existing keys, values, and CLI compatibility; the native English form remains a fallback when the custom section is absent.
 - An **Include archived chats in search** checkbox, disabled by default. Archived matches keep struck-through titles and an Archived status without an icon or selection background; deleted and hidden chats remain excluded.
 
 ### Fixed
 
+- Setting labels and descriptions now explain what enabling each option shows, where it appears, and what remains when disabled. The language setting explicitly describes Auto mode, and archived-search help explains that archived results cannot be opened here.
 - Chat-title search now includes all available BB chats (optionally including archived chats), not just pins and the last 100 plugin-history entries. Older chats and numeric version fragments such as `43` in `0.43.3` are searchable through a paginated metadata lookup with a 250 ms debounce and 30-second cache.
 - Archived and deleted history entries no longer receive an accidental selection background or a separate icon. Their struck-through titles and second-line status remain, and the entries stay disabled.
 

@@ -87,8 +87,11 @@ stored.
 The list button hides automatically when it is disabled or fewer than two
 allowed navigation targets remain. The additional language packs are
 machine-assisted first drafts; native-speaker review is recommended before a
-public localization release. BB's static plugin-setting labels and descriptions remain in English because
-the settings descriptor has no locale hook.
+public localization release. The settings panel follows the same language immediately,
+including labels, help text, Auto, and position choices. Setting keys and stored
+option values remain unchanged, so CLI commands stay compatible. The underlying
+static descriptors remain English for the CLI and as a fallback if the localized
+panel cannot mount.
 
 ## Design boundaries
 
@@ -97,7 +100,12 @@ across windows through plugin realtime channels. They are not derived from the
 BB sidebar and never replace it.
 
 The implementation uses the public `homepageSection` API, the experimental
-`experimental_appOverlay` API, and declarative `bb.settings.define`. It does
+`experimental_appOverlay` and `settingsSection` APIs, and declarative
+`bb.settings.define`. The settings section saves validated patches through the
+plugin RPC and `experimental_set`. A narrowly scoped CSS rule hides the redundant
+host-generated form only on the Chat Tabs detail page while the localized section
+is mounted; the native form returns if the section unmounts. This compatibility
+rule depends on the host detail layout and needs checking after BB upgrades. It does
 not modify BB core, replace sidebar slots, call `threads.tabs.update`, reparent
 host DOM, inject into the native header, or use content scripts.
 

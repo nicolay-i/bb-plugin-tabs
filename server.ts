@@ -1,5 +1,6 @@
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { LANGUAGE_OPTIONS } from "./lib/languages";
+import { SETTINGS } from "./lib/settings";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { z } from "zod";
 import {
@@ -93,6 +94,20 @@ const workflowActiveRunsResponseSchema = z
   .passthrough();
 
 export const rpcContract = defineRpcContract({
+  tabs_settings_update: {
+    input: z.object({
+      language: z.enum(LANGUAGE_OPTIONS).optional(),
+      searchArchivedChats: z.boolean().optional(),
+      showPinnedTabsList: z.boolean().optional(),
+      showTabsOnDesktop: z.boolean().optional(),
+      showTabsOnMobile: z.boolean().optional(),
+      showTabListButton: z.boolean().optional(),
+      showTabListPinned: z.boolean().optional(),
+      showTabListHistory: z.boolean().optional(),
+      tabListButtonPosition: z.enum(["Left", "Right"]).optional(),
+    }).strict().refine((values) => Object.keys(values).length > 0, "No settings supplied"),
+    output: z.object({ values: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])) }).strict(),
+  },
   tabs_search: {
     input: z.object({ query: z.string().trim().min(1).max(300), includeArchived: z.boolean().optional() }).strict(),
     output: z.object({ candidates: z.array(tabCandidateSchema.extend({ archived: z.boolean().optional() })).max(30) }).strict(),
@@ -176,68 +191,10 @@ export const rpcContract = defineRpcContract({
  * queue so two windows cannot lose each other's tabs between `get` and `set`.
  */
 export default async function plugin(bb: BbPluginApi) {
-  bb.settings.define({
-    language: {
-      type: "select",
-      label: "Language",
-      description: "Auto follows the BB page or browser language.",
-      options: [...LANGUAGE_OPTIONS],
-      default: "Auto",
-    },
-    searchArchivedChats: {
-      type: "boolean",
-      label: "Include archived chats in search",
-      description: "Show archived chats in search results with a struck-through title and Archived status. Deleted chats remain excluded.",
-      default: false,
-    },
-    showPinnedTabsList: {
-      type: "boolean",
-      label: "Show pinned chats on New chat",
-      description:
-        "Quick pinned-chat list below the composer.",
-      default: true,
-    },
-    showTabsOnDesktop: {
-      type: "boolean",
-      label: "Show top tabs on desktop",
-      description:
-        "Only hides the desktop tab strip; pins and history remain.",
-      default: true,
-    },
-    showTabsOnMobile: {
-      type: "boolean",
-      label: "Show top tabs on mobile",
-      description:
-        "Only hides the mobile tab strip; pins and history remain.",
-      default: true,
-    },
-    showTabListButton: {
-      type: "boolean",
-      label: "Show the tab list button",
-      description:
-        "Opens pinned chats and history.",
-      default: true,
-    },
-    showTabListPinned: {
-      type: "boolean",
-      label: "Show pinned chats in the tab list",
-      description: "Controls the Pinned section.",
-      default: true,
-    },
-    showTabListHistory: {
-      type: "boolean",
-      label: "Show history in the tab list",
-      description:
-        "Controls the History section; visits remain recorded.",
-      default: true,
-    },
-    tabListButtonPosition: {
-      type: "select",
-      label: "Tab list button position",
-      description: "Choose left or right.",
-      options: ["Left", "Right"],
-      default: "Left",
-    },
+  const settingsHandle = bb.settings.define({
+    ...SETTINGS,
+    language: { ...SETTINGS.language, options: [...SETTINGS.language.options] },
+    tabListButtonPosition: { ...SETTINGS.tabListButtonPosition, options: [...SETTINGS.tabListButtonPosition.options] },
   });
 
   type TabsSnapshot = {
@@ -643,6 +600,7 @@ export default async function plugin(bb: BbPluginApi) {
   };
 
   bb.rpc.register(rpcContract, {
+    tabs_settings_update: async (values) => ({ values: await settingsHandle.experimental_set(values) }),
     tabs_search: async ({ query, includeArchived }) => ({ candidates: fuzzyChatSearch(await searchCandidates(includeArchived === true), query) }),
     tabs_list: async (input) => {
       // Multiple renderer surfaces or Strict Mode can request the same snapshot

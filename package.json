@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Pinned and preview chat tabs with history, input-needed indicators, and 15 interface languages.",
   "license": "MIT",
   "repository": {
@@ -31,7 +31,7 @@
   },
   "bb": {
     "name": "Chat Tabs",
-    "description": "Keep important BB conversations one click away with pinned and preview tabs. Search recent chats, spot questions awaiting your reply, and choose from 15 interface languages.",
+    "description": "Keep important BB conversations one click away with pinned and preview tabs. Search chat titles across BB, spot questions awaiting your reply, and use tabs and settings in 15 interface languages.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
