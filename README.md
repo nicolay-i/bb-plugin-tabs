@@ -26,10 +26,11 @@ synthetic demonstration data.
   pin it. Drag pinned tabs between projects in one shared horizontal sequence;
   the preview always remains last and is never draggable. Double-click a pinned
   tab title to rename it inline.
-- **Useful activity and unread signals.** The plugin detects pending input,
-  workflows, background agents and commands, plan mode, goals, and runtime
-  activity. Work in nested chats is folded into the visible root chat. Calm
-  chats do not receive an empty status or decorative dot.
+- **Distinct input, activity, and unread signals.** When BB is waiting for a
+  question to be answered or a permission to be approved, a visible **Needs
+  input** badge replaces the working dot. This also works for nested chats.
+  Active workflows, background agents and commands, plan mode, goals, and
+  runtime activity have their own working indicator; calm chats have no dot.
 - **Create a chat from the strip.** A borderless plus after the last tab opens
   BB's native composer with the prompt focused. Hover for 300 ms to see the 15
   most recently active projects; **More** reveals the next 15 on click or after
@@ -66,6 +67,7 @@ stored.
 
 | Key | Default | Purpose |
 | --- | --- | --- |
+| `language` | `Auto` | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
 | `showPinnedTabsList` | `true` | Quick pinned-chat list below the composer on the New chat screen. |
 | `showTabsOnDesktop` | `true` | Top tab strip in the desktop layout. |
 | `showTabsOnMobile` | `true` | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer). |
@@ -75,7 +77,10 @@ stored.
 | `tabListButtonPosition` | `Left` | Side for the icon button: `Left` or `Right`. |
 
 The list button hides automatically when it is disabled or fewer than two
-allowed navigation targets remain.
+allowed navigation targets remain. The additional language packs are
+machine-assisted first drafts; native-speaker review is recommended before a
+public localization release. BB's static plugin-setting labels are shown in
+English/Russian because the settings descriptor has no locale hook.
 
 ## Design boundaries
 

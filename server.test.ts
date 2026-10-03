@@ -33,6 +33,9 @@ describe("Chat Tabs", () => {
   it("handles behavior 2", async () => {
     const host = await loadPlugin();
 
+    await expect(host.harness.behavior.setSettings({ language: "Русский" })).resolves.toBeUndefined();
+    await expect(host.harness.behavior.setSettings({ language: "Italiano" })).resolves.toBeUndefined();
+    await expect(host.harness.behavior.setSettings({ language: "Unsupported" })).rejects.toThrow();
     await expect(
       host.harness.behavior.setSettings({
         showTabsOnDesktop: false,

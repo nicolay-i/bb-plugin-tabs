@@ -3,6 +3,8 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   buildThreadWorkIndex,
   hasNestedThreadWork,
+  hasNestedThreadPendingInteraction,
+  hasThreadTreePendingInteraction,
   hasThreadTreeWork,
   rootThreadFor,
 } from "./thread-work";
@@ -46,6 +48,19 @@ function thread(
 }
 
 describe("Chat Tabs", () => {
+  it("separates a pending question or approval from active work and propagates it to parents", () => {
+    const root = thread("thr_root");
+    const child = thread("thr_child", root.id, { hasPendingInteraction: true, indicator: "waiting-for-input" });
+    const index = buildThreadWorkIndex([root, child]);
+    expect(hasThreadTreePendingInteraction(child.id, index)).toBe(true);
+    expect(hasThreadTreePendingInteraction(root.id, index)).toBe(true);
+    expect(hasNestedThreadPendingInteraction(root.id, index)).toBe(true);
+    expect(hasThreadTreeWork(child.id, index)).toBe(false);
+    expect(hasThreadTreeWork(root.id, index)).toBe(false);
+    const resolved = buildThreadWorkIndex([root, thread("thr_child", root.id)]);
+    expect(hasThreadTreePendingInteraction(root.id, resolved)).toBe(false);
+  });
+
   it("handles behavior 1", () => {
     const root = thread("thr_root");
     const middle = thread("thr_middle", root.id);

@@ -54,6 +54,8 @@ import { threadLinkUrl } from "./lib/thread-link";
 import {
   buildThreadWorkIndex,
   hasNestedThreadWork,
+  hasNestedThreadPendingInteraction,
+  hasThreadTreePendingInteraction,
   hasThreadTreeWork,
   rootThreadFor,
   type ThreadWorkIndex,
@@ -69,6 +71,7 @@ import { NewChatSwitcher } from "./components/new-chat-switcher";
 import { recentProjects } from "./lib/recent-projects";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
+import { translate, usePluginLocale, type PluginLocale, type LanguageSetting, type TranslationKey } from "./lib/plugin-locale";
 import "./tabs.css";
 
 function candidateForThread(thread: PluginSidebarThread): TabCandidate {
@@ -89,10 +92,8 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function unavailableHistoryLabel(
-  reason: TabHistoryUnavailableReason,
-): "Archived" | "Deleted" {
-  return reason === "archived" ? "Archived" : "Deleted";
+function unavailableHistoryLabel(reason: TabHistoryUnavailableReason, locale: PluginLocale): string {
+  return translate(locale, reason === "archived" ? "Archived" : "Deleted");
 }
 
 function isCloseCurrentTabShortcut(event: KeyboardEvent): boolean {
@@ -676,8 +677,10 @@ function isNoopPinnedMove(
 interface PresentedTab {
   entry: TabEntry;
   hasNestedWork: boolean;
+  hasNestedWaiting: boolean;
   isUnread: boolean;
   isWorking: boolean;
+  isWaiting: boolean;
   projectName: string;
   title: string;
   unavailableReason: TabHistoryUnavailableReason | null;
@@ -688,6 +691,7 @@ function buildPresentedTabs(
   threads: readonly PluginSidebarThread[],
   projects: readonly { id: string; name: string; isPersonal: boolean }[],
   workIndex: ThreadWorkIndex,
+  locale: PluginLocale = "en",
 ): PresentedTab[] {
   const threadsById = new Map(threads.map((thread) => [thread.id, thread]));
   const projectsById = new Map(projects.map((project) => [project.id, project]));
@@ -702,16 +706,20 @@ function buildPresentedTabs(
         hasNestedWork:
           liveThread !== undefined &&
           hasNestedThreadWork(liveThread.id, workIndex),
+        hasNestedWaiting:
+          liveThread !== undefined && hasNestedThreadPendingInteraction(liveThread.id, workIndex),
         isUnread: liveThread?.isUnread ?? false,
         isWorking:
           liveThread !== undefined && hasThreadTreeWork(liveThread.id, workIndex),
+        isWaiting:
+          liveThread !== undefined && hasThreadTreePendingInteraction(liveThread.id, workIndex),
         projectName: liveProject?.isPersonal
-          ? "Personal"
-          : liveProject?.name || "Project",
+          ? translate(locale, "Personal")
+          : liveProject?.name || translate(locale, "Project"),
         title:
           liveThread?.title?.trim() ||
           liveThread?.titleFallback?.trim() ||
-          entry.title,
+          (entry.title === "Untitled" ? translate(locale, "Untitled") : entry.title),
         unavailableReason: null,
       };
     });
@@ -722,6 +730,7 @@ function buildPresentedHistoryTabs(
   threads: readonly PluginSidebarThread[],
   projects: readonly { id: string; name: string; isPersonal: boolean }[],
   workIndex: ThreadWorkIndex,
+  locale: PluginLocale = "en",
 ): PresentedTab[] {
   const unavailableByThreadId = new Map(
     history.entries.map((entry) => [
@@ -743,6 +752,7 @@ function buildPresentedHistoryTabs(
     threads,
     projects,
     workIndex,
+    locale,
   ).map((tab) => ({
     ...tab,
     unavailableReason: unavailableByThreadId.get(tab.entry.threadId) ?? null,
@@ -815,6 +825,9 @@ function ChatTabsOverlay() {
   resolveRpcRef.current = resolveRpc;
   const isCompactTabLayout = useCompactTabLayout();
   const settings = useSettings();
+  const locale = usePluginLocale(settings.values?.language as LanguageSetting);
+  const t = useCallback((key: TranslationKey, variables?: Record<string, string | number>) =>
+    translate(locale, key, variables), [locale]);
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
   const showTabsOnCurrentLayout = isCompactTabLayout
@@ -907,7 +920,7 @@ function ChatTabsOverlay() {
     async (entry: TabEntry, title: string) => {
       const normalizedTitle = normalizeTabTitle(title);
       if (normalizedTitle === null) {
-        throw new Error("Enter a title between 1 and 300 characters.");
+        throw new Error(t("Enter a title between 1 and 300 characters."));
       }
       await threadActions.rename(entry.threadId, normalizedTitle);
       await syncActivity([
@@ -918,7 +931,7 @@ function ChatTabsOverlay() {
         },
       ]);
     },
-    [syncActivity, threadActions],
+    [syncActivity, threadActions, t],
   );
 
   const beginInlineRename = useCallback((entry: TabEntry, title: string) => {
@@ -947,18 +960,18 @@ function ChatTabsOverlay() {
     try {
       const normalizedTitle = normalizeTabTitle(target.value);
       if (normalizedTitle === null) {
-        toast.error("Enter a chat title between 1 and 300 characters.");
+        toast.error(t("Enter a chat title between 1 and 300 characters."));
         return;
       }
       if (normalizedTitle !== target.title) {
         await renameTab(target.entry, normalizedTitle);
       }
     } catch (cause) {
-      toast.error(`Could not rename the chat: ${errorMessage(cause)}`);
+      toast.error(t("Could not rename the chat: {error}", { error: errorMessage(cause) }));
     } finally {
       inlineRenameSubmitting.current = false;
     }
-  }, [inlineRename, renameTab]);
+  }, [inlineRename, renameTab, t]);
 
   const copyThreadLink = useCallback(
     async (entry: TabEntry) => {
@@ -966,12 +979,12 @@ function ChatTabsOverlay() {
         threadLinkUrl(entry, context.threadId),
       );
       if (copied) {
-        toast.success("Chat link copied");
+        toast.success(t("Chat link copied"));
       } else {
-        toast.error("Could not copy the chat link");
+        toast.error(t("Could not copy the chat link"));
       }
     },
-    [context.threadId],
+    [context.threadId, t],
   );
 
   const markTabUnread = useCallback(
@@ -979,10 +992,10 @@ function ChatTabsOverlay() {
       try {
         await threadActions.setRead(entry.threadId, false);
       } catch (cause) {
-        toast.error(`Could not mark the chat as unread: ${errorMessage(cause)}`);
+        toast.error(t("Could not mark the chat as unread: {error}", { error: errorMessage(cause) }));
       }
     },
-    [threadActions],
+    [threadActions, t],
   );
 
   const archiveTab = useCallback(
@@ -991,10 +1004,10 @@ function ChatTabsOverlay() {
         threadActions.archive(entry.threadId);
         void close(entry.threadId);
       } catch (cause) {
-        toast.error(`Could not archive the chat: ${errorMessage(cause)}`);
+        toast.error(t("Could not archive the chat: {error}", { error: errorMessage(cause) }));
       }
     },
-    [close, threadActions],
+    [close, threadActions, t],
   );
 
   const clearTabDrag = useCallback(() => {
@@ -1277,8 +1290,8 @@ function ChatTabsOverlay() {
     () =>
       state === null
         ? []
-        : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex),
-    [sidebar.projects, sidebar.threads, state, workIndex],
+        : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex, locale),
+    [sidebar.projects, sidebar.threads, state, workIndex, locale],
   );
   const newChatProjects = useMemo(
     () => recentProjects(sidebar.projects, sidebar.threads),
@@ -1295,6 +1308,7 @@ function ChatTabsOverlay() {
       sidebar.threads,
       sidebar.projects,
       workIndex,
+      locale,
     ).filter(
       (tab) => !showTabListPinned || !pinnedIds.has(tab.entry.threadId),
     );
@@ -1316,6 +1330,7 @@ function ChatTabsOverlay() {
     sidebar.threads,
     tabs,
     workIndex,
+    locale,
   ]);
   const menuPinnedTabs = showTabListPinned ? pinnedMenuTabs : [];
   const menuHistoryTabs = showTabListHistory ? historyMenuTabs : [];
@@ -1702,10 +1717,10 @@ function ChatTabsOverlay() {
     const unavailableLabel =
       unavailableReason === null
         ? null
-        : unavailableHistoryLabel(unavailableReason);
+        : unavailableHistoryLabel(unavailableReason, locale);
     const active =
       unavailableReason === null && tab.entry.threadId === context.threadId;
-    const status = chatStatusFor(tab);
+    const status = chatStatusFor(tab, locale);
     return (
       <DropdownMenu.Item
         key={tab.entry.threadId}
@@ -1717,7 +1732,7 @@ function ChatTabsOverlay() {
         aria-label={
           unavailableLabel === null
             ? undefined
-            : `${tab.title}. Project: ${tab.projectName}. ${unavailableLabel}. Chat unavailable.`
+            : `${tab.title}. ${t("Project: {project}", { project: tab.projectName })}. ${unavailableLabel}. ${t("Chat unavailable.")}`
         }
         data-active={active ? "true" : "false"}
         data-thread-id={tab.entry.threadId}
@@ -1817,8 +1832,8 @@ function ChatTabsOverlay() {
           <button
             type="button"
             className="bb-chat-tabs-list-trigger"
-            aria-label="Open chat list"
-            title="Open tab list"
+            aria-label={t("Open chat list")}
+            title={t("Open tab list")}
             onPointerDown={(event) => {
               if (event.button !== 0 || event.ctrlKey) return;
               // The first click latches a hover-open menu instead of toggling it closed.
@@ -1835,9 +1850,10 @@ function ChatTabsOverlay() {
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content
+            lang={locale}
             id="bb-chat-tabs-menu-content"
             className="bb-chat-tabs-list-menu"
-            aria-label="Open chat list"
+            aria-label={t("Open chat list")}
             side="bottom"
             align={tabListButtonPosition === "right" ? "end" : "start"}
             sideOffset={6}
@@ -1864,11 +1880,11 @@ function ChatTabsOverlay() {
                 ref={searchInputRef}
                 type="search"
                 className="bb-chat-tabs-list-menu-search-input"
-                aria-label="Search chats by title"
+                aria-label={t("Search chats by title")}
                 aria-controls="bb-chat-tabs-menu-content"
                 aria-activedescendant={selectedSearchIndex >= 0 && selectedSearchIndex < navigableMenuTabs.length
                   ? `bb-chat-tabs-search-result-${selectedSearchIndex}` : undefined}
-                placeholder="Search chats..."
+                placeholder={t("Search chats...")}
                 value={tabSearch}
                 onChange={(event) => {
                   setTabSearch(event.target.value);
@@ -1898,14 +1914,14 @@ function ChatTabsOverlay() {
               />
             </div>
             {searchActive ? (
-              <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label="Search results">
-                {searchResults.length > 0 ? searchResults.map(renderTabListMenuItem) : <span className="bb-chat-tabs-list-menu-search-empty">No matching chats</span>}
+              <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label={t("Search results")}>
+                {searchResults.length > 0 ? searchResults.map(renderTabListMenuItem) : <span className="bb-chat-tabs-list-menu-search-empty">{t("No matching chats")}</span>}
               </DropdownMenu.Group>
             ) : null}
             {!searchActive && menuPinnedTabs.length > 0 ? (
               <DropdownMenu.Group className="bb-chat-tabs-list-menu-group">
                 <DropdownMenu.Label className="bb-chat-tabs-list-menu-group-label">
-                  Pinned
+                  {t("Pinned")}
                 </DropdownMenu.Label>
                 {menuPinnedTabs.map(renderTabListMenuItem)}
               </DropdownMenu.Group>
@@ -1913,14 +1929,14 @@ function ChatTabsOverlay() {
             {!searchActive && visibleHistoryMenuTabs.length > 0 ? (
               <DropdownMenu.Group className="bb-chat-tabs-list-menu-group">
                 <DropdownMenu.Label className="bb-chat-tabs-list-menu-group-label">
-                  History
+                  {t("History")}
                 </DropdownMenu.Label>
                 {visibleHistoryMenuTabs.map((tab, index) => (
                   <Fragment key={tab.entry.threadId}>
                     {index > 0 && index % HISTORY_MENU_PAGE_SIZE === 0 ? (
                       <DropdownMenu.Separator
                         className="bb-chat-tabs-list-menu-history-page-separator"
-                        aria-label="Next history page"
+                        aria-label={t("Next history page")}
                       />
                     ) : null}
                     {renderTabListMenuItem(tab)}
@@ -1932,10 +1948,10 @@ function ChatTabsOverlay() {
               <DropdownMenu.Item
                 className="bb-chat-tabs-list-menu-more"
                 data-pending={historyMorePending ? "true" : "false"}
-                aria-label={`Show ${Math.min(
+                aria-label={t("Show {count} more history chats", { count: Math.min(
                   HISTORY_MENU_PAGE_SIZE,
                   menuHistoryTabs.length - visibleHistoryMenuTabs.length,
-                )} more history chats`}
+                ) })}
                 onPointerEnter={(event) => {
                   if (event.pointerType === "mouse") scheduleHistoryMore();
                 }}
@@ -1951,7 +1967,7 @@ function ChatTabsOverlay() {
                   loadMoreHistory();
                 }}
               >
-                <span>More</span>
+                <span>{t("More")}</span>
                 <span className="bb-chat-tabs-list-menu-more-count">
                   {menuHistoryTabs.length - visibleHistoryMenuTabs.length}
                 </span>
@@ -1966,6 +1982,7 @@ function ChatTabsOverlay() {
   return (
     <aside
       id="bb-chat-tabs-overlay"
+      lang={locale}
       data-docked={shouldDock ? "true" : "false"}
       data-row-count={String(rowCount)}
       data-scrollable={hasHorizontalOverflow ? "true" : "false"}
@@ -1979,7 +1996,7 @@ function ChatTabsOverlay() {
           ref={topScrollbarRef}
           className="bb-chat-tabs-top-scrollbar"
           aria-hidden={!hasHorizontalOverflow}
-          aria-label="Horizontal tab scroll"
+          aria-label={t("Horizontal tab scroll")}
           tabIndex={hasHorizontalOverflow ? 0 : -1}
         >
           <div
@@ -1994,7 +2011,7 @@ function ChatTabsOverlay() {
             ref={stripRef}
             className="bb-chat-tabs-strip"
             data-dragging={draggedTab === null ? "false" : "true"}
-            aria-label="Open chats"
+            aria-label={t("Open chats")}
             onDragOver={(event) => {
               if (draggedTabRef.current === null || dropTargetRef.current === null) return;
               event.preventDefault();
@@ -2015,8 +2032,10 @@ function ChatTabsOverlay() {
             ({
               entry,
               hasNestedWork,
+              hasNestedWaiting,
               isUnread,
               isWorking,
+              isWaiting,
               projectName,
               title,
             }) => {
@@ -2027,19 +2046,20 @@ function ChatTabsOverlay() {
                       entry.pinned && !editing && !isCompactTabLayout;
                     const dragging = draggedTab?.threadId === entry.threadId;
                     const workLabel = hasNestedWork
-                      ? "nested work is running"
-                      : "work is running";
+                      ? t("nested work is running")
+                      : t("work is running");
+                    const waitingLabel = hasNestedWaiting
+                      ? t("A nested chat needs your input.")
+                      : t("Waiting for your input.");
                     const tabHint = [
-                      `Project: ${projectName}`,
-                      `Chat: ${title}`,
-                      hasNestedWork ? "Nested work is running." : "",
-                      isUnread ? "There are unread messages." : "",
-                      "Click to open the chat.",
-                      entry.pinned
-                        ? "Drag to change the order."
-                        : "",
-                      preview ? "Double-click to pin this tab." : "",
-                      "Middle-click to close this tab.",
+                      t("Project: {project}", { project: projectName }),
+                      t("Chat: {title}", { title }),
+                      isWaiting ? waitingLabel : hasNestedWork ? t("Nested work is running.") : "",
+                      isUnread ? t("There are unread messages.") : "",
+                      t("Click to open the chat."),
+                      entry.pinned ? t("Drag to change the order.") : "",
+                      preview ? t("Double-click to pin this tab.") : "",
+                      t("Middle-click to close this tab."),
                     ]
                       .filter(Boolean)
                       .join("\n");
@@ -2049,6 +2069,7 @@ function ChatTabsOverlay() {
                           ? renderDropSlot(entry.threadId, "before")
                           : null}
                       <TabActionsContextMenu
+                        locale={locale}
                         entry={entry}
                         isPinned={entry.pinned}
                         title={title}
@@ -2074,6 +2095,7 @@ function ChatTabsOverlay() {
                           data-draggable={draggable ? "true" : "false"}
                           data-editing={editing ? "true" : "false"}
                           data-nested-work={hasNestedWork ? "true" : "false"}
+                          data-waiting={isWaiting ? "true" : "false"}
                           data-preview={preview ? "true" : "false"}
                           data-unread={isUnread ? "true" : "false"}
                           draggable={draggable}
@@ -2092,7 +2114,7 @@ function ChatTabsOverlay() {
                             <input
                               autoFocus
                               className="bb-chat-tab-inline-rename"
-                              aria-label={`Rename tab “${title}”`}
+                              aria-label={t("Rename tab “{title}”", { title })}
                               maxLength={300}
                               value={inlineRename?.value ?? title}
                               onBlur={() => void commitInlineRename()}
@@ -2121,15 +2143,13 @@ function ChatTabsOverlay() {
                               type="button"
                               className="bb-chat-tab-select"
                               aria-current={active ? "page" : undefined}
-                              aria-description={`Click opens the chat. Project: ${projectName}.${
-                                preview
-                                  ? " Preview tab."
-                                  : " Pinned tab. Drag it to change the order."
-                              } Middle-click closes this tab.`}
+                              aria-description={`${t("Click opens the chat.")} ${t("Project: {project}", { project: projectName })}. ${
+                                t(preview ? "Preview tab." : "Pinned tab. Drag it to change the order.")
+                              } ${t("Middle-click closes this tab.")}`}
                               aria-label={`${title}${
-                                isWorking ? `, ${workLabel}` : ""
+                                isWaiting ? `, ${waitingLabel}` : isWorking ? `, ${workLabel}` : ""
                               }${
-                                isUnread ? ", unread messages" : ""
+                                isUnread ? `, ${t("unread messages")}` : ""
                               }`}
                               title={tabHint}
                               onMouseDown={(event) => {
@@ -2152,7 +2172,9 @@ function ChatTabsOverlay() {
                                 if (preview) void setPinned(entry.threadId, true);
                               }}
                             >
-                              {isWorking ? (
+                              {isWaiting ? (
+                                <span className="bb-chat-tab-waiting" aria-hidden>{t("Needs input")}</span>
+                              ) : isWorking ? (
                                 <span className="bb-chat-tab-working" aria-hidden />
                               ) : null}
                               <span className="bb-chat-tab-copy">
@@ -2176,8 +2198,8 @@ function ChatTabsOverlay() {
                           <button
                             type="button"
                             className="bb-chat-tab-action"
-                            aria-label={`Close tab “${title}”`}
-                            title="Close tab"
+                            aria-label={t("Close tab “{title}”", { title })}
+                            title={t("Close tab")}
                             onClick={(event) => {
                               event.stopPropagation();
                               void closeTab(entry);
@@ -2196,11 +2218,12 @@ function ChatTabsOverlay() {
           )}
             <NewChatSwitcher
               projects={newChatProjects}
+              locale={locale}
               openNewThread={threadActions.openNewThread}
             />
             {error === null ? null : (
               <span className="bb-chat-tabs-error" role="status" title={error}>
-                Tabs unavailable
+                {t("Tabs unavailable")}
               </span>
             )}
           </div>
@@ -2208,6 +2231,7 @@ function ChatTabsOverlay() {
         </div>
       </div>
       <RenameTabDialog
+        locale={locale}
         target={renameDialogTarget}
         onClose={() => setRenameDialogTarget(null)}
         onRename={renameTab}
@@ -2218,6 +2242,7 @@ function ChatTabsOverlay() {
 
 function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
   const settings = useSettings();
+  const locale = usePluginLocale(settings.values?.language as LanguageSetting);
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
   const showPinnedTabsList = settings.values?.showPinnedTabsList !== false;
@@ -2236,16 +2261,17 @@ function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
     () =>
       state === null
         ? []
-        : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex),
-    [sidebar.projects, sidebar.threads, state, workIndex],
+        : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex, locale),
+    [sidebar.projects, sidebar.threads, state, workIndex, locale],
   );
   const pinnedTabs = useMemo(
     () =>
       tabs
         .filter((tab) => tab.entry.pinned)
-        .map(({ entry, isUnread, isWorking, projectName, title }) => ({
+        .map(({ entry, isUnread, isWorking, isWaiting, projectName, title }) => ({
           isUnread,
           isWorking,
+          isWaiting,
           projectName,
           threadId: entry.threadId,
           title,
@@ -2267,6 +2293,7 @@ function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
 
   return (
     <PinnedTabsList
+      locale={locale}
       visible={showPinnedTabsList}
       tabs={pinnedTabs}
       onOpenThread={(threadId) => threadActions.open(threadId)}

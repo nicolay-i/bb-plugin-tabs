@@ -1,14 +1,17 @@
 import { chatStatusFor } from "../lib/chat-status";
+import { translate, type PluginLocale } from "../lib/plugin-locale";
 
 export interface PinnedTabsListItem {
   isUnread: boolean;
   isWorking: boolean;
+  isWaiting?: boolean;
   projectName: string;
   threadId: string;
   title: string;
 }
 
 interface PinnedTabsListProps {
+  locale?: PluginLocale;
   onOpenThread: (threadId: string) => void;
   tabs: readonly PinnedTabsListItem[];
   visible: boolean;
@@ -22,7 +25,10 @@ export function PinnedTabsList({
   onOpenThread,
   tabs,
   visible,
+  locale = "en",
 }: PinnedTabsListProps) {
+  const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
+    translate(locale, key, variables);
   if (!visible) {
     // Scoped CSS hides the parent host section. This marker also hides its
     // built-in heading, which the current slot API cannot hide declaratively.
@@ -40,11 +46,13 @@ export function PinnedTabsList({
     return (
       <div
         className="bb-chat-tabs-homepage-pinned-list"
+        lang={locale}
         data-testid="bb-chat-tabs-homepage-pinned-list"
         data-visible="true"
       >
+        <h2 className="bb-chat-tabs-homepage-pinned-heading">{t("Pinned chats")}</h2>
         <p className="bb-chat-tabs-homepage-pinned-empty">
-          No pinned chats yet. Open a chat and choose “Pin”.
+          {t("No pinned chats yet. Open a chat and choose “Pin”.")}
         </p>
       </div>
     );
@@ -53,15 +61,17 @@ export function PinnedTabsList({
   return (
     <div
       className="bb-chat-tabs-homepage-pinned-list"
+      lang={locale}
       data-testid="bb-chat-tabs-homepage-pinned-list"
       data-visible="true"
     >
+      <h2 className="bb-chat-tabs-homepage-pinned-heading">{t("Pinned chats")}</h2>
       <ul
         className="bb-chat-tabs-homepage-pinned-items"
-        aria-label="Pinned chats"
+        aria-label={t("Pinned chats")}
       >
         {tabs.map((tab) => {
-          const status = chatStatusFor(tab);
+          const status = chatStatusFor(tab, locale);
           return (
             <li key={tab.threadId} className="bb-chat-tabs-homepage-pinned-item">
               <button
@@ -69,8 +79,8 @@ export function PinnedTabsList({
                 className="bb-chat-tabs-homepage-pinned-button"
                 aria-label={
                   status === null
-                    ? `${tab.title}. Project: ${tab.projectName}.`
-                    : `${tab.title}. Project: ${tab.projectName}. ${status.text}.`
+                    ? `${tab.title}. ${t("Project: {project}", { project: tab.projectName })}.`
+                    : `${tab.title}. ${t("Project: {project}", { project: tab.projectName })}. ${status.text}.`
                 }
                 onClick={() => onOpenThread(tab.threadId)}
               >

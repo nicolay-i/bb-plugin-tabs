@@ -140,6 +140,65 @@ afterEach(() => {
 });
 
 describe("Chat Tabs", () => {
+  it("marks a pending question or approval in the strip and list instead of showing endless work", async () => {
+    const state: TabsState = { version: 1, entries: [
+      { threadId: "thr_parent", projectId: "proj_api", title: "Parent", pinned: true, openedAt: 1 },
+      { threadId: "thr_other", projectId: "proj_api", title: "Other", pinned: true, openedAt: 2 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      settings: { language: "Русский" },
+      context: { projectId: "proj_api", threadId: "thr_parent" },
+      sidebarThreads: {
+        threads: [
+          sidebarThread("thr_parent", "proj_api", "Parent"),
+          sidebarThread("thr_child", "proj_api", "Child", {
+            parentThreadId: "thr_parent", hasPendingInteraction: true, indicator: "waiting-for-input",
+            activity: { workflows: 1, backgroundAgents: 0, backgroundCommands: 0, goals: 0, planMode: 0 },
+          }),
+          sidebarThread("thr_other", "proj_api", "Other"),
+        ],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: { tabs_list: () => ({ state }) },
+    });
+    const tab = await slot.findByRole("button", { name: /Parent, В дочернем чате требуется ваш ответ/ });
+    expect(tab.closest(".bb-chat-tab")?.getAttribute("data-waiting")).toBe("true");
+    expect(tab.querySelector(".bb-chat-tab-waiting")?.textContent).toBe("Нужен ответ");
+    expect(tab.querySelector(".bb-chat-tab-working")).toBeNull();
+    fireEvent.pointerDown(slot.getByRole("button", { name: "Открыть список чатов" }), { button: 0 });
+    await waitFor(() => expect(document.querySelector('.bb-chat-tabs-list-menu-status[data-status="waiting"]')).not.toBeNull());
+  });
+
+  it("renders Russian tab actions and navigation when language is overridden", async () => {
+    const state: TabsState = { version: 1, entries: [
+      { threadId: "thr_current", projectId: "proj_api", title: "Первый чат", pinned: true, openedAt: 1 },
+      { threadId: "thr_other", projectId: "proj_api", title: "Второй чат", pinned: true, openedAt: 2 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (overlay === undefined) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      settings: { language: "Русский" },
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: {
+        threads: [
+          sidebarThread("thr_current", "proj_api", "Первый чат"),
+          sidebarThread("thr_other", "proj_api", "Второй чат"),
+        ],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+      },
+      rpc: { tabs_list: () => ({ state }) },
+    });
+    const tab = await slot.findByRole("button", { name: "Первый чат" });
+    expect(tab.closest("aside")?.getAttribute("lang")).toBe("ru");
+    expect(slot.getByRole("button", { name: "Закрыть вкладку «Первый чат»" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Новый чат" })).toBeTruthy();
+    fireEvent.contextMenu(tab);
+    expect(await slot.findByRole("menuitem", { name: "Копировать ссылку" })).toBeTruthy();
+    expect(slot.getByRole("menuitem", { name: "Открепить" })).toBeTruthy();
+  });
+
   it("handles behavior 1", () => {
     expect(app.threadHeaderActions).toHaveLength(0);
   });

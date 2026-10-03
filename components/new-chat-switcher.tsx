@@ -2,17 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import type { PluginSidebarProject } from "@get-bb/plugin-sdk/app";
 import { Icon } from "./ui/icon";
+import { translate, type PluginLocale } from "../lib/plugin-locale";
 
 const HOVER_DELAY_MS = 300;
 const LEAVE_DELAY_MS = 120;
 const PROJECT_PAGE_SIZE = 15;
 
 interface NewChatSwitcherProps {
+  locale?: PluginLocale;
   projects: readonly PluginSidebarProject[];
   openNewThread: (options?: { projectId?: string; focusPrompt?: boolean }) => void;
 }
 
-export function NewChatSwitcher({ projects, openNewThread }: NewChatSwitcherProps) {
+export function NewChatSwitcher({ projects, openNewThread, locale = "en" }: NewChatSwitcherProps) {
+  const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
+    translate(locale, key, variables);
   const [open, setOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PROJECT_PAGE_SIZE);
   const [morePending, setMorePending] = useState(false);
@@ -96,7 +100,7 @@ export function NewChatSwitcher({ projects, openNewThread }: NewChatSwitcherProp
           <button
             type="button"
             className="bb-chat-tabs-new-trigger"
-            aria-label="New chat"
+            aria-label={t("New chat")}
             aria-haspopup={projects.length > 0 ? "menu" : undefined}
             aria-expanded={projects.length > 0 ? open : undefined}
             onClick={() => navigate()}
@@ -118,8 +122,9 @@ export function NewChatSwitcher({ projects, openNewThread }: NewChatSwitcherProp
       {projects.length > 0 ? (
         <Popover.Portal>
           <Popover.Content
+            lang={locale}
             className="bb-chat-tabs-new-menu"
-            aria-label="Recent projects"
+            aria-label={t("Recent projects")}
             role="menu"
             side="bottom"
             align="start"
@@ -132,7 +137,7 @@ export function NewChatSwitcher({ projects, openNewThread }: NewChatSwitcherProp
             onPointerEnter={(event) => enter(event.pointerType)}
             onPointerLeave={(event) => leave(event.pointerType)}
           >
-            <div className="bb-chat-tabs-new-menu-heading">New chat in project</div>
+            <div className="bb-chat-tabs-new-menu-heading">{t("New chat in project")}</div>
             {projects.slice(0, visibleCount).map((project) => (
               <button
                 key={project.id}
@@ -151,7 +156,7 @@ export function NewChatSwitcher({ projects, openNewThread }: NewChatSwitcherProp
                 type="button"
                 role="menuitem"
                 className="bb-chat-tabs-new-menu-more"
-                aria-label={`Show ${Math.min(PROJECT_PAGE_SIZE, projects.length - visibleCount)} more projects`}
+                aria-label={t("Show {count} more projects", { count: Math.min(PROJECT_PAGE_SIZE, projects.length - visibleCount) })}
                 data-pending={morePending ? "true" : "false"}
                 onClick={loadMore}
                 onPointerEnter={(event) => {
@@ -160,7 +165,7 @@ export function NewChatSwitcher({ projects, openNewThread }: NewChatSwitcherProp
                 onPointerLeave={clearMoreTimer}
                 onPointerCancel={clearMoreTimer}
               >
-                <span>More</span>
+                <span>{t("More")}</span>
                 <span>{projects.length - visibleCount}</span>
               </button>
             ) : null}

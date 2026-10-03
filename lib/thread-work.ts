@@ -1,7 +1,6 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 
 const ACTIVE_INDICATORS = new Set([
-  "waiting-for-input",
   "workflow",
   "background-agent",
   "background-command",
@@ -15,13 +14,14 @@ export interface ThreadWorkIndex {
   directlyWorkingThreadIds: ReadonlySet<string>;
   /** Ancestors of working chats; their tabs should show activity too. */
   nestedWorkingAncestorIds: ReadonlySet<string>;
+  directlyWaitingThreadIds: ReadonlySet<string>;
+  nestedWaitingAncestorIds: ReadonlySet<string>;
   threadsById: ReadonlyMap<string, PluginSidebarThread>;
 }
 
 export function isDirectlyWorkingThread(thread: PluginSidebarThread): boolean {
   const { activity } = thread;
   return (
-    thread.hasPendingInteraction ||
     activity.workflows > 0 ||
     activity.backgroundAgents > 0 ||
     activity.backgroundCommands > 0 ||
@@ -43,30 +43,37 @@ export function buildThreadWorkIndex(
   const threadsById = new Map(threads.map((thread) => [thread.id, thread]));
   const directlyWorkingThreadIds = new Set<string>();
   const nestedWorkingAncestorIds = new Set<string>();
+  const directlyWaitingThreadIds = new Set<string>();
+  const nestedWaitingAncestorIds = new Set<string>();
 
-  for (const thread of threads) {
-    if (
-      !isDirectlyWorkingThread(thread) &&
-      !workflowActiveThreadIds.has(thread.id)
-    ) {
-      continue;
-    }
-    directlyWorkingThreadIds.add(thread.id);
-
+  const markAncestors = (thread: PluginSidebarThread, ancestors: Set<string>) => {
     const seen = new Set([thread.id]);
     let parentThreadId = thread.parentThreadId;
     while (parentThreadId !== null && !seen.has(parentThreadId)) {
       seen.add(parentThreadId);
       const parent = threadsById.get(parentThreadId);
       if (parent === undefined) break;
-      nestedWorkingAncestorIds.add(parent.id);
+      ancestors.add(parent.id);
       parentThreadId = parent.parentThreadId;
+    }
+  };
+
+  for (const thread of threads) {
+    if (thread.hasPendingInteraction || thread.indicator === "waiting-for-input") {
+      directlyWaitingThreadIds.add(thread.id);
+      markAncestors(thread, nestedWaitingAncestorIds);
+    }
+    if (isDirectlyWorkingThread(thread) || workflowActiveThreadIds.has(thread.id)) {
+      directlyWorkingThreadIds.add(thread.id);
+      markAncestors(thread, nestedWorkingAncestorIds);
     }
   }
 
   return {
     directlyWorkingThreadIds,
     nestedWorkingAncestorIds,
+    directlyWaitingThreadIds,
+    nestedWaitingAncestorIds,
     threadsById,
   };
 }
@@ -79,6 +86,14 @@ export function hasThreadTreeWork(
     index.directlyWorkingThreadIds.has(threadId) ||
     index.nestedWorkingAncestorIds.has(threadId)
   );
+}
+
+export function hasThreadTreePendingInteraction(threadId: string, index: ThreadWorkIndex): boolean {
+  return index.directlyWaitingThreadIds.has(threadId) || index.nestedWaitingAncestorIds.has(threadId);
+}
+
+export function hasNestedThreadPendingInteraction(threadId: string, index: ThreadWorkIndex): boolean {
+  return index.nestedWaitingAncestorIds.has(threadId);
 }
 
 export function hasNestedThreadWork(

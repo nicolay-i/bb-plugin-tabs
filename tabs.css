@@ -28,6 +28,8 @@
     transparent
   );
   --bb-chat-tabs-status-unread: var(--foreground);
+  --bb-chat-tabs-status-waiting: color-mix(in oklch, var(--primary) 42%, var(--foreground));
+  --bb-chat-tabs-status-waiting-bg: color-mix(in oklch, var(--primary) 20%, var(--background));
   --bb-chat-tabs-scrollbar-track: color-mix(
     in oklch,
     var(--muted) 86%,
@@ -567,6 +569,15 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
 }
 
+.bb-chat-tabs-list-menu-status[data-status="waiting"] {
+  color: var(--bb-chat-tabs-status-waiting);
+}
+
+.bb-chat-tabs-list-menu-status[data-status="waiting"]
+  .bb-chat-tabs-list-menu-status-dot {
+  background: var(--bb-chat-tabs-status-waiting);
+}
+
 .bb-chat-tabs-list-menu-status[data-status="unread"] {
   color: var(--bb-chat-tabs-status-unread);
 }
@@ -847,6 +858,22 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
 }
 
+.bb-chat-tab-waiting {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 6.5rem;
+  padding: 0.125rem 0.3rem;
+  border-radius: 0.25rem;
+  background: var(--bb-chat-tabs-status-waiting-bg);
+  color: var(--bb-chat-tabs-status-waiting);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bb-chat-tab[data-active="true"] .bb-chat-tab-working {
   background: var(--bb-chat-tabs-active-foreground);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 24%, transparent);
@@ -924,6 +951,18 @@ section:has(
 
 .bb-chat-tabs-homepage-pinned-list[data-visible="false"] {
   display: none;
+}
+
+/* The host slot heading is static; the plugin supplies a live localized heading. */
+section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homepage-pinned-list)
+  > :is(h1, h2, h3, h4) {
+  display: none;
+}
+
+.bb-chat-tabs-homepage-pinned-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .bb-chat-tabs-homepage-pinned-empty {
@@ -1043,6 +1082,15 @@ section:has(
   .bb-chat-tabs-homepage-pinned-status-dot {
   background: var(--bb-chat-tabs-status-working-dot);
   box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
+}
+
+.bb-chat-tabs-homepage-pinned-status[data-status="waiting"] {
+  color: var(--bb-chat-tabs-status-waiting);
+}
+
+.bb-chat-tabs-homepage-pinned-status[data-status="waiting"]
+  .bb-chat-tabs-homepage-pinned-status-dot {
+  background: var(--bb-chat-tabs-status-waiting);
 }
 
 .bb-chat-tabs-homepage-pinned-status[data-status="unread"] {

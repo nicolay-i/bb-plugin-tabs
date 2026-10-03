@@ -14,6 +14,15 @@ afterEach(() => {
 });
 
 describe("New chat switcher", () => {
+  it("shows Russian labels without translating project names", () => {
+    render(<NewChatSwitcher projects={projects} locale="ru" openNewThread={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Новый чат" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(screen.getByRole("menu", { name: "Недавние проекты" })).toBeTruthy();
+    expect(screen.getByText("Новый чат в проекте")).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "First project" })).toBeTruthy();
+  });
+
   it("opens the native new-thread screen on click", () => {
     const openNewThread = vi.fn();
     render(<NewChatSwitcher projects={projects} openNewThread={openNewThread} />);
