@@ -4,6 +4,17 @@ All notable changes to Chat Tabs are documented here.
 
 ## Unreleased
 
+## 0.1.7
+
+### Fixed
+
+- Homepage tabs recover from a failed cold-start request and load when an initially hidden page becomes visible, without requiring a visit to a chat. Reconnecting also refreshes the snapshot. Initial failures retry with capped exponential backoff; timers are cleaned up when hidden, disabled, or unmounted.
+- The homepage shows a localized loading status until the first snapshot arrives instead of incorrectly reporting an empty list.
+
+### Changed
+
+- The New chat homepage section is now called **Tabs** rather than **Pinned chats**, including its accessible name, empty state, and setting. It still lists pinned tabs in their existing order.
+
 ## 0.1.6
 
 ### Added

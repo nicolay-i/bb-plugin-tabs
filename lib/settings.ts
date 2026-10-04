@@ -4,7 +4,7 @@ import { LANGUAGE_OPTIONS } from "./languages";
 export const SETTINGS = {
   language: { type: "select", label: "Language", description: "Choose the language for Chat Tabs, including these settings. Auto uses the BB page or browser language.", options: [...LANGUAGE_OPTIONS], default: "Auto" },
   searchArchivedChats: { type: "boolean", label: "Include archived chats in search", description: "Adds archived chats to title search results. They have struck-through titles and cannot be opened here. Deleted chats are excluded.", default: false },
-  showPinnedTabsList: { type: "boolean", label: "Show pinned chats on New chat", description: "Shows pinned chats below the message input on the New chat screen.", default: true },
+  showPinnedTabsList: { type: "boolean", label: "Show tabs on New chat", description: "Shows your pinned tabs below the message input on the New chat screen.", default: true },
   showTabsOnDesktop: { type: "boolean", label: "Show top tabs on desktop", description: "Shows the chat tab strip below the BB header on desktop. Turning it off keeps your pins and history.", default: true },
   showTabsOnMobile: { type: "boolean", label: "Show top tabs on mobile", description: "Shows the chat tab strip below the BB header on mobile. Turning it off keeps your pins and history.", default: true },
   showTabListButton: { type: "boolean", label: "Show the tab list button", description: "Adds a button to the tab strip that opens a menu with chat search, pinned chats, and history.", default: true },

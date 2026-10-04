@@ -15,6 +15,7 @@ interface PinnedTabsListProps {
   onOpenThread: (threadId: string) => void;
   tabs: readonly PinnedTabsListItem[];
   visible: boolean;
+  loading?: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export function PinnedTabsList({
   onOpenThread,
   tabs,
   visible,
+  loading = false,
   locale = "en",
 }: PinnedTabsListProps) {
   const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
@@ -42,7 +44,7 @@ export function PinnedTabsList({
     );
   }
 
-  if (tabs.length === 0) {
+  if (loading || tabs.length === 0) {
     return (
       <div
         className="bb-chat-tabs-homepage-pinned-list"
@@ -50,9 +52,9 @@ export function PinnedTabsList({
         data-testid="bb-chat-tabs-homepage-pinned-list"
         data-visible="true"
       >
-        <h2 className="bb-chat-tabs-homepage-pinned-heading">{t("Pinned chats")}</h2>
-        <p className="bb-chat-tabs-homepage-pinned-empty">
-          {t("No pinned chats yet. Open a chat and choose “Pin”.")}
+        <h2 className="bb-chat-tabs-homepage-pinned-heading">{t("Tabs")}</h2>
+        <p className="bb-chat-tabs-homepage-pinned-empty" role={loading ? "status" : undefined}>
+          {loading ? t("Loading tabs…") : t("No tabs yet. Open a chat and choose “Pin”.")}
         </p>
       </div>
     );
@@ -65,10 +67,10 @@ export function PinnedTabsList({
       data-testid="bb-chat-tabs-homepage-pinned-list"
       data-visible="true"
     >
-      <h2 className="bb-chat-tabs-homepage-pinned-heading">{t("Pinned chats")}</h2>
+      <h2 className="bb-chat-tabs-homepage-pinned-heading">{t("Tabs")}</h2>
       <ul
         className="bb-chat-tabs-homepage-pinned-items"
-        aria-label={t("Pinned chats")}
+        aria-label={t("Tabs")}
       >
         {tabs.map((tab) => {
           const status = chatStatusFor(tab, locale);

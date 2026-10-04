@@ -17,6 +17,7 @@ import {
   experimental_useSidebarThreads,
   useBbContext,
   useRealtime,
+  useRealtimeConnectionState,
   useSettings,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
@@ -230,6 +231,9 @@ function useDocumentVisibility(): boolean {
 }
 
 function useTabsState(enabled = true) {
+  const visible = useDocumentVisibility();
+  const connectionState = useRealtimeConnectionState();
+  const [initialLoadFailures, setInitialLoadFailures] = useState(0);
   const rpc = useRpc<typeof rpcContract>();
   const rpcRef = useRef(rpc);
   const enabledRef = useRef(enabled);
@@ -250,6 +254,7 @@ function useTabsState(enabled = true) {
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshInFlightKeyRef = useRef<string | null>(null);
   const queuedRefreshRef = useRef<TabsListRequest | null>(null);
+  const lastWorkflowThreadIdsRef = useRef<readonly string[]>([]);
   const activitySyncInFlightRef = useRef<Promise<void> | null>(null);
   const activitySyncInFlightKeyRef = useRef<string | null>(null);
   const queuedActivitySyncRef = useRef<ActivitySyncRequest | null>(null);
@@ -266,6 +271,7 @@ function useTabsState(enabled = true) {
         : normalized,
     );
     setError(null);
+    setInitialLoadFailures(0);
   }, []);
 
   const acceptHistory = useCallback((next: TabHistoryState) => {
@@ -296,6 +302,7 @@ function useTabsState(enabled = true) {
     (workflowThreadIds: readonly string[] = []): Promise<void> => {
       if (!enabledRef.current) return Promise.resolve();
       const canonicalIds = canonicalThreadIds(workflowThreadIds);
+      lastWorkflowThreadIdsRef.current = canonicalIds;
       const request: TabsListRequest = {
         key: workflowRequestKey(canonicalIds),
         workflowThreadIds: canonicalIds,
@@ -332,6 +339,7 @@ function useTabsState(enabled = true) {
             if (result.history !== undefined) acceptHistory(result.history);
           } catch (cause) {
             setError(errorMessage(cause));
+            if (stateRef.current === null) setInitialLoadFailures((count) => count + 1);
           }
 
           const queued = queuedRefreshRef.current;
@@ -354,9 +362,19 @@ function useTabsState(enabled = true) {
   );
 
   useEffect(() => {
-    if (!enabled || !documentIsVisible()) return;
-    void refresh();
-  }, [enabled, refresh]);
+    if (!enabled || !visible || connectionState !== "connected") return;
+    // Reuse the last probe key so visibility/workflow effects share one request.
+    void refresh(lastWorkflowThreadIdsRef.current);
+  }, [enabled, visible, connectionState, refresh]);
+
+  // Cold-start RPCs can fail while the host/plugin generation is becoming ready.
+  // Retry only until the first snapshot arrives; never poll healthy empty lists.
+  useEffect(() => {
+    if (!enabled || !visible || connectionState !== "connected" || state !== null || initialLoadFailures === 0) return;
+    const delay = Math.min(1000 * 2 ** Math.min(initialLoadFailures - 1, 4), 15000);
+    const timer = window.setTimeout(() => void refresh(), delay);
+    return () => window.clearTimeout(timer);
+  }, [enabled, visible, connectionState, state, initialLoadFailures, refresh]);
 
   useRealtime(TABS_CHANGED_CHANNEL, (payload) => {
     if (!enabled) return;
@@ -597,8 +615,6 @@ function useWorkflowRevalidation({
     activeWorkflowKey === ""
       ? IDLE_WORKFLOW_REVALIDATION_MS
       : ACTIVE_WORKFLOW_REVALIDATION_MS;
-  const wasVisibleRef = useRef(visible);
-
   useEffect(() => {
     if (
       !enabled ||
@@ -620,13 +636,6 @@ function useWorkflowRevalidation({
     stateReady,
     visible,
   ]);
-
-  useEffect(() => {
-    const wasVisible = wasVisibleRef.current;
-    wasVisibleRef.current = visible;
-    if (!enabled || !visible || wasVisible) return;
-    void refresh(stateReady ? stableWorkflowIds : []);
-  }, [enabled, refresh, stableWorkflowIds, stateReady, visible]);
 
   useEffect(() => {
     if (
@@ -2328,6 +2337,7 @@ function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
     <PinnedTabsList
       locale={locale}
       visible={showPinnedTabsList}
+      loading={state === null}
       tabs={pinnedTabs}
       onOpenThread={(threadId) => threadActions.open(threadId)}
     />
@@ -2338,7 +2348,7 @@ export default definePluginApp((app) => {
   app.slots.settingsSection({ id: "localized-settings", component: LocalizedSettings });
   app.slots.homepageSection({
     id: "pinned-tabs",
-    title: "Pinned chats",
+    title: "Tabs",
     component: PinnedTabsHomepageSection,
   });
   app.slots.experimental_appOverlay({

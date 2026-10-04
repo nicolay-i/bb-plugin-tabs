@@ -8,7 +8,13 @@ afterEach(cleanup);
 describe("Pinned tabs localization", () => {
   it("shows Russian empty state", () => {
     render(<PinnedTabsList locale="ru" visible tabs={[]} onOpenThread={vi.fn()} />);
-    expect(screen.getByText("Закреплённых чатов пока нет. Откройте чат и выберите «Закрепить».")).toBeTruthy();
+    expect(screen.getByText("Вкладок пока нет. Откройте чат и выберите «Закрепить».")).toBeTruthy();
+  });
+
+  it("calls the homepage section Tabs in Russian", () => {
+    render(<PinnedTabsList locale="ru" visible tabs={[]} onOpenThread={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Вкладки" })).toBeTruthy();
+    expect(screen.queryByText("Закреплённые чаты")).toBeNull();
   });
 
   it("shows a waiting-for-input status instead of working on pinned cards", () => {

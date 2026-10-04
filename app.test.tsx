@@ -2256,7 +2256,7 @@ describe("Chat Tabs", () => {
       },
     );
 
-    const list = await slot.findByRole("list", { name: "Pinned chats" });
+    const list = await slot.findByRole("list", { name: "Tabs" });
     const rows = [
       ...list.querySelectorAll(".bb-chat-tabs-homepage-pinned-item"),
     ];

@@ -2,7 +2,7 @@
 
 Chat Tabs adds VS Code-style pinned and preview chat tabs beneath BB's native
 header. Switch chats, search recent conversations, or start a new chat in a
-selected project directly from the strip. An optional pinned-chat list also
+selected project directly from the strip. An optional **Tabs** list of pinned tabs also
 appears on the **New chat** screen. The BB sidebar remains available.
 
 ![Pinned and preview chat tabs in BB](docs/screenshots/real-bb-tabs-primary.png)
@@ -76,7 +76,7 @@ stored.
 | --- | --- | --- |
 | `language` | `Auto` | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
 | `searchArchivedChats` | `false` | Include archived chats in title search. Results remain disabled with a struck-through title and Archived status; deleted chats stay excluded. |
-| `showPinnedTabsList` | `true` | Quick pinned-chat list below the composer on the New chat screen. |
+| `showPinnedTabsList` | `true` | Show the Tabs list below the composer on the New chat screen. It contains pinned tabs in their manual order. |
 | `showTabsOnDesktop` | `true` | Top tab strip in the desktop layout. |
 | `showTabsOnMobile` | `true` | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer). |
 | `showTabListButton` | `true` | Icon button for the dropdown list next to the strip. |

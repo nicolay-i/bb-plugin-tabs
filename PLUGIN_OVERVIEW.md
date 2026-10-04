@@ -5,7 +5,7 @@ Keep the conversations you return to in a manually ordered strip beneath BB's he
 - One italic preview follows the unpinned chat you open. Opening another unpinned chat replaces it; creating a new chat shows its preview immediately. Closing a preview stays closed across reloads and other windows until you open that chat again. Background work never opens a preview.
 - Double-click a preview to pin it. Drag pinned tabs across projects into one shared order, with an insertion marker and edge autoscroll. Double-click a pinned title to rename it inline. The context menu provides Copy link, Mark as unread, Pin/Unpin, Rename, and Archive.
 - A compact **?** marker tells you when BB is waiting for an answer or approval instead of showing an endless working dot. Hover for an explanation. Pending input in a nested chat also marks its parent tab. Working and unread states remain distinct; lists and home cards show the full **Needs input** status.
-- An optional pinned-chat list appears below the **New chat** composer. It shares the strip's ordering and shows the project and useful status below each title. Calm chats have no filler status.
+- An optional **Tabs** list appears below the **New chat** composer, showing your pinned tabs. It loads on the first visit without opening a chat and shares the strip's ordering and shows the project and useful status below each title. Calm chats have no filler status.
 
 ## Navigation
 
