@@ -4,6 +4,12 @@ All notable changes to Chat Tabs are documented here.
 
 ## Unreleased
 
+## 0.1.8
+
+### Fixed
+
+- Reduce style recalculation during chat switching by restricting the localized-settings suppression selector to BB's native form panel instead of testing arbitrary first-child elements. The native settings form remains available when the localized replacement is absent.
+
 ## 0.1.7
 
 ### Fixed

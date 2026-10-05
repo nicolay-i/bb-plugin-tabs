@@ -1365,7 +1365,7 @@ body:has([data-split-resize-grid-boundary]) #bb-chat-tabs-overlay {
 /* Only suppress this plugin's declarative form while its replacement is mounted.
    If the slot crashes/unmounts, the host form remains an available fallback. */
 [data-testid="plugin-detail-tabs"]:has(.bb-chat-tabs-settings)
-  > :first-child:not(:has(.bb-chat-tabs-settings)) {
+  > .overflow-hidden:first-child:not(:has(.bb-chat-tabs-settings)) {
   display: none;
 }
 

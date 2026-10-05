@@ -1,9 +1,53 @@
+// @vitest-environment jsdom
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const styles = await readFile(new URL("./tabs.css", import.meta.url), "utf8");
+const styles = await readFile(`${process.cwd()}/tabs.css`, "utf8");
 
 describe("Chat Tabs", () => {
+  it("limits replacement settings checks to the host form panel", () => {
+    const selector = styles.match(
+      /\[data-testid="plugin-detail-tabs"\]:has\(\.bb-chat-tabs-settings\)\s*>\s*([^{}]+)\{/u,
+    )?.[1]?.trim();
+    expect(selector).toBe(
+      ".overflow-hidden:first-child:not(:has(.bb-chat-tabs-settings))",
+    );
+  });
+  it.each([
+    {
+      name: "hides the host panel while replacement settings are mounted",
+      html: '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="host"></div><div class="bb-chat-tabs-settings"></div></div>',
+      expected: ["host"],
+    },
+    {
+      name: "keeps the fallback visible without replacement settings",
+      html: '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="host"></div></div>',
+      expected: [],
+    },
+    {
+      name: "does not hide a panel containing replacement settings",
+      html: '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="host"><div class="bb-chat-tabs-settings"></div></div></div>',
+      expected: [],
+    },
+    {
+      name: "does not affect another plugin",
+      html: '<div data-testid="plugin-detail-other"><div class="overflow-hidden" id="host"></div><div class="bb-chat-tabs-settings"></div></div>',
+      expected: [],
+    },
+    {
+      name: "does not match generic first children or later panels",
+      html: '<div data-testid="plugin-detail-tabs"><div id="generic"></div><div class="overflow-hidden" id="later"></div><div class="bb-chat-tabs-settings"></div></div>',
+      expected: [],
+    },
+  ])("$name", ({ html, expected }) => {
+    const selector = styles.match(
+      /(\[data-testid="plugin-detail-tabs"\]:has\(\.bb-chat-tabs-settings\)\s*>\s*[^{}]+)\{/u,
+    )?.[1]?.trim();
+    expect(selector).toBeDefined();
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    expect(Array.from(root.querySelectorAll(selector!), (element) => element.id)).toEqual(expected);
+  });
   it("highlights pointer hover independently of menu item focus", () => {
     expect(styles).toContain('.bb-chat-tabs-list-menu-item:not([data-disabled]):hover,');
     expect(styles).toContain('.bb-chat-tabs-list-menu-more:hover,');

@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Pinned and preview chat tabs with history, input-needed indicators, and 15 interface languages.",
   "license": "MIT",
   "repository": {

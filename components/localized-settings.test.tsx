@@ -16,7 +16,7 @@ describe("Localized settings", () => {
     const selector = css.match(/(\[data-testid="plugin-detail-tabs"\]:has\(\.bb-chat-tabs-settings\)[^{]+)\{\s*display: none;/)?.[1].trim();
     expect(selector).toBeTruthy();
     const root = document.createElement("div");
-    root.innerHTML = '<div data-testid="plugin-detail-tabs"><div id="native-form"></div><div><section class="bb-chat-tabs-settings"></section></div></div><div data-testid="plugin-detail-other"><div id="other-form"></div></div>';
+    root.innerHTML = '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="native-form"></div><div><section class="bb-chat-tabs-settings"></section></div></div><div data-testid="plugin-detail-other"><div id="other-form"></div></div>';
     expect(Array.from(root.querySelectorAll(selector!), (node) => node.id)).toEqual(["native-form"]);
     root.querySelector(".bb-chat-tabs-settings")!.remove();
     expect(root.querySelectorAll(selector!)).toHaveLength(0);
