@@ -140,6 +140,34 @@ afterEach(() => {
 });
 
 describe("Chat Tabs", () => {
+  it("filters local chats by project and preserves remote project matches outside the sidebar", async () => {
+    const state: TabsState = { version: 1, entries: [
+      { threadId: "thr_current", projectId: "proj_api", title: "Current", pinned: true, openedAt: 1 },
+      { threadId: "thr_other", projectId: "proj_api", title: "Other", pinned: true, openedAt: 2 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (!overlay) throw new Error("App overlay is not registered");
+    const query = vi.fn(() => ({ candidates: [{ threadId: "thr_remote", projectId: "proj_remote", title: "Repair build", projectName: "Office CRM" }] }));
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_current" },
+      sidebarThreads: { threads: [sidebarThread("thr_current", "proj_api", "Current"), sidebarThread("thr_other", "proj_api", "Other")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }] },
+      rpc: { tabs_list: () => ({ state }), tabs_search: query },
+    });
+    fireEvent.pointerDown(await slot.findByRole("button", { name: "Open chat list" }), { button: 0 });
+    const search = await slot.findByRole("searchbox", { name: "Search chats by title or project" });
+    fireEvent.change(search, { target: { value: "API" } });
+    expect(await slot.findByRole("menuitem", { name: /Current.*API/ })).toBeTruthy();
+    expect(slot.getByRole("menuitem", { name: /Other.*API/ })).toBeTruthy();
+    fireEvent.change(search, { target: { value: "Office" } });
+    const remote = await slot.findByRole("menuitem", { name: /Repair build.*Office CRM/ });
+    expect(remote.getAttribute("data-thread-id")).toBe("thr_remote");
+    expect(slot.queryByRole("menuitem", { name: /Current.*API/ })).toBeNull();
+    fireEvent.change(search, { target: { value: "office build" } });
+    expect(await slot.findByRole("menuitem", { name: /Repair build.*Office CRM/ })).toBeTruthy();
+    await waitFor(() => expect(query).toHaveBeenCalledWith({ query: "office build", includeArchived: false }));
+  });
+
   it.each([false, true])("includes archived search results only when the checkbox is %s", async (enabled) => {
     const state: TabsState = { version: 1, entries: [
       { threadId: "thr_current", projectId: "proj_api", title: "Current", pinned: true, openedAt: 1 },
@@ -156,7 +184,7 @@ describe("Chat Tabs", () => {
       rpc: { tabs_list: () => ({ state }), tabs_search: query },
     });
     fireEvent.pointerDown(await slot.findByRole("button", { name: "Open chat list" }), { button: 0 });
-    fireEvent.change(await slot.findByRole("searchbox", { name: "Search chats by title" }), { target: { value: "Old archived task" } });
+    fireEvent.change(await slot.findByRole("searchbox", { name: "Search chats by title or project" }), { target: { value: "Old archived task" } });
     await waitFor(() => expect(query).toHaveBeenCalledWith({ query: "Old archived task", includeArchived: enabled }));
     if (enabled) {
       const item = await slot.findByRole("menuitem", { name: /Old archived task.*Archived/ });
@@ -186,7 +214,7 @@ describe("Chat Tabs", () => {
       rpc: { tabs_list: () => ({ state }), tabs_search: query },
     });
     fireEvent.pointerDown(await slot.findByRole("button", { name: "Open chat list" }), { button: 0 });
-    const search = await slot.findByRole("searchbox", { name: "Search chats by title" });
+    const search = await slot.findByRole("searchbox", { name: "Search chats by title or project" });
     fireEvent.change(search, { target: { value: "43" } });
     const match = await slot.findByRole("menuitem", { name: new RegExp(title.replace(/\./g, "\\.")) });
     expect(match.getAttribute("data-thread-id")).toBe("thr_office");
@@ -1291,7 +1319,7 @@ describe("Chat Tabs", () => {
     ).toEqual(["History"]);
     expect(menu.textContent).toContain("Pinned");
     expect(menu.textContent).toContain("First from history");
-    const search = menu.querySelector<HTMLInputElement>('input[aria-label="Search chats by title"]');
+    const search = menu.querySelector<HTMLInputElement>('input[aria-label="Search chats by title or project"]');
     if (search === null) throw new Error("Chat search input was not found");
     await waitFor(() => expect(document.activeElement).toBe(search));
     const historyItem = menu.querySelector<HTMLElement>('[data-thread-id="thr_history_one"]');
@@ -1329,7 +1357,7 @@ describe("Chat Tabs", () => {
     await waitFor(() => {
       expect(document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).not.toBeNull();
     });
-    const reopenedSearch = document.body.querySelector<HTMLInputElement>('input[aria-label="Search chats by title"]');
+    const reopenedSearch = document.body.querySelector<HTMLInputElement>('input[aria-label="Search chats by title or project"]');
     if (reopenedSearch === null) throw new Error("Reopened search was not found");
     fireEvent.keyDown(reopenedSearch, { key: "Escape" });
     await waitFor(() => {
@@ -1342,7 +1370,7 @@ describe("Chat Tabs", () => {
     fireEvent.keyUp(composer, { key: "Shift" });
     await waitFor(() => {
       expect(document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).not.toBeNull();
-      expect(document.activeElement).toBe(document.body.querySelector('input[aria-label="Search chats by title"]'));
+      expect(document.activeElement).toBe(document.body.querySelector('input[aria-label="Search chats by title or project"]'));
     });
   });
 

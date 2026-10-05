@@ -34,7 +34,6 @@
     "More": "Ещё",
     "Open chat list": "Открыть список чатов",
     "Open tab list": "Открыть список вкладок",
-    "Search chats by title": "Искать чаты по названию",
     "Search chats...": "Поиск чатов...",
     "Search results": "Результаты поиска",
     "No matching chats": "Чаты не найдены",
@@ -95,7 +94,9 @@
     "Loading tabs…": "Загрузка вкладок…",
     "No tabs yet. Open a chat and choose “Pin”.": "Вкладок пока нет. Откройте чат и выберите «Закрепить».",
     "Show tabs on New chat": "Показывать вкладки на экране нового чата",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Показывает закреплённые вкладки под полем ввода сообщения на экране нового чата."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Показывает закреплённые вкладки под полем ввода сообщения на экране нового чата.",
+    "Search chats by title or project": "Поиск чатов по названию или проекту",
+    "Search chats or projects...": "Поиск чатов или проектов…"
   },
   "de": {
     "Untitled": "Ohne Titel",
@@ -132,7 +133,6 @@
     "More": "Mehr",
     "Open chat list": "Chatliste öffnen",
     "Open tab list": "Tab-Liste öffnen",
-    "Search chats by title": "Durchsuchen Sie Chats nach Titel",
     "Search chats...": "Chats durchsuchen...",
     "Search results": "Suchergebnisse",
     "No matching chats": "Keine passenden Chats",
@@ -193,7 +193,9 @@
     "Loading tabs…": "Tabs werden geladen…",
     "No tabs yet. Open a chat and choose “Pin”.": "Noch keine Tabs. Öffnen Sie einen Chat und wählen Sie „Anpinnen“.",
     "Show tabs on New chat": "Tabs unter Neuer Chat anzeigen",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Zeigt Ihre angepinnten Tabs unter dem Eingabefeld auf der Seite Neuer Chat."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Zeigt Ihre angepinnten Tabs unter dem Eingabefeld auf der Seite Neuer Chat.",
+    "Search chats by title or project": "Chats nach Titel oder Projekt suchen",
+    "Search chats or projects...": "Chats oder Projekte suchen…"
   },
   "es": {
     "Untitled": "Sin título",
@@ -230,7 +232,6 @@
     "More": "Más",
     "Open chat list": "Abrir lista de chat",
     "Open tab list": "Abrir lista de pestañas",
-    "Search chats by title": "Buscar chats por título",
     "Search chats...": "Buscar chats...",
     "Search results": "Resultados de la búsqueda",
     "No matching chats": "No hay chats coincidentes",
@@ -291,7 +292,9 @@
     "Loading tabs…": "Cargando pestañas…",
     "No tabs yet. Open a chat and choose “Pin”.": "Aún no hay pestañas. Abre un chat y elige «Fijar».",
     "Show tabs on New chat": "Mostrar pestañas en Nuevo chat",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Muestra tus pestañas fijadas debajo del campo de entrada en la pantalla Nuevo chat."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Muestra tus pestañas fijadas debajo del campo de entrada en la pantalla Nuevo chat.",
+    "Search chats by title or project": "Buscar chats por título o proyecto",
+    "Search chats or projects...": "Buscar chats o proyectos…"
   },
   "pt-BR": {
     "Untitled": "Sem título",
@@ -328,7 +331,6 @@
     "More": "Mais",
     "Open chat list": "Abrir lista de bate-papo",
     "Open tab list": "Lista de guias abertas",
-    "Search chats by title": "Pesquise bate-papos por título",
     "Search chats...": "Pesquisar bate-papos...",
     "Search results": "Resultados da pesquisa",
     "No matching chats": "Nenhum bate-papo correspondente",
@@ -389,7 +391,9 @@
     "Loading tabs…": "Carregando abas…",
     "No tabs yet. Open a chat and choose “Pin”.": "Ainda não há abas. Abra um chat e escolha «Fixar».",
     "Show tabs on New chat": "Mostrar abas em Novo chat",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Mostra suas abas fixadas abaixo do campo de mensagem na tela Novo chat."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Mostra suas abas fixadas abaixo do campo de mensagem na tela Novo chat.",
+    "Search chats by title or project": "Buscar chats por título ou projeto",
+    "Search chats or projects...": "Buscar chats ou projetos…"
   },
   "fr": {
     "Untitled": "Sans titre",
@@ -426,7 +430,6 @@
     "More": "Plus",
     "Open chat list": "Ouvrir la liste de discussion",
     "Open tab list": "Ouvrir la liste des onglets",
-    "Search chats by title": "Rechercher des discussions par titre",
     "Search chats...": "Rechercher des discussions...",
     "Search results": "Résultats de la recherche",
     "No matching chats": "Aucune discussion correspondante",
@@ -487,7 +490,9 @@
     "Loading tabs…": "Chargement des onglets…",
     "No tabs yet. Open a chat and choose “Pin”.": "Aucun onglet pour le moment. Ouvrez une discussion et choisissez «Épingler».",
     "Show tabs on New chat": "Afficher les onglets dans Nouvelle discussion",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Affiche vos onglets épinglés sous la zone de saisie de Nouvelle discussion."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Affiche vos onglets épinglés sous la zone de saisie de Nouvelle discussion.",
+    "Search chats by title or project": "Rechercher des discussions par titre ou projet",
+    "Search chats or projects...": "Rechercher des discussions ou projets…"
   },
   "hi": {
     "Untitled": "शीर्षकहीन",
@@ -524,7 +529,6 @@
     "More": "अधिक",
     "Open chat list": "चैट सूची खोलें",
     "Open tab list": "टैब सूची खोलें",
-    "Search chats by title": "शीर्षक के आधार पर चैट खोजें",
     "Search chats...": "चैट खोजें...",
     "Search results": "खोज परिणाम",
     "No matching chats": "कोई मेल खाती चैट नहीं",
@@ -585,7 +589,9 @@
     "Loading tabs…": "टैब लोड हो रहे हैं…",
     "No tabs yet. Open a chat and choose “Pin”.": "अभी कोई टैब नहीं है। चैट खोलें और “पिन” चुनें।",
     "Show tabs on New chat": "नई चैट पर टैब दिखाएँ",
-    "Shows your pinned tabs below the message input on the New chat screen.": "नई चैट स्क्रीन पर संदेश इनपुट के नीचे आपके पिन किए गए टैब दिखाता है।"
+    "Shows your pinned tabs below the message input on the New chat screen.": "नई चैट स्क्रीन पर संदेश इनपुट के नीचे आपके पिन किए गए टैब दिखाता है।",
+    "Search chats by title or project": "शीर्षक या प्रोजेक्ट से चैट खोजें",
+    "Search chats or projects...": "चैट या प्रोजेक्ट खोजें…"
   },
   "zh-CN": {
     "Untitled": "无题",
@@ -622,7 +628,6 @@
     "More": "更多",
     "Open chat list": "打开聊天列表",
     "Open tab list": "打开选项卡列表",
-    "Search chats by title": "按标题搜索聊天记录",
     "Search chats...": "搜索聊天记录...",
     "Search results": "搜索结果",
     "No matching chats": "没有匹配的聊天记录",
@@ -683,7 +688,9 @@
     "Loading tabs…": "正在加载标签页…",
     "No tabs yet. Open a chat and choose “Pin”.": "暂无标签页。打开聊天并选择“置顶”。",
     "Show tabs on New chat": "在新聊天页面显示标签页",
-    "Shows your pinned tabs below the message input on the New chat screen.": "在新聊天页面的消息输入框下方显示已置顶的标签页。"
+    "Shows your pinned tabs below the message input on the New chat screen.": "在新聊天页面的消息输入框下方显示已置顶的标签页。",
+    "Search chats by title or project": "按标题或项目搜索聊天",
+    "Search chats or projects...": "搜索聊天或项目…"
   },
   "ar": {
     "Untitled": "بدون عنوان",
@@ -720,7 +727,6 @@
     "More": "المزيد",
     "Open chat list": "فتح قائمة الدردشة",
     "Open tab list": "فتح قائمة علامات التبويب",
-    "Search chats by title": "البحث في الدردشات حسب العنوان",
     "Search chats...": "بحث في المحادثات...",
     "Search results": "نتائج البحث",
     "No matching chats": "لا توجد محادثات مطابقة",
@@ -781,7 +787,9 @@
     "Loading tabs…": "جارٍ تحميل علامات التبويب…",
     "No tabs yet. Open a chat and choose “Pin”.": "لا توجد علامات تبويب بعد. افتح محادثة واختر «تثبيت».",
     "Show tabs on New chat": "عرض علامات التبويب في محادثة جديدة",
-    "Shows your pinned tabs below the message input on the New chat screen.": "يعرض علامات التبويب المثبتة أسفل حقل الرسالة في شاشة محادثة جديدة."
+    "Shows your pinned tabs below the message input on the New chat screen.": "يعرض علامات التبويب المثبتة أسفل حقل الرسالة في شاشة محادثة جديدة.",
+    "Search chats by title or project": "البحث عن المحادثات حسب العنوان أو المشروع",
+    "Search chats or projects...": "البحث عن محادثات أو مشاريع…"
   },
   "ja": {
     "Untitled": "無題",
@@ -818,7 +826,6 @@
     "More": "もっと見る",
     "Open chat list": "チャットリストを開く",
     "Open tab list": "開いているタブのリスト",
-    "Search chats by title": "タイトルでチャットを検索",
     "Search chats...": "チャットを検索...",
     "Search results": "検索結果",
     "No matching chats": "一致するチャットはありません",
@@ -879,7 +886,9 @@
     "Loading tabs…": "タブを読み込み中…",
     "No tabs yet. Open a chat and choose “Pin”.": "まだタブはありません。チャットを開いて「固定」を選択してください。",
     "Show tabs on New chat": "新しいチャット画面にタブを表示",
-    "Shows your pinned tabs below the message input on the New chat screen.": "新しいチャット画面の入力欄の下に固定したタブを表示します。"
+    "Shows your pinned tabs below the message input on the New chat screen.": "新しいチャット画面の入力欄の下に固定したタブを表示します。",
+    "Search chats by title or project": "タイトルまたはプロジェクトでチャットを検索",
+    "Search chats or projects...": "チャットまたはプロジェクトを検索…"
   },
   "id": {
     "Untitled": "Tanpa judul",
@@ -916,7 +925,6 @@
     "More": "Lebih lanjut",
     "Open chat list": "Buka daftar obrolan",
     "Open tab list": "Buka daftar tab",
-    "Search chats by title": "Cari obrolan berdasarkan judul",
     "Search chats...": "Telusuri obrolan...",
     "Search results": "Hasil pencarian",
     "No matching chats": "Tidak ada obrolan yang cocok",
@@ -977,7 +985,9 @@
     "Loading tabs…": "Memuat tab…",
     "No tabs yet. Open a chat and choose “Pin”.": "Belum ada tab. Buka obrolan dan pilih “Sematkan”.",
     "Show tabs on New chat": "Tampilkan tab di Obrolan baru",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Menampilkan tab sematan Anda di bawah kolom pesan pada layar Obrolan baru."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Menampilkan tab sematan Anda di bawah kolom pesan pada layar Obrolan baru.",
+    "Search chats by title or project": "Cari obrolan berdasarkan judul atau proyek",
+    "Search chats or projects...": "Cari obrolan atau proyek…"
   },
   "tr": {
     "Untitled": "İsimsiz",
@@ -1014,7 +1024,6 @@
     "More": "Daha Fazla",
     "Open chat list": "Sohbet listesini aç",
     "Open tab list": "Sekme listesini aç",
-    "Search chats by title": "Sohbetleri başlığa göre arayın",
     "Search chats...": "Sohbetlerde ara...",
     "Search results": "Arama sonuçları",
     "No matching chats": "Eşleşen sohbet yok",
@@ -1075,7 +1084,9 @@
     "Loading tabs…": "Sekmeler yükleniyor…",
     "No tabs yet. Open a chat and choose “Pin”.": "Henüz sekme yok. Bir sohbet açın ve “Sabitle” seçin.",
     "Show tabs on New chat": "Yeni sohbet ekranında sekmeleri göster",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Yeni sohbet ekranında mesaj girişinin altında sabitlenmiş sekmelerinizi gösterir."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Yeni sohbet ekranında mesaj girişinin altında sabitlenmiş sekmelerinizi gösterir.",
+    "Search chats by title or project": "Başlık veya projeye göre sohbet ara",
+    "Search chats or projects...": "Sohbet veya proje ara…"
   },
   "ko": {
     "Untitled": "제목 없음",
@@ -1112,7 +1123,6 @@
     "More": "더보기",
     "Open chat list": "채팅 목록 열기",
     "Open tab list": "탭 목록 열기",
-    "Search chats by title": "제목으로 채팅 검색",
     "Search chats...": "채팅 검색...",
     "Search results": "검색결과",
     "No matching chats": "일치하는 채팅이 없습니다.",
@@ -1173,7 +1183,9 @@
     "Loading tabs…": "탭을 불러오는 중…",
     "No tabs yet. Open a chat and choose “Pin”.": "아직 탭이 없습니다. 채팅을 열고 “고정”을 선택하세요.",
     "Show tabs on New chat": "새 채팅 화면에 탭 표시",
-    "Shows your pinned tabs below the message input on the New chat screen.": "새 채팅 화면의 메시지 입력란 아래에 고정한 탭을 표시합니다."
+    "Shows your pinned tabs below the message input on the New chat screen.": "새 채팅 화면의 메시지 입력란 아래에 고정한 탭을 표시합니다.",
+    "Search chats by title or project": "제목 또는 프로젝트로 채팅 검색",
+    "Search chats or projects...": "채팅 또는 프로젝트 검색…"
   },
   "vi": {
     "Untitled": "Không có tiêu đề",
@@ -1210,7 +1222,6 @@
     "More": "Thêm",
     "Open chat list": "Mở danh sách trò chuyện",
     "Open tab list": "Danh sách tab mở",
-    "Search chats by title": "Tìm kiếm cuộc trò chuyện theo tiêu đề",
     "Search chats...": "Tìm kiếm cuộc trò chuyện...",
     "Search results": "Kết quả tìm kiếm",
     "No matching chats": "Không có cuộc trò chuyện phù hợp",
@@ -1271,7 +1282,9 @@
     "Loading tabs…": "Đang tải thẻ…",
     "No tabs yet. Open a chat and choose “Pin”.": "Chưa có thẻ. Mở trò chuyện và chọn “Ghim”.",
     "Show tabs on New chat": "Hiển thị thẻ trên trang trò chuyện mới",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Hiển thị các thẻ được ghim dưới ô nhập tin nhắn trên màn hình trò chuyện mới."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Hiển thị các thẻ được ghim dưới ô nhập tin nhắn trên màn hình trò chuyện mới.",
+    "Search chats by title or project": "Tìm trò chuyện theo tiêu đề hoặc dự án",
+    "Search chats or projects...": "Tìm trò chuyện hoặc dự án…"
   },
   "it": {
     "Untitled": "Senza titolo",
@@ -1308,7 +1321,6 @@
     "More": "Di più",
     "Open chat list": "Apri l'elenco delle chat",
     "Open tab list": "Apri l'elenco delle schede",
-    "Search chats by title": "Cerca le chat per titolo",
     "Search chats...": "Cerca chat...",
     "Search results": "Risultati della ricerca",
     "No matching chats": "Nessuna chat corrispondente",
@@ -1369,6 +1381,8 @@
     "Loading tabs…": "Caricamento delle schede…",
     "No tabs yet. Open a chat and choose “Pin”.": "Nessuna scheda ancora. Apri una chat e scegli «Fissa».",
     "Show tabs on New chat": "Mostra le schede in Nuova chat",
-    "Shows your pinned tabs below the message input on the New chat screen.": "Mostra le tue schede fissate sotto il campo del messaggio nella schermata Nuova chat."
+    "Shows your pinned tabs below the message input on the New chat screen.": "Mostra le tue schede fissate sotto il campo del messaggio nella schermata Nuova chat.",
+    "Search chats by title or project": "Cerca chat per titolo o progetto",
+    "Search chats or projects...": "Cerca chat o progetti…"
   }
 }

@@ -32,13 +32,46 @@ describe("Chat Tabs", () => {
     expect((await host.harness.behavior.callRpc("tabs_settings_update", { tabListButtonPosition: "Right" })).values.language).toBe("Русский");
   });
 
+  it("searches project names, combines project/title tokens, and returns project metadata for old chats", async () => {
+    const projects = vi.fn().mockResolvedValue([
+      { id: "proj_office", name: "Офис CRM" }, { id: "proj_tools", name: "Tools" },
+    ]);
+    const list = vi.fn(async (args?: { archived?: boolean }) => args?.archived
+      ? [makeThreadResponse({ id: "thr_archived_project", projectId: "proj_office", title: "Old migration", archivedAt: 1 })]
+      : [makeThreadResponse({ id: "thr_project", projectId: "proj_office", title: "Fix login" }),
+        makeThreadResponse({ id: "thr_other_project", projectId: "proj_tools", title: "Fix login" })]);
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { projects: { list: projects }, threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    const result = await host.harness.behavior.callRpc("tabs_search", { query: "офис" });
+    expect(result.candidates.map((item) => item.threadId)).toEqual(["thr_project"]);
+    expect(result.candidates[0]?.projectName).toBe("Офис CRM");
+    expect((await host.harness.behavior.callRpc("tabs_search", { query: "офис login" })).candidates).toEqual(result.candidates);
+    expect((await host.harness.behavior.callRpc("tabs_search", { query: "login" })).candidates).toHaveLength(2);
+    expect(projects).toHaveBeenCalledTimes(1);
+    expect(projects).toHaveBeenCalledWith({ includePersonal: true });
+    const archived = await host.harness.behavior.callRpc("tabs_search", { query: "офис", includeArchived: true });
+    expect(archived.candidates.map((item) => item.threadId)).toEqual(["thr_project", "thr_archived_project"]);
+    expect(archived.candidates[1]?.archived).toBe(true);
+  });
+
+  it("keeps title search working if project metadata cannot be fetched", async () => {
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: {
+      projects: { list: vi.fn().mockRejectedValue(new Error("Project metadata temporarily unavailable")) },
+      threads: { list: async () => [makeThreadResponse({ id: "thr_title_fallback", title: "Login fix" })] },
+    } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    expect((await host.harness.behavior.callRpc("tabs_search", { query: "login" })).candidates.map((item) => item.threadId)).toEqual(["thr_title_fallback"]);
+  });
+
   it("optionally searches archived chats with separate caches and never includes deleted or hidden chats", async () => {
     const list = vi.fn(async (args?: { archived?: boolean }) => args?.archived ? [
       makeThreadResponse({ id: "thr_archived_search", title: "Old task", archivedAt: 1 }),
       makeThreadResponse({ id: "thr_deleted_search", title: "Old task", deletedAt: 1, archivedAt: 1 }),
       makeThreadResponse({ id: "thr_hidden_search", title: "Old task", visibility: "hidden", archivedAt: 1 }),
     ] : [makeThreadResponse({ id: "thr_active_search", title: "Old task" })]);
-    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list }, projects: { list: async () => [] } } });
     loadedHosts.push(host);
     await plugin(host.bb);
     await expect(host.harness.behavior.setSettings({ searchArchivedChats: true })).resolves.toBeUndefined();
@@ -61,7 +94,7 @@ describe("Chat Tabs", () => {
       makeThreadResponse({ id: "thr_deleted", title, deletedAt: 1 }),
       makeThreadResponse({ id: "thr_hidden", title, visibility: "hidden" }),
     ]);
-    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list }, projects: { list: async () => [] } } });
     loadedHosts.push(host);
     await plugin(host.bb);
     const result = await host.harness.behavior.callRpc("tabs_search", { query: "43" });

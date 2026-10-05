@@ -9,7 +9,7 @@ Keep the conversations you return to in a manually ordered strip beneath BB's he
 
 ## Navigation
 
-- Search titles across available BB chats from the list menu, including older chats outside the last 100 visits. Enable **Include archived chats in search** to find archived chats as disabled results with struck-through titles; deleted and hidden chats remain excluded. Open the menu by click, a 300 ms hover, or a double Shift press. Arrow keys select an available result and Enter opens it. Pinned chats precede history; **More** reveals another eight of the last 100 visits.
+- Search chat titles and project names across available BB chats from the list menu, including older chats outside the last 100 visits. Enter a project name to find its chats, or combine project and title words such as `Office login` to narrow the results. Enable **Include archived chats in search** to find archived chats as disabled results with struck-through titles; deleted and hidden chats remain excluded. Open the menu by click, a 300 ms hover, or a double Shift press. Arrow keys select an available result and Enter opens it. Pinned chats precede history; **More** reveals another eight of the last 100 visits.
 - The plus after the last tab opens BB's native new-chat composer. Hover for 300 ms to choose from the 15 most recently active projects; **More** reveals the next group. Selecting a project preselects it in the composer.
 - Desktop supports horizontal wheel scrolling, a conditional top scrollbar, middle-click close, `Ctrl+Tab` / `Ctrl+Shift+Tab`, and BB Desktop `Ctrl+W` / `⌘W`. An embedded browser with focus keeps its native close behavior. Compact and touch layouts use horizontal swipe, 44×44 targets, and explicit close buttons.
 

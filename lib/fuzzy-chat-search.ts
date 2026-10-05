@@ -1,5 +1,6 @@
 export interface SearchableChat {
   title: string;
+  projectName?: string;
 }
 
 function normalize(value: string): string {
@@ -38,11 +39,15 @@ export function fuzzyChatSearch<T extends SearchableChat>(
   return chats
     .map((chat, index) => {
       const title = normalize(chat.title);
+      const projectName = normalize(chat.projectName ?? "");
       let score = 0;
       for (const token of tokens) {
-        const part = scoreToken(title, token);
-        if (part === null) return null;
-        score += part;
+        // Tokens may match either field, e.g. “Office migration”. Keep fields
+        // separate so a fuzzy token cannot accidentally span their boundary.
+        const titleScore = scoreToken(title, token);
+        const projectScore = scoreToken(projectName, token);
+        if (titleScore === null && projectScore === null) return null;
+        score += Math.min(titleScore ?? Infinity, projectScore ?? Infinity);
       }
       return { chat, index, score };
     })

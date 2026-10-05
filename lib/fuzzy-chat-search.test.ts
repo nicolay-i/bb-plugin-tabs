@@ -9,6 +9,24 @@ const chats = [
 ];
 
 describe("fuzzy chat search", () => {
+  it("finds chats by project name without requiring a title match", () => {
+    const items = [
+      { title: "Prepare deployment", projectName: "Office CRM" },
+      { title: "Fix login", projectName: "Office CRM" },
+      { title: "Prepare deployment", projectName: "Personal tools" },
+    ];
+    expect(fuzzyChatSearch(items, "office")).toEqual(items.slice(0, 2));
+    expect(fuzzyChatSearch(items, "OFFICE login")).toEqual([items[1]]);
+    expect(fuzzyChatSearch(items, "deployment")).toEqual([items[0], items[2]]);
+  });
+
+  it("supports Cyrillic and accent-insensitive project matches without joining fields", () => {
+    const items = [{ title: "Обновить сервер", projectName: "Офис Café" }];
+    expect(fuzzyChatSearch(items, "офис сервер")).toEqual(items);
+    expect(fuzzyChatSearch(items, "cafe")).toEqual(items);
+    expect(fuzzyChatSearch([{ title: "ab", projectName: "cd" }], "abcd")).toEqual([]);
+  });
+
   it("matches full Cyrillic titles, version fragments, and punctuation", () => {
     const title = "Обновить систему до версии 0.43.3 — office";
     const items = [{ title }];

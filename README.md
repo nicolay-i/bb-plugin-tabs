@@ -40,8 +40,10 @@ synthetic demonstration data.
   most recently active projects; **More** reveals the next 15 on click or after
   another 300 ms of hover. Choosing a project preselects it in the composer.
 - **Pinned and recent navigation menu.** Open it by click, a 300 ms mouse
-  hover, or two quick Shift presses. Search titles across available BB chats,
-  including older chats outside the last 100 visits. Enable **Include archived
+  hover, or two quick Shift presses. Search chat titles and project names across
+  available BB chats, including older chats outside the last 100 visits. A project
+  name finds chats in that project; combine it with title words to narrow results,
+  for example `Office login`. Enable **Include archived
   chats in search** to also find archived chats with struck-through titles and
   an Archived status. Deleted and hidden chats are always excluded. Select a fuzzy match
   with the arrow keys, and press Enter to open it. The menu lists **Pinned**

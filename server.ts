@@ -110,7 +110,7 @@ export const rpcContract = defineRpcContract({
   },
   tabs_search: {
     input: z.object({ query: z.string().trim().min(1).max(300), includeArchived: z.boolean().optional() }).strict(),
-    output: z.object({ candidates: z.array(tabCandidateSchema.extend({ archived: z.boolean().optional() })).max(30) }).strict(),
+    output: z.object({ candidates: z.array(tabCandidateSchema.extend({ archived: z.boolean().optional(), projectName: z.string().optional() })).max(30) }).strict(),
   },
   tabs_list: {
     // The frontend also supplies descendants of open tabs, so durable work in a
@@ -564,8 +564,8 @@ export default async function plugin(bb: BbPluginApi) {
     await applyThreadAvailability(thread.id, null);
   });
 
-  // Read only title metadata, not message content. Lazy, shared across renderers.
-  type SearchCandidate = TabCandidate & { archived?: boolean };
+  // Read only chat/project metadata, not message content. Shared across renderers.
+  type SearchCandidate = TabCandidate & { archived?: boolean; projectName?: string };
   const searchCache = new Map<boolean, { candidates: SearchCandidate[]; expiresAt: number }>();
   const searchInFlight = new Map<boolean, Promise<SearchCandidate[]>>();
   const searchCandidates = async (includeArchived: boolean): Promise<SearchCandidate[]> => {
@@ -574,6 +574,9 @@ export default async function plugin(bb: BbPluginApi) {
     const existing = searchInFlight.get(includeArchived);
     if (existing !== undefined) return existing;
     const operation = (async () => {
+      // Preserve title search if project metadata is temporarily unavailable.
+      const projects = await bb.sdk.projects.list({ includePersonal: true }).catch(() => []);
+      const projectNames = new Map(projects.map((project) => [project.id, project.name]));
       const candidates: SearchCandidate[] = [];
       const seen = new Set<string>();
       const pageSize = 200;
@@ -585,6 +588,7 @@ export default async function plugin(bb: BbPluginApi) {
             seen.add(thread.id);
             candidates.push({ threadId: thread.id, projectId: thread.projectId,
               title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
+              ...(projectNames.has(thread.projectId) ? { projectName: projectNames.get(thread.projectId) } : {}),
               ...(thread.archivedAt !== null ? { archived: true } : {}),
             });
           }

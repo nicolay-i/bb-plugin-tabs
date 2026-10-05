@@ -876,7 +876,7 @@ function ChatTabsOverlay() {
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
   const [tabListMenuOpen, setTabListMenuOpen] = useState(false);
   const [tabSearch, setTabSearch] = useState("");
-  const [remoteSearch, setRemoteSearch] = useState<{ query: string; candidates: (TabCandidate & { archived?: boolean })[]; pending: boolean }>({ query: "", candidates: [], pending: false });
+  const [remoteSearch, setRemoteSearch] = useState<{ query: string; candidates: (TabCandidate & { archived?: boolean; projectName?: string })[]; pending: boolean }>({ query: "", candidates: [], pending: false });
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastShiftReleaseRef = useRef<number | null>(null);
@@ -1381,6 +1381,8 @@ function ChatTabsOverlay() {
     }));
     const remoteCandidates = remoteSearch.query === tabSearch.trim().slice(0, 300)
       ? remoteSearch.candidates.filter((candidate) => !candidate.archived || searchArchivedChats) : [];
+    const remoteProjectNames = new Map(remoteCandidates.filter((candidate) => candidate.projectName !== undefined).map((candidate) => [candidate.projectId, candidate.projectName!]));
+    const knownProjectIds = new Set(sidebar.projects.map((project) => project.id));
     const mergedCandidates = [...sidebarCandidates, ...remoteCandidates];
     const archivedIds = new Set(mergedCandidates.filter((candidate) => candidate.archived).map((candidate) => candidate.threadId));
     const additional = buildPresentedTabs({ version: 1, entries: mergedCandidates.map((candidate) => ({
@@ -1394,7 +1396,12 @@ function ChatTabsOverlay() {
       seen.add(tab.entry.threadId);
       return true;
     });
-    return fuzzyChatSearch(candidates, tabSearch);
+    return fuzzyChatSearch(candidates.map((tab) => ({
+      ...tab,
+      // The server knows projects outside the currently loaded sidebar too.
+      projectName: knownProjectIds.has(tab.entry.projectId)
+        ? tab.projectName : remoteProjectNames.get(tab.entry.projectId) ?? tab.projectName,
+    })), tabSearch);
   }, [searchableTabs, tabSearch, remoteSearch, sidebar.threads, sidebar.projects, workIndex, locale, history.entries, searchArchivedChats]);
   const visibleHistoryMenuTabs = menuHistoryTabs.slice(0, historyVisibleCount);
   const hasMoreHistory = visibleHistoryMenuTabs.length < menuHistoryTabs.length;
@@ -1922,11 +1929,11 @@ function ChatTabsOverlay() {
                 ref={searchInputRef}
                 type="search"
                 className="bb-chat-tabs-list-menu-search-input"
-                aria-label={t("Search chats by title")}
+                aria-label={t("Search chats by title or project")}
                 aria-controls="bb-chat-tabs-menu-content"
                 aria-activedescendant={selectedSearchIndex >= 0 && selectedSearchIndex < navigableMenuTabs.length
                   ? `bb-chat-tabs-search-result-${selectedSearchIndex}` : undefined}
-                placeholder={t("Search chats...")}
+                placeholder={t("Search chats or projects...")}
                 value={tabSearch}
                 onChange={(event) => {
                   setTabSearch(event.target.value);
