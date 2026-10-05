@@ -4,6 +4,8 @@ All notable changes to Chat Tabs are documented here.
 
 ## Unreleased
 
+## 0.1.9
+
 ### Added
 
 - Chat search matches project names as well as chat titles, including projects outside the loaded sidebar. Queries can combine project and title words, such as `Office login`. Both fields use the existing case/accent-insensitive fuzzy ranking; archived, deleted, and hidden chat rules are unchanged. The search prompt is updated in all 15 interface languages.
