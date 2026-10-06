@@ -96,7 +96,9 @@
     "Show tabs on New chat": "Показывать вкладки на экране нового чата",
     "Shows your pinned tabs below the message input on the New chat screen.": "Показывает закреплённые вкладки под полем ввода сообщения на экране нового чата.",
     "Search chats by title or project": "Поиск чатов по названию или проекту",
-    "Search chats or projects...": "Поиск чатов или проектов…"
+    "Search chats or projects...": "Поиск чатов или проектов…",
+    "Subthreads of “{title}”: {count} active or unread": "Сабтреды «{title}» — активность или непрочитанное: {count}",
+    "Subthreads of “{title}”": "Сабтреды «{title}»"
   },
   "de": {
     "Untitled": "Ohne Titel",
@@ -195,7 +197,9 @@
     "Show tabs on New chat": "Tabs unter Neuer Chat anzeigen",
     "Shows your pinned tabs below the message input on the New chat screen.": "Zeigt Ihre angepinnten Tabs unter dem Eingabefeld auf der Seite Neuer Chat.",
     "Search chats by title or project": "Chats nach Titel oder Projekt suchen",
-    "Search chats or projects...": "Chats oder Projekte suchen…"
+    "Search chats or projects...": "Chats oder Projekte suchen…",
+    "Subthreads of “{title}”: {count} active or unread": "Unterchats von „{title}“: {count} aktiv oder ungelesen",
+    "Subthreads of “{title}”": "Unterchats von „{title}“"
   },
   "es": {
     "Untitled": "Sin título",
@@ -294,7 +298,9 @@
     "Show tabs on New chat": "Mostrar pestañas en Nuevo chat",
     "Shows your pinned tabs below the message input on the New chat screen.": "Muestra tus pestañas fijadas debajo del campo de entrada en la pantalla Nuevo chat.",
     "Search chats by title or project": "Buscar chats por título o proyecto",
-    "Search chats or projects...": "Buscar chats o proyectos…"
+    "Search chats or projects...": "Buscar chats o proyectos…",
+    "Subthreads of “{title}”: {count} active or unread": "Subchats de «{title}»: {count} activos o sin leer",
+    "Subthreads of “{title}”": "Subchats de «{title}»"
   },
   "pt-BR": {
     "Untitled": "Sem título",
@@ -393,7 +399,9 @@
     "Show tabs on New chat": "Mostrar abas em Novo chat",
     "Shows your pinned tabs below the message input on the New chat screen.": "Mostra suas abas fixadas abaixo do campo de mensagem na tela Novo chat.",
     "Search chats by title or project": "Buscar chats por título ou projeto",
-    "Search chats or projects...": "Buscar chats ou projetos…"
+    "Search chats or projects...": "Buscar chats ou projetos…",
+    "Subthreads of “{title}”: {count} active or unread": "Subchats de «{title}»: {count} ativos ou não lidos",
+    "Subthreads of “{title}”": "Subchats de «{title}»"
   },
   "fr": {
     "Untitled": "Sans titre",
@@ -492,7 +500,9 @@
     "Show tabs on New chat": "Afficher les onglets dans Nouvelle discussion",
     "Shows your pinned tabs below the message input on the New chat screen.": "Affiche vos onglets épinglés sous la zone de saisie de Nouvelle discussion.",
     "Search chats by title or project": "Rechercher des discussions par titre ou projet",
-    "Search chats or projects...": "Rechercher des discussions ou projets…"
+    "Search chats or projects...": "Rechercher des discussions ou projets…",
+    "Subthreads of “{title}”: {count} active or unread": "Sous-discussions de «{title}» : {count} actives ou non lues",
+    "Subthreads of “{title}”": "Sous-discussions de «{title}»"
   },
   "hi": {
     "Untitled": "शीर्षकहीन",
@@ -591,7 +601,9 @@
     "Show tabs on New chat": "नई चैट पर टैब दिखाएँ",
     "Shows your pinned tabs below the message input on the New chat screen.": "नई चैट स्क्रीन पर संदेश इनपुट के नीचे आपके पिन किए गए टैब दिखाता है।",
     "Search chats by title or project": "शीर्षक या प्रोजेक्ट से चैट खोजें",
-    "Search chats or projects...": "चैट या प्रोजेक्ट खोजें…"
+    "Search chats or projects...": "चैट या प्रोजेक्ट खोजें…",
+    "Subthreads of “{title}”: {count} active or unread": "“{title}” की उप-चैट: {count} सक्रिय या अपठित",
+    "Subthreads of “{title}”": "“{title}” की उप-चैट"
   },
   "zh-CN": {
     "Untitled": "无题",
@@ -690,7 +702,9 @@
     "Show tabs on New chat": "在新聊天页面显示标签页",
     "Shows your pinned tabs below the message input on the New chat screen.": "在新聊天页面的消息输入框下方显示已置顶的标签页。",
     "Search chats by title or project": "按标题或项目搜索聊天",
-    "Search chats or projects...": "搜索聊天或项目…"
+    "Search chats or projects...": "搜索聊天或项目…",
+    "Subthreads of “{title}”: {count} active or unread": "“{title}”的子聊天：{count} 个活跃或未读",
+    "Subthreads of “{title}”": "“{title}”的子聊天"
   },
   "ar": {
     "Untitled": "بدون عنوان",
@@ -789,7 +803,9 @@
     "Show tabs on New chat": "عرض علامات التبويب في محادثة جديدة",
     "Shows your pinned tabs below the message input on the New chat screen.": "يعرض علامات التبويب المثبتة أسفل حقل الرسالة في شاشة محادثة جديدة.",
     "Search chats by title or project": "البحث عن المحادثات حسب العنوان أو المشروع",
-    "Search chats or projects...": "البحث عن محادثات أو مشاريع…"
+    "Search chats or projects...": "البحث عن محادثات أو مشاريع…",
+    "Subthreads of “{title}”: {count} active or unread": "المحادثات الفرعية لـ «{title}»: {count} نشطة أو غير مقروءة",
+    "Subthreads of “{title}”": "المحادثات الفرعية لـ «{title}»"
   },
   "ja": {
     "Untitled": "無題",
@@ -888,7 +904,9 @@
     "Show tabs on New chat": "新しいチャット画面にタブを表示",
     "Shows your pinned tabs below the message input on the New chat screen.": "新しいチャット画面の入力欄の下に固定したタブを表示します。",
     "Search chats by title or project": "タイトルまたはプロジェクトでチャットを検索",
-    "Search chats or projects...": "チャットまたはプロジェクトを検索…"
+    "Search chats or projects...": "チャットまたはプロジェクトを検索…",
+    "Subthreads of “{title}”: {count} active or unread": "「{title}」のサブチャット：実行中または未読 {count} 件",
+    "Subthreads of “{title}”": "「{title}」のサブチャット"
   },
   "id": {
     "Untitled": "Tanpa judul",
@@ -987,7 +1005,9 @@
     "Show tabs on New chat": "Tampilkan tab di Obrolan baru",
     "Shows your pinned tabs below the message input on the New chat screen.": "Menampilkan tab sematan Anda di bawah kolom pesan pada layar Obrolan baru.",
     "Search chats by title or project": "Cari obrolan berdasarkan judul atau proyek",
-    "Search chats or projects...": "Cari obrolan atau proyek…"
+    "Search chats or projects...": "Cari obrolan atau proyek…",
+    "Subthreads of “{title}”: {count} active or unread": "Subobrolan “{title}”: {count} aktif atau belum dibaca",
+    "Subthreads of “{title}”": "Subobrolan “{title}”"
   },
   "tr": {
     "Untitled": "İsimsiz",
@@ -1086,7 +1106,9 @@
     "Show tabs on New chat": "Yeni sohbet ekranında sekmeleri göster",
     "Shows your pinned tabs below the message input on the New chat screen.": "Yeni sohbet ekranında mesaj girişinin altında sabitlenmiş sekmelerinizi gösterir.",
     "Search chats by title or project": "Başlık veya projeye göre sohbet ara",
-    "Search chats or projects...": "Sohbet veya proje ara…"
+    "Search chats or projects...": "Sohbet veya proje ara…",
+    "Subthreads of “{title}”: {count} active or unread": "“{title}” alt sohbetleri: {count} etkin veya okunmamış",
+    "Subthreads of “{title}”": "“{title}” alt sohbetleri"
   },
   "ko": {
     "Untitled": "제목 없음",
@@ -1185,7 +1207,9 @@
     "Show tabs on New chat": "새 채팅 화면에 탭 표시",
     "Shows your pinned tabs below the message input on the New chat screen.": "새 채팅 화면의 메시지 입력란 아래에 고정한 탭을 표시합니다.",
     "Search chats by title or project": "제목 또는 프로젝트로 채팅 검색",
-    "Search chats or projects...": "채팅 또는 프로젝트 검색…"
+    "Search chats or projects...": "채팅 또는 프로젝트 검색…",
+    "Subthreads of “{title}”: {count} active or unread": "“{title}”의 하위 채팅: 활성 또는 읽지 않음 {count}개",
+    "Subthreads of “{title}”": "“{title}”의 하위 채팅"
   },
   "vi": {
     "Untitled": "Không có tiêu đề",
@@ -1284,7 +1308,9 @@
     "Show tabs on New chat": "Hiển thị thẻ trên trang trò chuyện mới",
     "Shows your pinned tabs below the message input on the New chat screen.": "Hiển thị các thẻ được ghim dưới ô nhập tin nhắn trên màn hình trò chuyện mới.",
     "Search chats by title or project": "Tìm trò chuyện theo tiêu đề hoặc dự án",
-    "Search chats or projects...": "Tìm trò chuyện hoặc dự án…"
+    "Search chats or projects...": "Tìm trò chuyện hoặc dự án…",
+    "Subthreads of “{title}”: {count} active or unread": "Trò chuyện con của “{title}”: {count} đang hoạt động hoặc chưa đọc",
+    "Subthreads of “{title}”": "Trò chuyện con của “{title}”"
   },
   "it": {
     "Untitled": "Senza titolo",
@@ -1383,6 +1409,8 @@
     "Show tabs on New chat": "Mostra le schede in Nuova chat",
     "Shows your pinned tabs below the message input on the New chat screen.": "Mostra le tue schede fissate sotto il campo del messaggio nella schermata Nuova chat.",
     "Search chats by title or project": "Cerca chat per titolo o progetto",
-    "Search chats or projects...": "Cerca chat o progetti…"
+    "Search chats or projects...": "Cerca chat o progetti…",
+    "Subthreads of “{title}”: {count} active or unread": "Chat secondarie di «{title}»: {count} attive o non lette",
+    "Subthreads of “{title}”": "Chat secondarie di «{title}»"
   }
 }

@@ -140,6 +140,73 @@ afterEach(() => {
 });
 
 describe("Chat Tabs", () => {
+  it("shows descendant attention counts and opens a nested child as an explicit preview", async () => {
+    let state: TabsState = { version: 1, entries: [
+      { threadId: "thr_root", projectId: "proj_api", title: "Root", pinned: true, openedAt: 1 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (!overlay) throw new Error("App overlay is not registered");
+    const sync = vi.fn((input: { threads: { threadId: string; projectId: string; title: string }[]; reopen?: boolean }) => {
+      state = addTabCandidates(state, input.threads, Date.now());
+      return { state };
+    });
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_root" },
+      sidebarThreads: { threads: [
+        sidebarThread("thr_root", "proj_api", "Root"),
+        { ...sidebarThread("thr_child", "proj_api", "Parent child"), parentThreadId: "thr_root" },
+        { ...sidebarThread("thr_grandchild", "proj_api", "Grandchild"), parentThreadId: "thr_child", indicator: "runtime", isUnread: true },
+        { ...sidebarThread("thr_waiting", "proj_api", "Waiting child"), parentThreadId: "thr_root", hasPendingInteraction: true },
+        { ...sidebarThread("thr_calm", "proj_api", "Calm child"), parentThreadId: "thr_root" },
+      ], projects: [{ id: "proj_api", name: "API", isPersonal: false }] },
+      rpc: { tabs_list: () => ({ state }), tabs_sync_activity: sync },
+    });
+    const badge = await slot.findByRole("button", { name: "Subthreads of “Root”: 2 active or unread" });
+    expect(state.entries).toHaveLength(1); // Background children never open tabs.
+    fireEvent.pointerDown(badge, { button: 0, ctrlKey: false });
+    expect(await slot.findByRole("menuitem", { name: "Calm child" })).toBeTruthy();
+    const parent = slot.getByRole("menuitem", { name: /Parent child/ });
+    fireEvent.keyDown(parent, { key: "ArrowRight" });
+    fireEvent.click(await slot.findByRole("menuitem", { name: /Grandchild/ }));
+    await waitFor(() => expect(sync).toHaveBeenCalledWith({
+      threads: [{ threadId: "thr_grandchild", projectId: "proj_api", title: "Grandchild" }], reopen: true,
+    }));
+    await waitFor(() => expect(slot.inspection.sidebarActionCalls).toContainEqual({ method: "open", threadId: "thr_grandchild", options: undefined }));
+    expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_root", "thr_grandchild"]);
+    expect(state.entries[1]?.pinned).toBe(false);
+    expect(await slot.findByRole("button", { name: /Grandchild, work is running, unread messages/ })).toBeTruthy();
+  });
+
+  it.each(["button", "middle-click", "keyboard"])("returns to New chat when the last active tab is closed via %s", async (method) => {
+    let state: TabsState = { version: 1, entries: [
+      { threadId: "thr_last", projectId: "proj_api", title: "Last chat", pinned: true, openedAt: 1 },
+    ] };
+    const overlay = app.appOverlays[0];
+    if (!overlay) throw new Error("App overlay is not registered");
+    const slot = renderSlot<{}, typeof rpcContract>(overlay, {}, {
+      context: { projectId: "proj_api", threadId: "thr_last" },
+      sidebarThreads: { threads: [sidebarThread("thr_last", "proj_api", "Last chat")],
+        projects: [{ id: "proj_api", name: "API", isPersonal: false }] },
+      rpc: {
+        tabs_list: () => ({ state }),
+        tabs_sync_activity: () => ({ state }),
+        tabs_close: () => {
+          state = { version: 1, entries: [] };
+          return { state, removed: true };
+        },
+      },
+    });
+    const tab = await slot.findByRole("button", { name: "Last chat" });
+    if (method === "button") fireEvent.click(slot.getByRole("button", { name: "Close tab “Last chat”" }));
+    else if (method === "middle-click") fireEvent(tab, new MouseEvent("auxclick", { button: 1, bubbles: true }));
+    else fireEvent.keyDown(window, { key: "w", ctrlKey: true });
+    await waitFor(() => expect(slot.inspection.sidebarActionCalls).toEqual([
+      { method: "openNewThread", options: { focusPrompt: true } },
+    ]));
+    expect(state.entries).toEqual([]);
+    expect(slot.queryByRole("button", { name: "Last chat" })).toBeNull();
+  });
+
   it("filters local chats by project and preserves remote project matches outside the sidebar", async () => {
     const state: TabsState = { version: 1, entries: [
       { threadId: "thr_current", projectId: "proj_api", title: "Current", pinned: true, openedAt: 1 },

@@ -35,6 +35,12 @@ synthetic demonstration data.
   chat lists and pinned cards show the full **Needs input** status. This also works for nested chats.
   Active workflows, background agents and commands, plan mode, goals, and
   runtime activity have their own working indicator; calm chats have no dot.
+- **Explore subthreads from a tab.** A compact counter shows distinct descendants
+  that are working, waiting for input, or unread. Hover or click it to see all
+  available direct children; nested side menus reveal deeper descendants. Select
+  a title to open that subthread as the normal preview tab. A zero counter still
+  opens calm children. Keyboard navigation and separate touch expansion arrows
+  are supported; archived branches are excluded.
 - **Create a chat from the strip.** A borderless plus after the last tab opens
   BB's native composer with the prompt focused. Hover for 300 ms to see the 15
   most recently active projects; **More** reveals the next 15 on click or after

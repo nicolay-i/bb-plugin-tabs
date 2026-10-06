@@ -70,6 +70,8 @@ import {
 import { PinnedTabsList } from "./components/pinned-tabs-list";
 import { NewChatSwitcher } from "./components/new-chat-switcher";
 import { LocalizedSettings } from "./components/localized-settings";
+import { ThreadChildrenMenu } from "./components/thread-children-menu";
+import { childThreadTree, indexThreadChildren } from "./lib/thread-children";
 import { recentProjects } from "./lib/recent-projects";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
@@ -1175,6 +1177,8 @@ function ChatTabsOverlay() {
     [activeWorkflowThreadIds, sidebar.threads],
   );
 
+  const childrenByParent = useMemo(() => indexThreadChildren(sidebar.threads), [sidebar.threads]);
+
   const sidebarCurrent = useMemo(() =>
     context.threadId === null ? null :
       sidebar.threads.find((thread) => thread.id === context.threadId) ?? null,
@@ -1560,9 +1564,11 @@ function ChatTabsOverlay() {
           projectId: fallback.projectId,
           title: fallback.title,
         });
+      } else {
+        threadActions.openNewThread({ focusPrompt: true });
       }
     },
-    [close, context.threadId, openThread],
+    [close, context.threadId, openThread, threadActions],
   );
 
   const cycleTabsByKeyboard = useCallback(
@@ -2088,6 +2094,7 @@ function ChatTabsOverlay() {
               projectName,
               title,
             }) => {
+                    const childTree = childThreadTree(entry.threadId, childrenByParent, workIndex);
                     const active = entry.threadId === context.threadId;
                     const preview = !entry.pinned;
                     const editing = inlineRename?.entry.threadId === entry.threadId;
@@ -2244,6 +2251,17 @@ function ChatTabsOverlay() {
                               ) : null}
                             </button>
                           )}
+                          {!editing ? <ThreadChildrenMenu
+                            title={title}
+                            locale={locale}
+                            children={childTree.children}
+                            attentionCount={childTree.attentionCount}
+                            onOpen={(candidate) => {
+                              // Explicitly create/reopen this child's preview before navigation;
+                              // background children never create tabs by themselves.
+                              void syncActivity([candidate], true).then(() => openThread(candidate));
+                            }}
+                          /> : null}
                           <button
                             type="button"
                             className="bb-chat-tab-action"
