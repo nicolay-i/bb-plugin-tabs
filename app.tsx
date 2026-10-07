@@ -72,6 +72,7 @@ import { NewChatSwitcher } from "./components/new-chat-switcher";
 import { LocalizedSettings } from "./components/localized-settings";
 import { ThreadChildrenMenu } from "./components/thread-children-menu";
 import { childThreadTree, indexThreadChildren } from "./lib/thread-children";
+import { useOverlayBounds } from "./lib/use-overlay-bounds";
 import { recentProjects } from "./lib/recent-projects";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
@@ -1508,6 +1509,7 @@ function ChatTabsOverlay() {
 
   const shouldDock =
     showTabsOnCurrentLayout && context.threadId !== null && tabs.length > 0;
+  const overlayBoundsRef = useOverlayBounds(shouldDock);
   useEffect(() => {
     if (!shouldDock || !tabListMenuHasNavigation) {
       clearListHoverTimers();
@@ -2037,6 +2039,7 @@ function ChatTabsOverlay() {
   return (
     <aside
       id="bb-chat-tabs-overlay"
+      ref={overlayBoundsRef}
       lang={locale}
       data-docked={shouldDock ? "true" : "false"}
       data-row-count={String(rowCount)}

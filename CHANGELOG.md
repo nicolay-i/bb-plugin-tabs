@@ -4,12 +4,15 @@ All notable changes to Chat Tabs are documented here.
 
 ## Unreleased
 
+## 0.1.10
+
 ### Added
 
 - A subthread counter on tabs with descendants: distinct working, waiting-for-input, or unread descendants count once across all levels. Hover or click opens all available direct children, including calm ones; nested side menus expose deeper descendants. Selecting any level explicitly opens its preview tab. Work/waiting and unread markers appear before each subthread title, matching the tab strip, with localized status tooltips and accessible labels. Keyboard navigation, touch expansion arrows, zero-count access, and 15-language labels are included. Archived branches are excluded.
 
 ### Fixed
 
+- In browsers without CSS Anchor Positioning, including older Safari versions, the tab strip follows the measured main-chat bounds instead of starting under the left sidebar. Bounds update during sidebar resizing, window resizing, and route/panel replacement; native CSS anchors remain unchanged where supported.
 - Closing the last active tab returns to the native New chat screen and focuses the message input. Closing via the X button, middle-click, or the supported close shortcut uses the same navigation; the closed tab is not reopened.
 
 ## 0.1.9
