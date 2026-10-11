@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.tmp/
+# UI sources vendored from BB; keep their upstream formatting.
+components/ui/
+package-lock.json

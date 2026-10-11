@@ -8,8 +8,9 @@ export function useOverlayBounds(enabled: boolean) {
     if (!enabled || !overlay || globalThis.CSS?.supports?.("left", "anchor(left)")) return;
     let target: Element | null = null;
     const update = () => {
-      const next = document.querySelector('[data-thread-window]:not(aside [data-thread-window])')
-        ?? document.querySelector('[data-sidebar="inset"]');
+      const next =
+        document.querySelector("[data-thread-window]:not(aside [data-thread-window])") ??
+        document.querySelector('[data-sidebar="inset"]');
       if (next !== target) {
         resize?.disconnect();
         target = next;

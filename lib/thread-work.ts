@@ -78,28 +78,26 @@ export function buildThreadWorkIndex(
   };
 }
 
-export function hasThreadTreeWork(
-  threadId: string,
-  index: ThreadWorkIndex,
-): boolean {
+export function hasThreadTreeWork(threadId: string, index: ThreadWorkIndex): boolean {
   return (
-    index.directlyWorkingThreadIds.has(threadId) ||
-    index.nestedWorkingAncestorIds.has(threadId)
+    index.directlyWorkingThreadIds.has(threadId) || index.nestedWorkingAncestorIds.has(threadId)
   );
 }
 
 export function hasThreadTreePendingInteraction(threadId: string, index: ThreadWorkIndex): boolean {
-  return index.directlyWaitingThreadIds.has(threadId) || index.nestedWaitingAncestorIds.has(threadId);
+  return (
+    index.directlyWaitingThreadIds.has(threadId) || index.nestedWaitingAncestorIds.has(threadId)
+  );
 }
 
-export function hasNestedThreadPendingInteraction(threadId: string, index: ThreadWorkIndex): boolean {
-  return index.nestedWaitingAncestorIds.has(threadId);
-}
-
-export function hasNestedThreadWork(
+export function hasNestedThreadPendingInteraction(
   threadId: string,
   index: ThreadWorkIndex,
 ): boolean {
+  return index.nestedWaitingAncestorIds.has(threadId);
+}
+
+export function hasNestedThreadWork(threadId: string, index: ThreadWorkIndex): boolean {
   return index.nestedWorkingAncestorIds.has(threadId);
 }
 

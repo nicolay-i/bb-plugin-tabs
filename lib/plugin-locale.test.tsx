@@ -32,7 +32,10 @@ describe("plugin locale", () => {
       expect(Object.keys(pack).sort(), locale).toEqual([...keys].sort());
       for (const key of keys) {
         const vars = (key.match(/\{[a-z]+\}/g) ?? []).sort();
-        expect((pack as Record<string, string>)[key]?.match(/\{[a-z]+\}/g)?.sort() ?? [], `${locale}: ${key}`).toEqual(vars);
+        expect(
+          (pack as Record<string, string>)[key]?.match(/\{[a-z]+\}/g)?.sort() ?? [],
+          `${locale}: ${key}`,
+        ).toEqual(vars);
       }
     }
     for (const option of LANGUAGE_OPTIONS.filter((option) => option !== "Auto")) {
@@ -45,13 +48,17 @@ describe("plugin locale", () => {
     document.documentElement.lang = "en";
     const { result } = renderHook(() => usePluginLocale("Auto"));
     expect(result.current).toBe("en");
-    act(() => { document.documentElement.lang = "ru"; });
+    act(() => {
+      document.documentElement.lang = "ru";
+    });
     await waitFor(() => expect(result.current).toBe("ru"));
   });
 
   it("translates labels and variables but leaves English source text unchanged", () => {
     expect(translate("ru", "Close tab “{title}”", { title: "Чат" })).toBe("Закрыть вкладку «Чат»");
     expect(translate("en", "Close tab “{title}”", { title: "Chat" })).toBe("Close tab “Chat”");
-    expect(translate("ru", "Show {count} more projects", { count: 15 })).toBe("Показать ещё 15 проектов");
+    expect(translate("ru", "Show {count} more projects", { count: 15 })).toBe(
+      "Показать ещё 15 проектов",
+    );
   });
 });

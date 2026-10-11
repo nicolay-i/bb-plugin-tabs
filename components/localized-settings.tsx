@@ -12,7 +12,9 @@ export function LocalizedSettings() {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setOverrides({}); }, [settings.values]);
+  useEffect(() => {
+    setOverrides({});
+  }, [settings.values]);
   const values = { ...settings.values, ...overrides };
   const locale = usePluginLocale(values.language as LanguageSetting);
   const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
@@ -38,7 +40,12 @@ export function LocalizedSettings() {
   };
 
   return (
-    <section className="bb-chat-tabs-settings" lang={locale} dir={locale === "ar" ? "rtl" : "ltr"} aria-busy={saving || settings.isLoading}>
+    <section
+      className="bb-chat-tabs-settings"
+      lang={locale}
+      dir={locale === "ar" ? "rtl" : "ltr"}
+      aria-busy={saving || settings.isLoading}
+    >
       <h2 className="bb-chat-tabs-settings-heading">{t("Configuration")}</h2>
       <fieldset disabled={saving || settings.isLoading || settings.values === undefined}>
         {Object.entries(SETTINGS).map(([rawKey, descriptor]) => {
@@ -52,15 +59,26 @@ export function LocalizedSettings() {
                 <p id={`${id}-description`}>{t(descriptor.description)}</p>
               </div>
               {descriptor.type === "boolean" ? (
-                <input id={id} type="checkbox" role="switch" checked={value === true}
+                <input
+                  id={id}
+                  type="checkbox"
+                  role="switch"
+                  checked={value === true}
                   aria-describedby={`${id}-description`}
-                  onChange={(event) => void save(key, event.target.checked)} />
+                  onChange={(event) => void save(key, event.target.checked)}
+                />
               ) : (
-                <select id={id} value={String(value)} aria-describedby={`${id}-description`}
-                  onChange={(event) => void save(key, event.target.value)}>
+                <select
+                  id={id}
+                  value={String(value)}
+                  aria-describedby={`${id}-description`}
+                  onChange={(event) => void save(key, event.target.value)}
+                >
                   {descriptor.options.map((option) => (
                     <option key={option} value={option}>
-                      {option === "Auto" || option === "Left" || option === "Right" ? t(option) : option}
+                      {option === "Auto" || option === "Left" || option === "Right"
+                        ? t(option)
+                        : option}
                     </option>
                   ))}
                 </select>
@@ -69,7 +87,11 @@ export function LocalizedSettings() {
           );
         })}
       </fieldset>
-      {failed ? <p className="bb-chat-tabs-settings-error" role="alert">{t("Could not save settings.")}</p> : null}
+      {failed ? (
+        <p className="bb-chat-tabs-settings-error" role="alert">
+          {t("Could not save settings.")}
+        </p>
+      ) : null}
     </section>
   );
 }

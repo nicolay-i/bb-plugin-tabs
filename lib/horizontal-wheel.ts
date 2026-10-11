@@ -17,11 +17,7 @@ const WHEEL_DELTA_MODE_LINE = 1;
 const WHEEL_DELTA_MODE_PAGE = 2;
 const WHEEL_LINE_HEIGHT_PX = 16;
 
-function pixelDelta(
-  delta: number,
-  deltaMode: number,
-  pageSize: number,
-): number {
+function pixelDelta(delta: number, deltaMode: number, pageSize: number): number {
   if (deltaMode === WHEEL_DELTA_MODE_LINE) {
     return delta * WHEEL_LINE_HEIGHT_PX;
   }
@@ -41,10 +37,7 @@ export function consumeHorizontalWheel(
   // Trackpads can retain a small deltaX from the preceding horizontal gesture.
   // Follow the dominant axis so the first scroll after a direction change does
   // not unexpectedly move in the old direction.
-  const rawDelta =
-    Math.abs(input.deltaX) > Math.abs(input.deltaY)
-      ? input.deltaX
-      : input.deltaY;
+  const rawDelta = Math.abs(input.deltaX) > Math.abs(input.deltaY) ? input.deltaX : input.deltaY;
   if (!Number.isFinite(rawDelta) || rawDelta === 0) return false;
 
   const maximum = Math.max(0, target.scrollWidth - target.clientWidth);

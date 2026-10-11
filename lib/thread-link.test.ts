@@ -4,26 +4,19 @@ import { threadLinkUrl } from "./thread-link";
 describe("threadLinkUrl", () => {
   it("handles behavior 1", () => {
     expect(
-      threadLinkUrl(
-        { projectId: "proj_personal", threadId: "thr_current" },
-        "thr_current",
-        {
-          href: "https://bb.test/threads/thr_current?panel=files#message",
-          origin: "https://bb.test",
-        },
-      ),
+      threadLinkUrl({ projectId: "proj_personal", threadId: "thr_current" }, "thr_current", {
+        href: "https://bb.test/threads/thr_current?panel=files#message",
+        origin: "https://bb.test",
+      }),
     ).toBe("https://bb.test/threads/thr_current");
   });
 
   it("handles behavior 2", () => {
     expect(
-      threadLinkUrl(
-        { projectId: "proj / api", threadId: "thr / next" },
-        "thr_current",
-        { href: "https://bb.test/", origin: "https://bb.test" },
-      ),
-    ).toBe(
-      "https://bb.test/projects/proj%20%2F%20api/threads/thr%20%2F%20next",
-    );
+      threadLinkUrl({ projectId: "proj / api", threadId: "thr / next" }, "thr_current", {
+        href: "https://bb.test/",
+        origin: "https://bb.test",
+      }),
+    ).toBe("https://bb.test/projects/proj%20%2F%20api/threads/thr%20%2F%20next");
   });
 });

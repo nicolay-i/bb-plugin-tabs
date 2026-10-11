@@ -50,7 +50,10 @@ function thread(
 describe("Chat Tabs", () => {
   it("separates a pending question or approval from active work and propagates it to parents", () => {
     const root = thread("thr_root");
-    const child = thread("thr_child", root.id, { hasPendingInteraction: true, indicator: "waiting-for-input" });
+    const child = thread("thr_child", root.id, {
+      hasPendingInteraction: true,
+      indicator: "waiting-for-input",
+    });
     const index = buildThreadWorkIndex([root, child]);
     expect(hasThreadTreePendingInteraction(child.id, index)).toBe(true);
     expect(hasThreadTreePendingInteraction(root.id, index)).toBe(true);

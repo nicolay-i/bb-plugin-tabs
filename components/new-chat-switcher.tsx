@@ -36,10 +36,13 @@ export function NewChatSwitcher({ projects, openNewThread, locale = "en" }: NewC
     hoverTimer.current = null;
     leaveTimer.current = null;
   }, []);
-  useEffect(() => () => {
-    clearTimers();
-    if (moreTimer.current !== null) clearTimeout(moreTimer.current);
-  }, [clearTimers]);
+  useEffect(
+    () => () => {
+      clearTimers();
+      if (moreTimer.current !== null) clearTimeout(moreTimer.current);
+    },
+    [clearTimers],
+  );
   useEffect(() => {
     if (!open) {
       clearMoreTimer();
@@ -88,13 +91,16 @@ export function NewChatSwitcher({ projects, openNewThread, locale = "en" }: NewC
   };
 
   return (
-    <Popover.Root open={open} onOpenChange={(next) => {
-      if (!next) {
-        clearTimers();
-        clearMoreTimer();
-      }
-      setOpen(next);
-    }}>
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          clearTimers();
+          clearMoreTimer();
+        }
+        setOpen(next);
+      }}
+    >
       <div className="bb-chat-tabs-new-switcher">
         <Popover.Anchor asChild>
           <button
@@ -156,7 +162,9 @@ export function NewChatSwitcher({ projects, openNewThread, locale = "en" }: NewC
                 type="button"
                 role="menuitem"
                 className="bb-chat-tabs-new-menu-more"
-                aria-label={t("Show {count} more projects", { count: Math.min(PROJECT_PAGE_SIZE, projects.length - visibleCount) })}
+                aria-label={t("Show {count} more projects", {
+                  count: Math.min(PROJECT_PAGE_SIZE, projects.length - visibleCount),
+                })}
                 data-pending={morePending ? "true" : "false"}
                 onClick={loadMore}
                 onPointerEnter={(event) => {

@@ -21,6 +21,7 @@ synthetic demonstration data.
 - **15 interface languages.** Follow the BB page or browser language, or select
   a language explicitly. User-authored chat titles and project names stay unchanged.
 
+- **Favorite chats.** Choose **Add to favorites** in a tab's context menu. Favorites appear in their own list on **New chat**, independently of pinned tabs, and remain saved when you close a tab or replace its preview. Use **Remove from favorites** in the same menu to remove one; archiving or deleting the chat also removes it.
 - **VS Code-style preview tab.** One unpinned preview represents a chat you opened but
   have not pinned. Opening another unpinned chat replaces it; background work
   never opens a preview. Closing it stays closed across reloads and other windows
@@ -80,17 +81,17 @@ through `bb plugin config tabs set <key> <value>`. They affect only the
 presentation: pins, preview state, manual order, and visit history remain
 stored.
 
-| Key | Default | Purpose |
-| --- | --- | --- |
-| `language` | `Auto` | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
-| `searchArchivedChats` | `false` | Include archived chats in title search. Results remain disabled with a struck-through title and Archived status; deleted chats stay excluded. |
-| `showPinnedTabsList` | `true` | Show the Tabs list below the composer on the New chat screen. It contains pinned tabs in their manual order. |
-| `showTabsOnDesktop` | `true` | Top tab strip in the desktop layout. |
-| `showTabsOnMobile` | `true` | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer). |
-| `showTabListButton` | `true` | Icon button for the dropdown list next to the strip. |
-| `showTabListPinned` | `true` | Pinned section in the dropdown list. |
-| `showTabListHistory` | `true` | History section in the dropdown list; hiding it does not stop recording visits. |
-| `tabListButtonPosition` | `Left` | Side for the icon button: `Left` or `Right`. |
+| Key                     | Default | Purpose                                                                                                                                                                                                                                                                          |
+| ----------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `language`              | `Auto`  | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
+| `searchArchivedChats`   | `false` | Include archived chats in title search. Results remain disabled with a struck-through title and Archived status; deleted chats stay excluded.                                                                                                                                    |
+| `showPinnedTabsList`    | `true`  | Show the Tabs list below the composer on the New chat screen. It contains pinned tabs in their manual order.                                                                                                                                                                     |
+| `showTabsOnDesktop`     | `true`  | Top tab strip in the desktop layout.                                                                                                                                                                                                                                             |
+| `showTabsOnMobile`      | `true`  | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer).                                                                                                                                                                                                       |
+| `showTabListButton`     | `true`  | Icon button for the dropdown list next to the strip.                                                                                                                                                                                                                             |
+| `showTabListPinned`     | `true`  | Pinned section in the dropdown list.                                                                                                                                                                                                                                             |
+| `showTabListHistory`    | `true`  | History section in the dropdown list; hiding it does not stop recording visits.                                                                                                                                                                                                  |
+| `tabListButtonPosition` | `Left`  | Side for the icon button: `Left` or `Right`.                                                                                                                                                                                                                                     |
 
 The list button hides automatically when it is disabled or fewer than two
 allowed navigation targets remain. The additional language packs are
@@ -136,10 +137,17 @@ The plugin state itself remains independent of that layout.
 
 ```bash
 npm install
-npm run typecheck
-npm test
+npm run check
 npm run build
 ```
+
+Checks run locally, without CI/CD. `npm run check` runs Prettier, ESLint,
+TypeScript (including tests), and Vitest. Use `npm run format` to apply formatting.
+The development lint tools require Node.js 20.19+, 22.13+, or 24+; Node.js 24 is
+recommended. `components/ui/` retains its upstream formatting and is excluded
+from ESLint/Prettier, not from TypeScript or the public-SDK boundary test.
+Mandatory completion checks are documented in [AGENTS.md](AGENTS.md); BB loads
+the reminder from `.bb/AGENTS.md`.
 
 For a live development cycle in BB:
 

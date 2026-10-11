@@ -4,7 +4,8 @@ import { chatStatusFor } from "./chat-status";
 describe("Chat Tabs", () => {
   it("shows pending user input ahead of working while retaining unread status", () => {
     expect(chatStatusFor({ isWaiting: true, isWorking: true, isUnread: true }, "ru")).toEqual({
-      kind: "waiting", text: "Нужен ответ · Непрочитанное",
+      kind: "waiting",
+      text: "Нужен ответ · Непрочитанное",
     });
     expect(chatStatusFor({ isWaiting: false, isWorking: false, isUnread: false })).toBeNull();
   });

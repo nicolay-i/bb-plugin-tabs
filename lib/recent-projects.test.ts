@@ -19,9 +19,18 @@ describe("recent projects", () => {
     })) as PluginSidebarThread[];
     threads.push({ ...threads[0]!, id: "archived", isArchived: true, updatedAt: 1000 });
     threads.push({ ...threads[1]!, id: "child", parentThreadId: "t1", updatedAt: 1001 });
-    expect(recentProjects(projects, threads, 10).map((project) => project.id)).toEqual(
-      ["p1", "p11", "p10", "p9", "p8", "p7", "p6", "p5", "p4", "p3"],
-    );
+    expect(recentProjects(projects, threads, 10).map((project) => project.id)).toEqual([
+      "p1",
+      "p11",
+      "p10",
+      "p9",
+      "p8",
+      "p7",
+      "p6",
+      "p5",
+      "p4",
+      "p3",
+    ]);
     expect(recentProjects(projects, threads)).toHaveLength(12);
   });
 });

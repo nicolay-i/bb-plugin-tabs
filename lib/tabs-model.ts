@@ -16,6 +16,8 @@ export const TABS_CHANGED_CHANNEL = "tabs-changed";
 export interface TabEntry {
   threadId: string;
   projectId: string;
+  /** Absent for root chats and legacy snapshots. */
+  parentThreadId?: string;
   /** The latest known title, used while the sidebar is still loading. */
   title: string;
   /** `false` identifies the one temporary preview tab. */
@@ -27,6 +29,8 @@ export interface TabEntry {
 export interface TabsState {
   version: typeof TAB_STATE_VERSION;
   entries: TabEntry[];
+  /** Independent of open tabs: closing or replacing a preview keeps favorites. */
+  favorites?: TabEntry[];
 }
 
 export type TabMovePosition = "before" | "after";
@@ -35,6 +39,7 @@ export interface TabCandidate {
   threadId: string;
   projectId: string;
   title: string;
+  parentThreadId?: string;
 }
 
 const EMPTY_STATE: TabsState = {
@@ -53,9 +58,7 @@ function readNonEmptyString(value: unknown): string | null {
 }
 
 function readTimestamp(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : 0;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 function readEntry(value: unknown): TabEntry | null {
@@ -64,10 +67,12 @@ function readEntry(value: unknown): TabEntry | null {
   const projectId = readNonEmptyString(value.projectId);
   const title = readNonEmptyString(value.title);
   if (threadId === null || projectId === null || title === null) return null;
+  const parentThreadId = readNonEmptyString(value.parentThreadId);
   return {
     threadId,
     projectId,
     title,
+    ...(parentThreadId ? { parentThreadId } : {}),
     pinned: value.pinned === true,
     openedAt: readTimestamp(value.openedAt),
   };
@@ -78,7 +83,8 @@ function readCandidate(value: TabCandidate): TabCandidate | null {
   const projectId = readNonEmptyString(value.projectId);
   const title = readNonEmptyString(value.title);
   if (threadId === null || projectId === null || title === null) return null;
-  return { threadId, projectId, title };
+  const parentThreadId = readNonEmptyString(value.parentThreadId);
+  return { threadId, projectId, title, ...(parentThreadId ? { parentThreadId } : {}) };
 }
 
 /** Returns empty state without a shared mutable entries array. */
@@ -131,9 +137,17 @@ export function normalizeTabsState(value: unknown): TabsState {
     });
   }
 
+  const favorites = new Map<string, TabEntry>();
+  if (Array.isArray(value.favorites)) {
+    for (const rawEntry of value.favorites) {
+      const entry = readEntry(rawEntry);
+      if (entry !== null) favorites.set(entry.threadId, entry);
+    }
+  }
   return {
     version: TAB_STATE_VERSION,
     entries: trimEntries(keepLatestPreview([...byThreadId.values()])),
+    ...(favorites.size > 0 ? { favorites: [...favorites.values()].slice(-MAX_TAB_ENTRIES) } : {}),
   };
 }
 
@@ -162,21 +176,22 @@ export function addTabCandidates(
   const current = normalizeTabsState(state);
   const candidate = latestCandidate(candidates);
   if (candidate === null) return current;
+  if (current.favorites !== undefined) {
+    current.favorites = current.favorites.map((entry) =>
+      entry.threadId === candidate.threadId ? { ...entry, ...candidate } : entry,
+    );
+  }
 
-  const existingIndex = current.entries.findIndex(
-    (entry) => entry.threadId === candidate.threadId,
-  );
+  const existingIndex = current.entries.findIndex((entry) => entry.threadId === candidate.threadId);
   if (existingIndex !== -1) {
     const entries = current.entries.map((entry, index) =>
-      index === existingIndex
-        ? { ...entry, projectId: candidate.projectId, title: candidate.title }
-        : entry,
+      index === existingIndex ? { ...entry, ...candidate } : entry,
     );
-    return { version: TAB_STATE_VERSION, entries };
+    return { ...current, entries };
   }
 
   return {
-    version: TAB_STATE_VERSION,
+    ...current,
     entries: trimEntries([
       ...current.entries.filter((entry) => entry.pinned),
       { ...candidate, pinned: false, openedAt: now },
@@ -205,36 +220,28 @@ export function openTabCandidate(
       index === existingIndex
         ? {
             ...entry,
-            projectId: normalized.projectId,
-            title: normalized.title,
+            ...normalized,
             pinned: true,
           }
         : entry,
     );
-    return { version: TAB_STATE_VERSION, entries };
+    return { ...current, entries };
   }
 
   return {
-    version: TAB_STATE_VERSION,
-    entries: trimEntries([
-      ...current.entries,
-      { ...normalized, pinned: true, openedAt: now },
-    ]),
+    ...current,
+    entries: trimEntries([...current.entries, { ...normalized, pinned: true, openedAt: now }]),
   };
 }
 
-export function setTabPinned(
-  state: TabsState,
-  threadId: string,
-  pinned: boolean,
-): TabsState {
+export function setTabPinned(state: TabsState, threadId: string, pinned: boolean): TabsState {
   const current = normalizeTabsState(state);
   const target = current.entries.find((entry) => entry.threadId === threadId);
   if (target === undefined || target.pinned === pinned) return current;
 
   if (pinned) {
     return {
-      version: TAB_STATE_VERSION,
+      ...current,
       entries: current.entries.map((entry) =>
         entry.threadId === threadId ? { ...entry, pinned: true } : entry,
       ),
@@ -244,11 +251,9 @@ export function setTabPinned(
   // Preserve reversible unpinning in the public RPC for compatibility, while
   // preserving the one-preview invariant: the unpinned chat replaces preview.
   return {
-    version: TAB_STATE_VERSION,
+    ...current,
     entries: [
-      ...current.entries.filter(
-        (entry) => entry.pinned && entry.threadId !== threadId,
-      ),
+      ...current.entries.filter((entry) => entry.pinned && entry.threadId !== threadId),
       { ...target, pinned: false },
     ],
   };
@@ -271,40 +276,25 @@ export function movePinnedTab(
 
   const source = current.entries.find((entry) => entry.threadId === sourceThreadId);
   const target = current.entries.find((entry) => entry.threadId === targetThreadId);
-  if (
-    source === undefined ||
-    target === undefined ||
-    !source.pinned ||
-    !target.pinned
-  ) {
+  if (source === undefined || target === undefined || !source.pinned || !target.pinned) {
     return current;
   }
 
   const pinnedTabs = current.entries.filter((entry) => entry.pinned);
-  const sourceIndex = pinnedTabs.findIndex(
-    (entry) => entry.threadId === sourceThreadId,
-  );
-  const targetIndex = pinnedTabs.findIndex(
-    (entry) => entry.threadId === targetThreadId,
-  );
+  const sourceIndex = pinnedTabs.findIndex((entry) => entry.threadId === sourceThreadId);
+  const targetIndex = pinnedTabs.findIndex((entry) => entry.threadId === targetThreadId);
   if (sourceIndex === -1 || targetIndex === -1) return current;
 
   const orderedPins = [...pinnedTabs];
   const [moved] = orderedPins.splice(sourceIndex, 1);
   if (moved === undefined) return current;
-  const nextTargetIndex = orderedPins.findIndex(
-    (entry) => entry.threadId === targetThreadId,
-  );
+  const nextTargetIndex = orderedPins.findIndex((entry) => entry.threadId === targetThreadId);
   if (nextTargetIndex === -1) return current;
-  orderedPins.splice(
-    nextTargetIndex + (position === "after" ? 1 : 0),
-    0,
-    moved,
-  );
+  orderedPins.splice(nextTargetIndex + (position === "after" ? 1 : 0), 0, moved);
 
   let pinIndex = 0;
   return {
-    version: TAB_STATE_VERSION,
+    ...current,
     entries: current.entries.map((entry) => {
       if (!entry.pinned) return entry;
       const replacement = orderedPins[pinIndex];
@@ -312,6 +302,26 @@ export function movePinnedTab(
       return replacement ?? entry;
     }),
   };
+}
+
+export function setTabFavorite(
+  state: TabsState,
+  threadId: string,
+  favorite: boolean,
+  candidate?: TabCandidate,
+): TabsState {
+  const current = normalizeTabsState(state);
+  const favorites = current.favorites ?? [];
+  if (!favorite)
+    return { ...current, favorites: favorites.filter((entry) => entry.threadId !== threadId) };
+  if (favorites.some((entry) => entry.threadId === threadId)) return current;
+  const fallback = candidate === undefined ? null : readCandidate(candidate);
+  const entry =
+    current.entries.find((entry) => entry.threadId === threadId) ??
+    (fallback?.threadId === threadId ? { ...fallback, pinned: false, openedAt: 0 } : undefined);
+  if (entry === undefined) throw new Error("Open the chat before adding it to favorites.");
+  if (favorites.length >= MAX_TAB_ENTRIES) throw new Error("Favorites are limited to 100 chats.");
+  return { ...current, favorites: [...favorites, entry] };
 }
 
 export function closeTab(state: TabsState, threadId: string): TabsState {
@@ -322,29 +332,40 @@ export function closeTab(state: TabsState, threadId: string): TabsState {
 export function closeTabs(
   state: TabsState,
   threadIds: Iterable<string>,
+  removeFavorites = false,
 ): TabsState {
   const current = normalizeTabsState(state);
   const closingIds = new Set(threadIds);
   if (closingIds.size === 0) return current;
   const entries = current.entries.filter((entry) => !closingIds.has(entry.threadId));
-  return entries.length === current.entries.length
-    ? current
-    : { version: TAB_STATE_VERSION, entries };
+  return {
+    ...current,
+    entries,
+    ...(removeFavorites
+      ? { favorites: current.favorites?.filter((entry) => !closingIds.has(entry.threadId)) }
+      : {}),
+  };
 }
 
 export function tabsStatesEqual(left: TabsState, right: TabsState): boolean {
-  if (left.version !== right.version || left.entries.length !== right.entries.length) {
-    return false;
-  }
-  return left.entries.every((entry, index) => {
-    const other = right.entries[index];
+  if (left.version !== right.version) return false;
+  return (["entries", "favorites"] as const).every((key) => {
+    const leftEntries = left[key] ?? [];
+    const rightEntries = right[key] ?? [];
     return (
-      other !== undefined &&
-      entry.threadId === other.threadId &&
-      entry.projectId === other.projectId &&
-      entry.title === other.title &&
-      entry.pinned === other.pinned &&
-      entry.openedAt === other.openedAt
+      leftEntries.length === rightEntries.length &&
+      leftEntries.every((entry, index) => {
+        const other = rightEntries[index];
+        return (
+          other !== undefined &&
+          entry.threadId === other.threadId &&
+          entry.projectId === other.projectId &&
+          entry.title === other.title &&
+          entry.parentThreadId === other.parentThreadId &&
+          entry.pinned === other.pinned &&
+          entry.openedAt === other.openedAt
+        );
+      })
     );
   });
 }

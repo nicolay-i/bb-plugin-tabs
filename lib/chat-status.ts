@@ -18,7 +18,10 @@ export interface ChatStatus {
  * A shared, concise status vocabulary for home cards and the tabs menu. Calm
  * chats intentionally receive neither a decorative status nor a dot.
  */
-export function chatStatusFor(input: ChatStatusInput, locale: PluginLocale = "en"): ChatStatus | null {
+export function chatStatusFor(
+  input: ChatStatusInput,
+  locale: PluginLocale = "en",
+): ChatStatus | null {
   const parts: string[] = [];
   if (input.isWaiting) parts.push(translate(locale, "Needs input"));
   else if (input.isWorking) parts.push(translate(locale, "Working"));

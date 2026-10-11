@@ -21,10 +21,7 @@ import {
   useSettings,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
-import type {
-  PluginHomepageSectionProps,
-  PluginSidebarThread,
-} from "@get-bb/plugin-sdk/app";
+import type { PluginHomepageSectionProps, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import { chatStatusFor } from "./lib/chat-status";
 import {
@@ -76,7 +73,14 @@ import { useOverlayBounds } from "./lib/use-overlay-bounds";
 import { recentProjects } from "./lib/recent-projects";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
-import { translate, usePluginLocale, type PluginLocale, type LanguageSetting, type TranslationKey } from "./lib/plugin-locale";
+import { SubthreadBadge } from "./components/subthread-badge";
+import {
+  translate,
+  usePluginLocale,
+  type PluginLocale,
+  type LanguageSetting,
+  type TranslationKey,
+} from "./lib/plugin-locale";
 import "./tabs.css";
 
 function candidateForThread(thread: PluginSidebarThread): TabCandidate {
@@ -84,20 +88,24 @@ function candidateForThread(thread: PluginSidebarThread): TabCandidate {
     threadId: thread.id,
     projectId: thread.projectId,
     title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
+    ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
   };
 }
 
 function candidateKey(candidate: TabCandidate | null): string {
   return candidate === null
     ? ""
-    : `${candidate.threadId}\u0000${candidate.projectId}\u0000${candidate.title}`;
+    : `${candidate.threadId}\u0000${candidate.projectId}\u0000${candidate.title}\u0000${candidate.parentThreadId ?? ""}`;
 }
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function unavailableHistoryLabel(reason: TabHistoryUnavailableReason, locale: PluginLocale): string {
+function unavailableHistoryLabel(
+  reason: TabHistoryUnavailableReason,
+  locale: PluginLocale,
+): string {
   return translate(locale, reason === "archived" ? "Archived" : "Deleted");
 }
 
@@ -113,26 +121,15 @@ function isCloseCurrentTabShortcut(event: KeyboardEvent): boolean {
 }
 
 function isCyclePluginTabsShortcut(event: KeyboardEvent): boolean {
-  return (
-    event.ctrlKey &&
-    !event.altKey &&
-    !event.metaKey &&
-    !event.repeat &&
-    event.key === "Tab"
-  );
+  return event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && event.key === "Tab";
 }
 
 function isBrowserChromeKeyboardTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    target.closest("[data-app-browser]") !== null
-  );
+  return target instanceof HTMLElement && target.closest("[data-app-browser]") !== null;
 }
 
-const COMPACT_TAB_LAYOUT_MEDIA_QUERY =
-  "(max-width: 767px), (pointer: coarse)";
-const LEGACY_RIGHT_TAB_LIST_BUTTON_POSITION =
-  "\u0421\u043f\u0440\u0430\u0432\u0430";
+const COMPACT_TAB_LAYOUT_MEDIA_QUERY = "(max-width: 767px), (pointer: coarse)";
+const LEGACY_RIGHT_TAB_LIST_BUTTON_POSITION = "\u0421\u043f\u0440\u0430\u0432\u0430";
 
 function useCompactTabLayout(): boolean {
   const [isCompact, setIsCompact] = useState(() => {
@@ -160,7 +157,6 @@ const DOUBLE_SHIFT_INTERVAL_MS = 350;
 const MENU_HOVER_DELAY_MS = 300;
 const MENU_LEAVE_DELAY_MS = 120;
 // A newly created chat can be the first route seen by a freshly mounted overlay.
-const NEW_THREAD_ROUTE_WINDOW_MS = 2 * 60_000;
 
 interface TabsListRequest {
   key: string;
@@ -190,29 +186,25 @@ function activityRequestKey(threads: readonly TabCandidate[]): string {
   return threads.map(candidateKey).join("\u0001");
 }
 
-function historyStartsWithCandidate(
-  history: TabHistoryState,
-  candidate: TabCandidate,
-): boolean {
+function historyStartsWithCandidate(history: TabHistoryState, candidate: TabCandidate): boolean {
   const first = history.entries[0];
   return (
     first !== undefined &&
     first.threadId === candidate.threadId &&
     first.projectId === candidate.projectId &&
-    first.title === candidate.title
+    first.title === candidate.title &&
+    first.parentThreadId === candidate.parentThreadId
   );
 }
 
-function stateContainsCandidate(
-  state: TabsState | null,
-  candidate: TabCandidate,
-): boolean {
+function stateContainsCandidate(state: TabsState | null, candidate: TabCandidate): boolean {
   return (
     state?.entries.some(
       (entry) =>
         entry.threadId === candidate.threadId &&
         entry.projectId === candidate.projectId &&
-        entry.title === candidate.title,
+        entry.title === candidate.title &&
+        entry.parentThreadId === candidate.parentThreadId,
     ) ?? false
   );
 }
@@ -245,14 +237,12 @@ function useTabsState(enabled = true) {
   const [state, setState] = useState<TabsState | null>(null);
   const stateRef = useRef<TabsState | null>(state);
   stateRef.current = state;
-  const [history, setHistory] = useState<TabHistoryState>(
-    createEmptyTabHistory,
-  );
+  const [history, setHistory] = useState<TabHistoryState>(createEmptyTabHistory);
   const historyRef = useRef(history);
   historyRef.current = history;
-  const [activeWorkflowThreadIds, setActiveWorkflowThreadIds] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
+  const [activeWorkflowThreadIds, setActiveWorkflowThreadIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [error, setError] = useState<string | null>(null);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshInFlightKeyRef = useRef<string | null>(null);
@@ -269,9 +259,7 @@ function useTabsState(enabled = true) {
     const normalized = normalizeTabsState(next);
     stateRef.current = normalized;
     setState((previous) =>
-      previous !== null && tabsStatesEqual(previous, normalized)
-        ? previous
-        : normalized,
+      previous !== null && tabsStatesEqual(previous, normalized) ? previous : normalized,
     );
     setError(null);
     setInitialLoadFailures(0);
@@ -280,26 +268,18 @@ function useTabsState(enabled = true) {
   const acceptHistory = useCallback((next: TabHistoryState) => {
     const normalized = normalizeTabHistory(next);
     historyRef.current = normalized;
-    setHistory((previous) =>
-      tabHistoriesEqual(previous, normalized) ? previous : normalized,
-    );
+    setHistory((previous) => (tabHistoriesEqual(previous, normalized) ? previous : normalized));
   }, []);
 
-  const acceptWorkflowActivity = useCallback(
-    (threadIds: readonly string[] | undefined) => {
-      const next = new Set(threadIds ?? []);
-      setActiveWorkflowThreadIds((previous) => {
-        if (
-          previous.size === next.size &&
-          [...previous].every((threadId) => next.has(threadId))
-        ) {
-          return previous;
-        }
-        return next;
-      });
-    },
-    [],
-  );
+  const acceptWorkflowActivity = useCallback((threadIds: readonly string[] | undefined) => {
+    const next = new Set(threadIds ?? []);
+    setActiveWorkflowThreadIds((previous) => {
+      if (previous.size === next.size && [...previous].every((threadId) => next.has(threadId))) {
+        return previous;
+      }
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(
     (workflowThreadIds: readonly string[] = []): Promise<void> => {
@@ -373,7 +353,14 @@ function useTabsState(enabled = true) {
   // Cold-start RPCs can fail while the host/plugin generation is becoming ready.
   // Retry only until the first snapshot arrives; never poll healthy empty lists.
   useEffect(() => {
-    if (!enabled || !visible || connectionState !== "connected" || state !== null || initialLoadFailures === 0) return;
+    if (
+      !enabled ||
+      !visible ||
+      connectionState !== "connected" ||
+      state !== null ||
+      initialLoadFailures === 0
+    )
+      return;
     const delay = Math.min(1000 * 2 ** Math.min(initialLoadFailures - 1, 4), 15000);
     const timer = window.setTimeout(() => void refresh(), delay);
     return () => window.clearTimeout(timer);
@@ -411,8 +398,10 @@ function useTabsState(enabled = true) {
       }
 
       const latestCandidate = request.threads.at(-1);
-      if (latestCandidate !== undefined &&
-          stateContainsCandidate(stateRef.current, latestCandidate)) {
+      if (
+        latestCandidate !== undefined &&
+        stateContainsCandidate(stateRef.current, latestCandidate)
+      ) {
         return Promise.resolve();
       }
 
@@ -485,10 +474,7 @@ function useTabsState(enabled = true) {
           historyVisitInFlightKeyRef.current = next.key;
           if (!historyStartsWithCandidate(historyRef.current, next.candidate)) {
             try {
-              const result = await rpcRef.current.call(
-                "tabs_history_visit",
-                next.candidate,
-              );
+              const result = await rpcRef.current.call("tabs_history_visit", next.candidate);
               acceptHistory(result.history);
             } catch (cause) {
               setError(errorMessage(cause));
@@ -514,13 +500,31 @@ function useTabsState(enabled = true) {
     [acceptHistory],
   );
 
-  const setPinned = useCallback(
-    async (threadId: string, pinned: boolean) => {
+  const setFavorite = useCallback(
+    async (threadId: string, favorite: boolean, candidate?: TabCandidate) => {
       try {
-        const result = await rpcRef.current.call("tabs_set_pinned", {
+        const result = await rpcRef.current.call("tabs_set_favorite", {
           threadId,
-          pinned,
+          favorite,
+          ...(candidate ? { candidate } : {}),
         });
+        acceptState(result.state);
+        return result.state;
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return null;
+      }
+    },
+    [acceptState],
+  );
+
+  const setPinned = useCallback(
+    async (threadId: string, pinned: boolean, candidate?: TabCandidate) => {
+      try {
+        const result =
+          pinned && candidate !== undefined
+            ? await rpcRef.current.call("tabs_open", candidate)
+            : await rpcRef.current.call("tabs_set_pinned", { threadId, pinned });
         acceptState(result.state);
         return result.state;
       } catch (cause) {
@@ -546,11 +550,7 @@ function useTabsState(enabled = true) {
   );
 
   const move = useCallback(
-    async (
-      sourceThreadId: string,
-      targetThreadId: string,
-      position: TabMovePosition,
-    ) => {
+    async (sourceThreadId: string, targetThreadId: string, position: TabMovePosition) => {
       try {
         const result = await rpcRef.current.call("tabs_move", {
           sourceThreadId,
@@ -576,6 +576,7 @@ function useTabsState(enabled = true) {
     recordHistory,
     refresh,
     setPinned,
+    setFavorite,
     state,
     syncActivity,
   };
@@ -596,9 +597,7 @@ function useWorkflowRevalidation({
 }): void {
   const visible = useDocumentVisibility();
   const stateReady = state !== null;
-  const workflowIdsKey = workflowRequestKey(
-    canonicalThreadIds(workflowThreadIds),
-  );
+  const workflowIdsKey = workflowRequestKey(canonicalThreadIds(workflowThreadIds));
   const stableWorkflowIds = useMemo(
     () => (workflowIdsKey === "" ? [] : workflowIdsKey.split("\u0000")),
     [workflowIdsKey],
@@ -611,13 +610,9 @@ function useWorkflowRevalidation({
   );
   const additionalWorkflowProbeKey = `${stateEntryKey}\u0001${workflowIdsKey}`;
   const lastAdditionalWorkflowProbeKeyRef = useRef<string | null>(null);
-  const activeWorkflowKey = workflowRequestKey(
-    canonicalThreadIds(activeWorkflowThreadIds),
-  );
+  const activeWorkflowKey = workflowRequestKey(canonicalThreadIds(activeWorkflowThreadIds));
   const intervalMs =
-    activeWorkflowKey === ""
-      ? IDLE_WORKFLOW_REVALIDATION_MS
-      : ACTIVE_WORKFLOW_REVALIDATION_MS;
+    activeWorkflowKey === "" ? IDLE_WORKFLOW_REVALIDATION_MS : ACTIVE_WORKFLOW_REVALIDATION_MS;
   useEffect(() => {
     if (
       !enabled ||
@@ -641,12 +636,7 @@ function useWorkflowRevalidation({
   ]);
 
   useEffect(() => {
-    if (
-      !enabled ||
-      !stateReady ||
-      !visible ||
-      stableWorkflowIds.length === 0
-    ) {
+    if (!enabled || !stateReady || !visible || stableWorkflowIds.length === 0) {
       return;
     }
     const timer = window.setInterval(() => {
@@ -675,22 +665,19 @@ function isNoopPinnedMove(
   targetThreadId: string,
   position: TabMovePosition,
 ): boolean {
-  const pinnedThreadIds = entries
-    .filter((entry) => entry.pinned)
-    .map((entry) => entry.threadId);
+  const pinnedThreadIds = entries.filter((entry) => entry.pinned).map((entry) => entry.threadId);
   const sourceIndex = pinnedThreadIds.indexOf(sourceThreadId);
   const targetIndex = pinnedThreadIds.indexOf(targetThreadId);
   if (sourceIndex === -1 || targetIndex === -1) return true;
   if (sourceIndex === targetIndex) return true;
-  return position === "before"
-    ? sourceIndex === targetIndex - 1
-    : sourceIndex === targetIndex + 1;
+  return position === "before" ? sourceIndex === targetIndex - 1 : sourceIndex === targetIndex + 1;
 }
 
 interface PresentedTab {
   entry: TabEntry;
   hasNestedWork: boolean;
   hasNestedWaiting: boolean;
+  isSubthread: boolean;
   isUnread: boolean;
   isWorking: boolean;
   isWaiting: boolean;
@@ -716,14 +703,14 @@ function buildPresentedTabs(
       const liveProject = projectsById.get(entry.projectId);
       return {
         entry,
-        hasNestedWork:
-          liveThread !== undefined &&
-          hasNestedThreadWork(liveThread.id, workIndex),
+        isSubthread: Boolean(
+          liveThread === undefined ? entry.parentThreadId : liveThread.parentThreadId,
+        ),
+        hasNestedWork: liveThread !== undefined && hasNestedThreadWork(liveThread.id, workIndex),
         hasNestedWaiting:
           liveThread !== undefined && hasNestedThreadPendingInteraction(liveThread.id, workIndex),
         isUnread: liveThread?.isUnread ?? false,
-        isWorking:
-          liveThread !== undefined && hasThreadTreeWork(liveThread.id, workIndex),
+        isWorking: liveThread !== undefined && hasThreadTreeWork(liveThread.id, workIndex),
         isWaiting:
           liveThread !== undefined && hasThreadTreePendingInteraction(liveThread.id, workIndex),
         projectName: liveProject?.isPersonal
@@ -746,10 +733,7 @@ function buildPresentedHistoryTabs(
   locale: PluginLocale = "en",
 ): PresentedTab[] {
   const unavailableByThreadId = new Map(
-    history.entries.map((entry) => [
-      entry.threadId,
-      entry.unavailableReason ?? null,
-    ]),
+    history.entries.map((entry) => [entry.threadId, entry.unavailableReason ?? null]),
   );
   return buildPresentedTabs(
     {
@@ -758,6 +742,7 @@ function buildPresentedHistoryTabs(
         threadId: entry.threadId,
         projectId: entry.projectId,
         title: entry.title,
+        ...(entry.parentThreadId ? { parentThreadId: entry.parentThreadId } : {}),
         pinned: false,
         openedAt: entry.visitedAt,
       })),
@@ -774,11 +759,7 @@ function buildPresentedHistoryTabs(
 
 function fallbackTab(entries: readonly TabEntry[], closing: TabEntry): TabEntry | null {
   const remaining = entries.filter((entry) => entry.threadId !== closing.threadId);
-  return (
-    remaining.find((entry) => entry.projectId === closing.projectId) ??
-    remaining[0] ??
-    null
-  );
+  return remaining.find((entry) => entry.projectId === closing.projectId) ?? remaining[0] ?? null;
 }
 
 function belongsToOpenTabTree(
@@ -806,7 +787,9 @@ function workflowProbeThreadIds(
 ): string[] {
   if (state === null) return [];
 
-  const openTabIds = new Set(state.entries.map((entry) => entry.threadId));
+  const openTabIds = new Set(
+    [...state.entries, ...(state.favorites ?? [])].map((entry) => entry.threadId),
+  );
   const seenThreadIds = new Set(openTabIds);
   const threadIds = [...openTabIds];
   for (const thread of threads) {
@@ -818,13 +801,8 @@ function workflowProbeThreadIds(
   return threadIds.slice(0, 100);
 }
 
-function wheelTargetsTabs(
-  event: WheelEvent,
-  elements: readonly (HTMLElement | null)[],
-): boolean {
-  const targets = elements.filter(
-    (element): element is HTMLElement => element !== null,
-  );
+function wheelTargetsTabs(event: WheelEvent, elements: readonly (HTMLElement | null)[]): boolean {
+  const targets = elements.filter((element): element is HTMLElement => element !== null);
   const path = event.composedPath();
   if (path.length > 0) return targets.some((element) => path.includes(element));
   const target = event.target;
@@ -839,8 +817,11 @@ function ChatTabsOverlay() {
   const isCompactTabLayout = useCompactTabLayout();
   const settings = useSettings();
   const locale = usePluginLocale(settings.values?.language as LanguageSetting);
-  const t = useCallback((key: TranslationKey, variables?: Record<string, string | number>) =>
-    translate(locale, key, variables), [locale]);
+  const t = useCallback(
+    (key: TranslationKey, variables?: Record<string, string | number>) =>
+      translate(locale, key, variables),
+    [locale],
+  );
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
   const showTabsOnCurrentLayout = isCompactTabLayout
@@ -864,6 +845,7 @@ function ChatTabsOverlay() {
     recordHistory,
     refresh,
     setPinned,
+    setFavorite,
     state,
     syncActivity,
   } = useTabsState(context.threadId !== null && showTabsOnCurrentLayout);
@@ -871,21 +853,20 @@ function ChatTabsOverlay() {
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
   const topScrollbarSpacerRef = useRef<HTMLDivElement | null>(null);
   const tabElementsRef = useRef(new Map<string, HTMLDivElement>());
-  const [inlineRename, setInlineRename] = useState<InlineRenameTarget | null>(
-    null,
-  );
-  const [renameDialogTarget, setRenameDialogTarget] =
-    useState<RenameTabTarget | null>(null);
+  const [inlineRename, setInlineRename] = useState<InlineRenameTarget | null>(null);
+  const [renameDialogTarget, setRenameDialogTarget] = useState<RenameTabTarget | null>(null);
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
   const [tabListMenuOpen, setTabListMenuOpen] = useState(false);
   const [tabSearch, setTabSearch] = useState("");
-  const [remoteSearch, setRemoteSearch] = useState<{ query: string; candidates: (TabCandidate & { archived?: boolean; projectName?: string })[]; pending: boolean }>({ query: "", candidates: [], pending: false });
+  const [remoteSearch, setRemoteSearch] = useState<{
+    query: string;
+    candidates: (TabCandidate & { archived?: boolean; projectName?: string })[];
+    pending: boolean;
+  }>({ query: "", candidates: [], pending: false });
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastShiftReleaseRef = useRef<number | null>(null);
-  const [historyVisibleCount, setHistoryVisibleCount] = useState(
-    HISTORY_MENU_PAGE_SIZE,
-  );
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(HISTORY_MENU_PAGE_SIZE);
   const [historyMorePending, setHistoryMorePending] = useState(false);
   const [draggedTab, setDraggedTab] = useState<DraggedTab | null>(null);
   const [dropTarget, setDropTarget] = useState<TabDropTarget | null>(null);
@@ -901,14 +882,16 @@ function ChatTabsOverlay() {
 
   const clearListHoverTimers = useCallback(() => {
     if (listHoverOpenTimerRef.current !== null) window.clearTimeout(listHoverOpenTimerRef.current);
-    if (listHoverCloseTimerRef.current !== null) window.clearTimeout(listHoverCloseTimerRef.current);
+    if (listHoverCloseTimerRef.current !== null)
+      window.clearTimeout(listHoverCloseTimerRef.current);
     listHoverOpenTimerRef.current = null;
     listHoverCloseTimerRef.current = null;
   }, []);
 
   const enterTabListMenu = (pointerType: string) => {
     if (pointerType !== "mouse") return;
-    if (listHoverCloseTimerRef.current !== null) window.clearTimeout(listHoverCloseTimerRef.current);
+    if (listHoverCloseTimerRef.current !== null)
+      window.clearTimeout(listHoverCloseTimerRef.current);
     listHoverCloseTimerRef.current = null;
     if (tabListMenuOpen || listHoverOpenTimerRef.current !== null) return;
     listHoverOpenTimerRef.current = window.setTimeout(() => {
@@ -962,11 +945,7 @@ function ChatTabsOverlay() {
 
   const commitInlineRename = useCallback(async () => {
     const target = inlineRename;
-    if (
-      target === null ||
-      inlineRenameSubmitting.current ||
-      inlineRenameCancelled.current
-    ) {
+    if (target === null || inlineRenameSubmitting.current || inlineRenameCancelled.current) {
       return;
     }
 
@@ -990,9 +969,7 @@ function ChatTabsOverlay() {
 
   const copyThreadLink = useCallback(
     async (entry: TabEntry) => {
-      const copied = await copyTextToClipboard(
-        threadLinkUrl(entry, context.threadId),
-      );
+      const copied = await copyTextToClipboard(threadLinkUrl(entry, context.threadId));
       if (copied) {
         toast.success(t("Chat link copied"));
       } else {
@@ -1007,7 +984,9 @@ function ChatTabsOverlay() {
       try {
         await threadActions.setRead(entry.threadId, false);
       } catch (cause) {
-        toast.error(t("Could not mark the chat as unread: {error}", { error: errorMessage(cause) }));
+        toast.error(
+          t("Could not mark the chat as unread: {error}", { error: errorMessage(cause) }),
+        );
       }
     },
     [threadActions, t],
@@ -1040,35 +1019,27 @@ function ChatTabsOverlay() {
     const maxStep = 20;
     let delta = 0;
     if (clientX < rect.left + edgeSize) {
-      delta =
-        -Math.min(1, (rect.left + edgeSize - clientX) / edgeSize) * maxStep;
+      delta = -Math.min(1, (rect.left + edgeSize - clientX) / edgeSize) * maxStep;
     } else if (clientX > rect.right - edgeSize) {
-      delta =
-        Math.min(1, (clientX - (rect.right - edgeSize)) / edgeSize) * maxStep;
+      delta = Math.min(1, (clientX - (rect.right - edgeSize)) / edgeSize) * maxStep;
     }
     if (delta !== 0) strip.scrollLeft += delta;
   }, []);
 
-  const handleTabDragStart = useCallback(
-    (event: DragEvent<HTMLDivElement>, entry: TabEntry) => {
-      const target = event.target;
-      if (
-        !entry.pinned ||
-        (target instanceof Element && target.closest(".bb-chat-tab-action"))
-      ) {
-        event.preventDefault();
-        return;
-      }
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", entry.threadId);
-      const next: DraggedTab = { threadId: entry.threadId };
-      draggedTabRef.current = next;
-      setDraggedTab(next);
-      dropTargetRef.current = null;
-      setDropTarget(null);
-    },
-    [],
-  );
+  const handleTabDragStart = useCallback((event: DragEvent<HTMLDivElement>, entry: TabEntry) => {
+    const target = event.target;
+    if (!entry.pinned || (target instanceof Element && target.closest(".bb-chat-tab-action"))) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", entry.threadId);
+    const next: DraggedTab = { threadId: entry.threadId };
+    draggedTabRef.current = next;
+    setDraggedTab(next);
+    dropTargetRef.current = null;
+    setDropTarget(null);
+  }, []);
 
   const dropTargetForTab = useCallback(
     (entry: TabEntry, clientX: number, element: HTMLDivElement): TabDropTarget => {
@@ -1087,21 +1058,12 @@ function ChatTabsOverlay() {
   );
 
   const handleDropSlotDragOver = useCallback(
-    (
-      event: DragEvent<HTMLDivElement>,
-      targetThreadId: string,
-      position: TabMovePosition,
-    ) => {
+    (event: DragEvent<HTMLDivElement>, targetThreadId: string, position: TabMovePosition) => {
       const source = draggedTabRef.current;
       if (
         source === null ||
         state === null ||
-        isNoopPinnedMove(
-          state.entries,
-          source.threadId,
-          targetThreadId,
-          position,
-        )
+        isNoopPinnedMove(state.entries, source.threadId, targetThreadId, position)
       ) {
         dropTargetRef.current = null;
         setDropTarget(null);
@@ -1129,12 +1091,7 @@ function ChatTabsOverlay() {
         source === null ||
         target === null ||
         state === null ||
-        isNoopPinnedMove(
-          state.entries,
-          source.threadId,
-          target.targetThreadId,
-          target.position,
-        )
+        isNoopPinnedMove(state.entries, source.threadId, target.targetThreadId, target.position)
       ) {
         clearTabDrag();
         return;
@@ -1149,10 +1106,7 @@ function ChatTabsOverlay() {
   const handleStripWheel = useCallback((event: WheelEvent) => {
     if (event.ctrlKey || event.metaKey) return;
     const strip = stripRef.current;
-    if (
-      strip === null ||
-      !wheelTargetsTabs(event, [strip, topScrollbarRef.current])
-    ) {
+    if (strip === null || !wheelTargetsTabs(event, [strip, topScrollbarRef.current])) {
       return;
     }
 
@@ -1169,10 +1123,7 @@ function ChatTabsOverlay() {
     return () => window.removeEventListener("wheel", handleStripWheel, true);
   }, [handleStripWheel]);
 
-  const sidebarWorkIndex = useMemo(
-    () => buildThreadWorkIndex(sidebar.threads),
-    [sidebar.threads],
-  );
+  const sidebarWorkIndex = useMemo(() => buildThreadWorkIndex(sidebar.threads), [sidebar.threads]);
   const workIndex = useMemo(
     () => buildThreadWorkIndex(sidebar.threads, activeWorkflowThreadIds),
     [activeWorkflowThreadIds, sidebar.threads],
@@ -1180,17 +1131,21 @@ function ChatTabsOverlay() {
 
   const childrenByParent = useMemo(() => indexThreadChildren(sidebar.threads), [sidebar.threads]);
 
-  const sidebarCurrent = useMemo(() =>
-    context.threadId === null ? null :
-      sidebar.threads.find((thread) => thread.id === context.threadId) ?? null,
-  [context.threadId, sidebar.threads]);
+  const sidebarCurrent = useMemo(
+    () =>
+      context.threadId === null
+        ? null
+        : (sidebar.threads.find((thread) => thread.id === context.threadId) ?? null),
+    [context.threadId, sidebar.threads],
+  );
   const [resolvedCurrent, setResolvedCurrent] = useState<{
     threadId: string;
     candidate: TabCandidate | null;
     createdAt: number | null;
   } | null>(null);
+  const hasSidebarCurrent = sidebarCurrent !== null;
   useEffect(() => {
-    if (context.threadId === null || sidebar.status !== "ready" || sidebarCurrent !== null) return;
+    if (context.threadId === null || sidebar.status !== "ready" || hasSidebarCurrent) return;
     const threadId = context.threadId;
     let cancelled = false;
     let retryTimer: number | null = null;
@@ -1211,17 +1166,20 @@ function ChatTabsOverlay() {
       cancelled = true;
       if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
-  }, [context.threadId, sidebar.status, sidebarCurrent !== null]);
+  }, [context.threadId, sidebar.status, hasSidebarCurrent]);
   const currentCandidate = useMemo(() => {
     if (sidebar.status !== "ready" || context.threadId === null) return null;
     if (sidebarCurrent !== null) return candidateForThread(sidebarCurrent);
-    return resolvedCurrent?.threadId === context.threadId
-      ? resolvedCurrent.candidate : null;
+    return resolvedCurrent?.threadId === context.threadId ? resolvedCurrent.candidate : null;
   }, [context.threadId, sidebar.status, sidebarCurrent, resolvedCurrent]);
   const currentHistoryId = currentCandidate?.threadId ?? null;
+  // History follows navigation, not title/activity changes within the same chat.
+  const currentHistoryCandidateRef = useRef(currentCandidate);
+  currentHistoryCandidateRef.current = currentCandidate;
   useEffect(() => {
-    if (!showTabsOnCurrentLayout || currentCandidate === null) return;
-    void recordHistory(currentCandidate);
+    const candidate = currentHistoryCandidateRef.current;
+    if (!showTabsOnCurrentLayout || candidate === null) return;
+    void recordHistory(candidate);
   }, [currentHistoryId, recordHistory, showTabsOnCurrentLayout]);
 
   const workingHistory = useMemo(() => {
@@ -1239,8 +1197,9 @@ function ChatTabsOverlay() {
   }, [sidebar.status, sidebar.threads, workIndex]);
   const lastRecordedActivityKeys = useRef(new Map<string, string>());
   const lastActivityVisitAt = useRef(new Map<string, number>());
+  const hasCurrentThread = context.threadId !== null;
   useEffect(() => {
-    if (!showTabsOnCurrentLayout || context.threadId === null) return;
+    if (!showTabsOnCurrentLayout || !hasCurrentThread) return;
     const previous = lastRecordedActivityKeys.current;
     const lastVisitAt = lastActivityVisitAt.current;
     for (const id of previous.keys()) {
@@ -1257,8 +1216,8 @@ function ChatTabsOverlay() {
         if (previousKey === key) return false;
         // Runtime timestamps can change many times a second. A running chat
         // needs recent placement, not one history write per sidebar update.
-        if (previousKey !== undefined &&
-            now - (lastVisitAt.get(candidate.threadId) ?? 0) < 5_000) return false;
+        if (previousKey !== undefined && now - (lastVisitAt.get(candidate.threadId) ?? 0) < 5_000)
+          return false;
         previous.set(candidate.threadId, key);
         lastVisitAt.set(candidate.threadId, now);
         return true;
@@ -1267,7 +1226,7 @@ function ChatTabsOverlay() {
     void (async () => {
       for (const { candidate } of updates) await recordHistory(candidate);
     })();
-  }, [context.threadId === null, recordHistory, showTabsOnCurrentLayout, workingHistory]);
+  }, [hasCurrentThread, recordHistory, showTabsOnCurrentLayout, workingHistory]);
 
   const lastRouteThreadId = useRef(context.threadId);
   const pendingOpenedThreadId = useRef<string | null>(null);
@@ -1281,7 +1240,8 @@ function ChatTabsOverlay() {
     if (!showTabsOnCurrentLayout || state === null || currentCandidate === null) return;
 
     const explicitNavigation = pendingOpenedThreadId.current === currentCandidate.threadId;
-    const firstRoute = !initialRouteHandled.current && initialThreadId.current === currentCandidate.threadId;
+    const firstRoute =
+      !initialRouteHandled.current && initialThreadId.current === currentCandidate.threadId;
     if (!explicitNavigation && !firstRoute) return;
     pendingOpenedThreadId.current = null;
     initialRouteHandled.current = true;
@@ -1292,16 +1252,11 @@ function ChatTabsOverlay() {
       return;
     }
 
-    // BB can mount the overlay directly on a newly created thread, without
-    // ever rendering the root route in this component instance. The server's
-    // closed-ID guard rejects this automatic sync after an explicit close.
-    const createdAt = sidebarCurrent?.createdAt ??
-      (resolvedCurrent?.threadId === currentCandidate.threadId ? resolvedCurrent.createdAt : null);
-    if (createdAt !== null && createdAt <= Date.now() &&
-        Date.now() - createdAt <= NEW_THREAD_ROUTE_WINDOW_MS) {
-      void syncActivity([currentCandidate]);
-    }
-  }, [context.threadId, currentCandidate, resolvedCurrent, showTabsOnCurrentLayout, sidebarCurrent, state, syncActivity]);
+    // The overlay may mount directly on the viewed chat after provisioning or
+    // reload. Client/server clocks and chat age cannot identify an explicit close:
+    // only the persisted server closed-ID guard can, so keep reopen=false here.
+    void syncActivity([currentCandidate]);
+  }, [context.threadId, currentCandidate, showTabsOnCurrentLayout, state, syncActivity]);
 
   const tabs = useMemo(
     () =>
@@ -1314,10 +1269,7 @@ function ChatTabsOverlay() {
     () => recentProjects(sidebar.projects, sidebar.threads),
     [sidebar.projects, sidebar.threads],
   );
-  const pinnedMenuTabs = useMemo(
-    () => tabs.filter((tab) => tab.entry.pinned),
-    [tabs],
-  );
+  const pinnedMenuTabs = useMemo(() => tabs.filter((tab) => tab.entry.pinned), [tabs]);
   const historyMenuTabs = useMemo(() => {
     const pinnedIds = new Set(pinnedMenuTabs.map((tab) => tab.entry.threadId));
     const presented = buildPresentedHistoryTabs(
@@ -1326,9 +1278,7 @@ function ChatTabsOverlay() {
       sidebar.projects,
       workIndex,
       locale,
-    ).filter(
-      (tab) => !showTabListPinned || !pinnedIds.has(tab.entry.threadId),
-    );
+    ).filter((tab) => !showTabListPinned || !pinnedIds.has(tab.entry.threadId));
     const knownIds = new Set(presented.map((tab) => tab.entry.threadId));
     const preview = tabs.find((tab) => !tab.entry.pinned);
     if (
@@ -1349,12 +1299,23 @@ function ChatTabsOverlay() {
     workIndex,
     locale,
   ]);
-  const menuPinnedTabs = showTabListPinned ? pinnedMenuTabs : [];
-  const menuHistoryTabs = showTabListHistory ? historyMenuTabs : [];
+  const menuPinnedTabs = useMemo(
+    () => (showTabListPinned ? pinnedMenuTabs : []),
+    [showTabListPinned, pinnedMenuTabs],
+  );
+  const menuHistoryTabs = useMemo(
+    () => (showTabListHistory ? historyMenuTabs : []),
+    [showTabListHistory, historyMenuTabs],
+  );
   const searchableTabs = useMemo(() => {
     const seen = new Set<string>();
     return [...menuPinnedTabs, ...menuHistoryTabs].filter((tab) => {
-      if (tab.unavailableReason === "deleted" || (tab.unavailableReason === "archived" && !searchArchivedChats) || seen.has(tab.entry.threadId)) return false;
+      if (
+        tab.unavailableReason === "deleted" ||
+        (tab.unavailableReason === "archived" && !searchArchivedChats) ||
+        seen.has(tab.entry.threadId)
+      )
+        return false;
       seen.add(tab.entry.threadId);
       return true;
     });
@@ -1366,34 +1327,79 @@ function ChatTabsOverlay() {
     const query = tabSearch.trim().slice(0, 300);
     setRemoteSearch({ query, candidates: [], pending: true });
     const timer = window.setTimeout(() => {
-      void resolveRpcRef.current.call("tabs_search", { query, includeArchived: searchArchivedChats }).then(({ candidates }) => {
-        if (!cancelled) setRemoteSearch({ query, candidates, pending: false });
-      }).catch(() => {
-        // Keep immediate local results if an older server or a request is unavailable.
-        if (!cancelled) setRemoteSearch({ query, candidates: [], pending: false });
-      });
+      void resolveRpcRef.current
+        .call("tabs_search", { query, includeArchived: searchArchivedChats })
+        .then(({ candidates }) => {
+          if (!cancelled) setRemoteSearch({ query, candidates, pending: false });
+        })
+        .catch(() => {
+          // Keep immediate local results if an older server or a request is unavailable.
+          if (!cancelled) setRemoteSearch({ query, candidates: [], pending: false });
+        });
     }, 250);
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [tabListMenuOpen, searchActive, tabSearch, searchArchivedChats]);
-  const searchPending = searchActive && remoteSearch.query === tabSearch.trim().slice(0, 300) && remoteSearch.pending;
+  const searchPending =
+    searchActive && remoteSearch.query === tabSearch.trim().slice(0, 300) && remoteSearch.pending;
   const searchResults = useMemo(() => {
-    const excluded = new Set(history.entries.filter((entry) => entry.unavailableReason === "deleted" || (entry.unavailableReason === "archived" && !searchArchivedChats)).map((entry) => entry.threadId));
-    for (const thread of sidebar.threads) if (thread.isArchived && !searchArchivedChats) excluded.add(thread.id);
-    const sidebarCandidates = sidebar.threads.filter((thread) => !thread.isArchived || searchArchivedChats).map((thread) => ({
-      threadId: thread.id, projectId: thread.projectId,
-      title: thread.title?.trim() || thread.titleFallback?.trim() || translate(locale, "Untitled"),
-      archived: thread.isArchived,
-    }));
-    const remoteCandidates = remoteSearch.query === tabSearch.trim().slice(0, 300)
-      ? remoteSearch.candidates.filter((candidate) => !candidate.archived || searchArchivedChats) : [];
-    const remoteProjectNames = new Map(remoteCandidates.filter((candidate) => candidate.projectName !== undefined).map((candidate) => [candidate.projectId, candidate.projectName!]));
+    const excluded = new Set(
+      history.entries
+        .filter(
+          (entry) =>
+            entry.unavailableReason === "deleted" ||
+            (entry.unavailableReason === "archived" && !searchArchivedChats),
+        )
+        .map((entry) => entry.threadId),
+    );
+    for (const thread of sidebar.threads)
+      if (thread.isArchived && !searchArchivedChats) excluded.add(thread.id);
+    const sidebarCandidates = sidebar.threads
+      .filter((thread) => !thread.isArchived || searchArchivedChats)
+      .map((thread) => ({
+        threadId: thread.id,
+        projectId: thread.projectId,
+        title:
+          thread.title?.trim() || thread.titleFallback?.trim() || translate(locale, "Untitled"),
+        archived: thread.isArchived,
+        ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
+      }));
+    const remoteCandidates =
+      remoteSearch.query === tabSearch.trim().slice(0, 300)
+        ? remoteSearch.candidates.filter((candidate) => !candidate.archived || searchArchivedChats)
+        : [];
+    const remoteProjectNames = new Map(
+      remoteCandidates
+        .filter((candidate) => candidate.projectName !== undefined)
+        .map((candidate) => [candidate.projectId, candidate.projectName!]),
+    );
     const knownProjectIds = new Set(sidebar.projects.map((project) => project.id));
     const mergedCandidates = [...sidebarCandidates, ...remoteCandidates];
-    const archivedIds = new Set(mergedCandidates.filter((candidate) => candidate.archived).map((candidate) => candidate.threadId));
-    const additional = buildPresentedTabs({ version: 1, entries: mergedCandidates.map((candidate) => ({
-      ...candidate, pinned: false, openedAt: 0,
-    })) }, sidebar.threads, sidebar.projects, workIndex, locale).map((tab) => ({
-      ...tab, unavailableReason: archivedIds.has(tab.entry.threadId) ? "archived" as const : tab.unavailableReason,
+    const archivedIds = new Set(
+      mergedCandidates
+        .filter((candidate) => candidate.archived)
+        .map((candidate) => candidate.threadId),
+    );
+    const additional = buildPresentedTabs(
+      {
+        version: 1,
+        entries: mergedCandidates.map((candidate) => ({
+          ...candidate,
+          pinned: false,
+          openedAt: 0,
+        })),
+      },
+      sidebar.threads,
+      sidebar.projects,
+      workIndex,
+      locale,
+    ).map((tab) => ({
+      ...tab,
+      unavailableReason: archivedIds.has(tab.entry.threadId)
+        ? ("archived" as const)
+        : tab.unavailableReason,
     }));
     const seen = new Set<string>();
     const candidates = [...searchableTabs, ...additional].filter((tab) => {
@@ -1401,17 +1407,38 @@ function ChatTabsOverlay() {
       seen.add(tab.entry.threadId);
       return true;
     });
-    return fuzzyChatSearch(candidates.map((tab) => ({
-      ...tab,
-      // The server knows projects outside the currently loaded sidebar too.
-      projectName: knownProjectIds.has(tab.entry.projectId)
-        ? tab.projectName : remoteProjectNames.get(tab.entry.projectId) ?? tab.projectName,
-    })), tabSearch);
-  }, [searchableTabs, tabSearch, remoteSearch, sidebar.threads, sidebar.projects, workIndex, locale, history.entries, searchArchivedChats]);
+    return fuzzyChatSearch(
+      candidates.map((tab) => ({
+        ...tab,
+        // The server knows projects outside the currently loaded sidebar too.
+        isSubthread:
+          tab.isSubthread ||
+          mergedCandidates.some(
+            (candidate) =>
+              candidate.threadId === tab.entry.threadId && candidate.parentThreadId !== undefined,
+          ),
+        projectName: knownProjectIds.has(tab.entry.projectId)
+          ? tab.projectName
+          : (remoteProjectNames.get(tab.entry.projectId) ?? tab.projectName),
+      })),
+      tabSearch,
+    );
+  }, [
+    searchableTabs,
+    tabSearch,
+    remoteSearch,
+    sidebar.threads,
+    sidebar.projects,
+    workIndex,
+    locale,
+    history.entries,
+    searchArchivedChats,
+  ]);
   const visibleHistoryMenuTabs = menuHistoryTabs.slice(0, historyVisibleCount);
   const hasMoreHistory = visibleHistoryMenuTabs.length < menuHistoryTabs.length;
-  const navigableMenuTabs = (searchActive ? searchResults : [...menuPinnedTabs, ...visibleHistoryMenuTabs])
-    .filter((tab) => tab.unavailableReason === null);
+  const navigableMenuTabs = (
+    searchActive ? searchResults : [...menuPinnedTabs, ...visibleHistoryMenuTabs]
+  ).filter((tab) => tab.unavailableReason === null);
   const tabListMenuHasNavigation =
     showTabListButton && menuPinnedTabs.length + menuHistoryTabs.length > 1;
 
@@ -1463,11 +1490,8 @@ function ChatTabsOverlay() {
 
     const syncMetrics = () => {
       const nextHasHorizontalOverflow = strip.scrollWidth > strip.clientWidth;
-      setHasHorizontalOverflow(
-        (previous) =>
-          previous === nextHasHorizontalOverflow
-            ? previous
-            : nextHasHorizontalOverflow,
+      setHasHorizontalOverflow((previous) =>
+        previous === nextHasHorizontalOverflow ? previous : nextHasHorizontalOverflow,
       );
       spacer.style.width = `${Math.max(strip.scrollWidth, strip.clientWidth)}px`;
       if (topScrollbar.scrollLeft !== strip.scrollLeft) {
@@ -1492,9 +1516,7 @@ function ChatTabsOverlay() {
     syncMetrics();
 
     const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(syncMetrics);
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncMetrics);
     resizeObserver?.observe(strip);
     resizeObserver?.observe(topScrollbar);
     window.addEventListener("resize", syncMetrics);
@@ -1507,8 +1529,7 @@ function ChatTabsOverlay() {
     };
   }, [error, tabs]);
 
-  const shouldDock =
-    showTabsOnCurrentLayout && context.threadId !== null && tabs.length > 0;
+  const shouldDock = showTabsOnCurrentLayout && context.threadId !== null && tabs.length > 0;
   const overlayBoundsRef = useOverlayBounds(shouldDock);
   useEffect(() => {
     if (!shouldDock || !tabListMenuHasNavigation) {
@@ -1544,6 +1565,10 @@ function ChatTabsOverlay() {
 
   const openThread = useCallback(
     (candidate: TabCandidate) => {
+      const parentThreadId = sidebar.threads.find(
+        (thread) => thread.id === candidate.threadId,
+      )?.parentThreadId;
+      if (parentThreadId) candidate = { ...candidate, parentThreadId };
       void recordHistory(candidate);
       // Selecting the current chat from History is still an explicit open,
       // even if the host does not change the route for a same-thread action.
@@ -1552,7 +1577,7 @@ function ChatTabsOverlay() {
       }
       threadActions.open(candidate.threadId);
     },
-    [context.threadId, recordHistory, state, syncActivity, threadActions],
+    [context.threadId, recordHistory, state, syncActivity, threadActions, sidebar.threads],
   );
 
   const closeTab = useCallback(
@@ -1575,11 +1600,7 @@ function ChatTabsOverlay() {
 
   const cycleTabsByKeyboard = useCallback(
     (direction: TabCycleDirection): boolean => {
-      if (
-        inlineRename !== null ||
-        renameDialogTarget !== null ||
-        draggedTab !== null
-      ) {
+      if (inlineRename !== null || renameDialogTarget !== null || draggedTab !== null) {
         return false;
       }
       const target = cycleTab(
@@ -1600,20 +1621,13 @@ function ChatTabsOverlay() {
       });
       return true;
     },
-    [
-      context.threadId,
-      draggedTab,
-      inlineRename,
-      openThread,
-      renameDialogTarget,
-      tabs,
-    ],
+    [context.threadId, draggedTab, inlineRename, openThread, renameDialogTarget, tabs],
   );
 
   const currentEntry =
     !shouldDock || state === null
       ? null
-      : state.entries.find((entry) => entry.threadId === context.threadId) ?? null;
+      : (state.entries.find((entry) => entry.threadId === context.threadId) ?? null);
   const currentEntryRef = useRef<TabEntry | null>(null);
   const closingCurrentTab = useRef(false);
   currentEntryRef.current = currentEntry;
@@ -1632,9 +1646,7 @@ function ChatTabsOverlay() {
 
   useEffect(() => {
     const syncEmbeddedBrowserFocus = (event: Event) => {
-      embeddedBrowserFocused.current = isBrowserChromeKeyboardTarget(
-        event.target,
-      );
+      embeddedBrowserFocused.current = isBrowserChromeKeyboardTarget(event.target);
     };
     const unsubscribe = subscribeToDesktopBrowserViewFocus(() => {
       embeddedBrowserFocused.current = true;
@@ -1642,11 +1654,7 @@ function ChatTabsOverlay() {
     window.addEventListener("pointerdown", syncEmbeddedBrowserFocus, true);
     window.addEventListener("focusin", syncEmbeddedBrowserFocus, true);
     return () => {
-      window.removeEventListener(
-        "pointerdown",
-        syncEmbeddedBrowserFocus,
-        true,
-      );
+      window.removeEventListener("pointerdown", syncEmbeddedBrowserFocus, true);
       window.removeEventListener("focusin", syncEmbeddedBrowserFocus, true);
       unsubscribe?.();
     };
@@ -1668,9 +1676,7 @@ function ChatTabsOverlay() {
       if (event.defaultPrevented) return;
 
       if (isCyclePluginTabsShortcut(event)) {
-        const direction: TabCycleDirection = event.shiftKey
-          ? "previous"
-          : "next";
+        const direction: TabCycleDirection = event.shiftKey ? "previous" : "next";
         if (!cycleTabsByKeyboard(direction)) return;
         event.preventDefault();
         event.stopPropagation();
@@ -1681,10 +1687,7 @@ function ChatTabsOverlay() {
         return;
       }
 
-      if (
-        embeddedBrowserFocused.current ||
-        isBrowserChromeKeyboardTarget(event.target)
-      ) {
+      if (embeddedBrowserFocused.current || isBrowserChromeKeyboardTarget(event.target)) {
         return;
       }
 
@@ -1698,13 +1701,22 @@ function ChatTabsOverlay() {
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key !== "Shift" || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
-      if (!shouldDock || !tabListMenuHasNavigation || embeddedBrowserFocused.current ||
-          inlineRename !== null || renameDialogTarget !== null ||
-          isBrowserChromeKeyboardTarget(event.target)) return;
+      if (event.key !== "Shift" || event.repeat || event.ctrlKey || event.altKey || event.metaKey)
+        return;
+      if (
+        !shouldDock ||
+        !tabListMenuHasNavigation ||
+        embeddedBrowserFocused.current ||
+        inlineRename !== null ||
+        renameDialogTarget !== null ||
+        isBrowserChromeKeyboardTarget(event.target)
+      )
+        return;
       const now = Date.now();
-      if (lastShiftReleaseRef.current !== null &&
-          now - lastShiftReleaseRef.current <= DOUBLE_SHIFT_INTERVAL_MS) {
+      if (
+        lastShiftReleaseRef.current !== null &&
+        now - lastShiftReleaseRef.current <= DOUBLE_SHIFT_INTERVAL_MS
+      ) {
         lastShiftReleaseRef.current = null;
         event.preventDefault();
         event.stopPropagation();
@@ -1722,9 +1734,16 @@ function ChatTabsOverlay() {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
     };
-  }, [closeCurrentTab, currentEntry, cycleTabsByKeyboard, shouldDock,
-      tabListMenuHasNavigation, inlineRename, renameDialogTarget,
-      clearListHoverTimers]);
+  }, [
+    closeCurrentTab,
+    currentEntry,
+    cycleTabsByKeyboard,
+    shouldDock,
+    tabListMenuHasNavigation,
+    inlineRename,
+    renameDialogTarget,
+    clearListHoverTimers,
+  ]);
 
   const lastPinnedThreadId = useMemo(
     () =>
@@ -1735,25 +1754,16 @@ function ChatTabsOverlay() {
     [tabs],
   );
 
-  const renderDropSlot = (
-    targetThreadId: string,
-    position: TabMovePosition,
-  ) => {
+  const renderDropSlot = (targetThreadId: string, position: TabMovePosition) => {
     if (
       draggedTab !== null &&
       (state === null ||
-        isNoopPinnedMove(
-          state.entries,
-          draggedTab.threadId,
-          targetThreadId,
-          position,
-        ))
+        isNoopPinnedMove(state.entries, draggedTab.threadId, targetThreadId, position))
     ) {
       return null;
     }
     const active =
-      dropTarget?.targetThreadId === targetThreadId &&
-      dropTarget.position === position;
+      dropTarget?.targetThreadId === targetThreadId && dropTarget.position === position;
     return (
       <div
         className="bb-chat-tab-drop-slot"
@@ -1761,9 +1771,7 @@ function ChatTabsOverlay() {
         data-drop-position={position}
         data-drop-target={targetThreadId}
         aria-hidden="true"
-        onDragOver={(event) =>
-          handleDropSlotDragOver(event, targetThreadId, position)
-        }
+        onDragOver={(event) => handleDropSlotDragOver(event, targetThreadId, position)}
         onDrop={(event) => commitTabDrop(event, { targetThreadId, position })}
       >
         <span className="bb-chat-tab-drop-slot-hit" aria-hidden="true" />
@@ -1776,14 +1784,13 @@ function ChatTabsOverlay() {
   };
 
   const renderTabListMenuItem = (tab: PresentedTab) => {
-    const searchIndex = navigableMenuTabs.findIndex((item) => item.entry.threadId === tab.entry.threadId);
+    const searchIndex = navigableMenuTabs.findIndex(
+      (item) => item.entry.threadId === tab.entry.threadId,
+    );
     const unavailableReason = tab.unavailableReason;
     const unavailableLabel =
-      unavailableReason === null
-        ? null
-        : unavailableHistoryLabel(unavailableReason, locale);
-    const active =
-      unavailableReason === null && tab.entry.threadId === context.threadId;
+      unavailableReason === null ? null : unavailableHistoryLabel(unavailableReason, locale);
+    const active = unavailableReason === null && tab.entry.threadId === context.threadId;
     const status = chatStatusFor(tab, locale);
     return (
       <DropdownMenu.Item
@@ -1820,26 +1827,17 @@ function ChatTabsOverlay() {
           <span
             className="bb-chat-tabs-list-menu-title"
             data-unavailable={unavailableReason ?? undefined}
-            title={
-              unavailableLabel === null
-                ? tab.title
-                : `${unavailableLabel}: ${tab.title}`
-            }
+            title={unavailableLabel === null ? tab.title : `${unavailableLabel}: ${tab.title}`}
           >
             {tab.title}
           </span>
           <span className="bb-chat-tabs-list-menu-meta">
-            <span
-              className="bb-chat-tabs-list-menu-project"
-              title={tab.projectName}
-            >
+            {tab.isSubthread ? <SubthreadBadge locale={locale} /> : null}
+            <span className="bb-chat-tabs-list-menu-project" title={tab.projectName}>
               {tab.projectName}
             </span>
             {unavailableLabel !== null ? (
-              <span
-                className="bb-chat-tabs-list-menu-unavailable-label"
-                title={unavailableLabel}
-              >
+              <span className="bb-chat-tabs-list-menu-unavailable-label" title={unavailableLabel}>
                 {unavailableLabel}
               </span>
             ) : status !== null ? (
@@ -1848,31 +1846,19 @@ function ChatTabsOverlay() {
                 data-status={status.kind}
                 title={status.text}
               >
-                <span
-                  className="bb-chat-tabs-list-menu-status-dot"
-                  aria-hidden
-                />
+                <span className="bb-chat-tabs-list-menu-status-dot" aria-hidden />
                 {status.text}
               </span>
             ) : null}
           </span>
         </span>
-        {active ? (
-          <Icon
-            name="Check"
-            className="bb-chat-tabs-list-menu-check"
-            aria-hidden
-          />
-        ) : null}
+        {active ? <Icon name="Check" className="bb-chat-tabs-list-menu-check" aria-hidden /> : null}
       </DropdownMenu.Item>
     );
   };
 
   const tabListSwitcher = tabListMenuHasNavigation ? (
-    <div
-      className="bb-chat-tabs-list-switcher"
-      data-position={tabListButtonPosition}
-    >
+    <div className="bb-chat-tabs-list-switcher" data-position={tabListButtonPosition}>
       <DropdownMenu.Root
         modal={false}
         open={tabListMenuOpen}
@@ -1917,7 +1903,10 @@ function ChatTabsOverlay() {
             collisionPadding={8}
             onInteractOutside={(event) => {
               // Trigger clicks are handled by its own toggle/latch logic, not dismissal.
-              if (event.target instanceof Element && event.target.closest(".bb-chat-tabs-list-trigger")) {
+              if (
+                event.target instanceof Element &&
+                event.target.closest(".bb-chat-tabs-list-trigger")
+              ) {
                 event.preventDefault();
               }
             }}
@@ -1939,8 +1928,11 @@ function ChatTabsOverlay() {
                 className="bb-chat-tabs-list-menu-search-input"
                 aria-label={t("Search chats by title or project")}
                 aria-controls="bb-chat-tabs-menu-content"
-                aria-activedescendant={selectedSearchIndex >= 0 && selectedSearchIndex < navigableMenuTabs.length
-                  ? `bb-chat-tabs-search-result-${selectedSearchIndex}` : undefined}
+                aria-activedescendant={
+                  selectedSearchIndex >= 0 && selectedSearchIndex < navigableMenuTabs.length
+                    ? `bb-chat-tabs-search-result-${selectedSearchIndex}`
+                    : undefined
+                }
                 placeholder={t("Search chats or projects...")}
                 value={tabSearch}
                 onChange={(event) => {
@@ -1952,27 +1944,46 @@ function ChatTabsOverlay() {
                   event.stopPropagation();
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
-                    setSelectedSearchIndex((current) => navigableMenuTabs.length === 0 ? -1 :
-                      current < 0
-                        ? (event.key === "ArrowDown" ? 0 : navigableMenuTabs.length - 1)
-                        : event.key === "ArrowDown"
-                          ? (current + 1) % navigableMenuTabs.length
-                          : (current - 1 + navigableMenuTabs.length) % navigableMenuTabs.length);
+                    setSelectedSearchIndex((current) =>
+                      navigableMenuTabs.length === 0
+                        ? -1
+                        : current < 0
+                          ? event.key === "ArrowDown"
+                            ? 0
+                            : navigableMenuTabs.length - 1
+                          : event.key === "ArrowDown"
+                            ? (current + 1) % navigableMenuTabs.length
+                            : (current - 1 + navigableMenuTabs.length) % navigableMenuTabs.length,
+                    );
                   } else if (event.key === "Enter" && navigableMenuTabs.length > 0) {
                     event.preventDefault();
                     const result = navigableMenuTabs[selectedSearchIndex] ?? navigableMenuTabs[0];
                     if (result !== undefined) {
                       setTabListMenuOpen(false);
-                      openThread({ threadId: result.entry.threadId,
-                        projectId: result.entry.projectId, title: result.title });
+                      openThread({
+                        threadId: result.entry.threadId,
+                        projectId: result.entry.projectId,
+                        title: result.title,
+                      });
                     }
                   }
                 }}
               />
             </div>
             {searchActive ? (
-              <DropdownMenu.Group id="bb-chat-tabs-search-results" className="bb-chat-tabs-list-menu-search-results" aria-label={t("Search results")} aria-busy={searchPending}>
-                {searchResults.length > 0 ? searchResults.map(renderTabListMenuItem) : <span className="bb-chat-tabs-list-menu-search-empty">{t(searchPending ? "Search chats..." : "No matching chats")}</span>}
+              <DropdownMenu.Group
+                id="bb-chat-tabs-search-results"
+                className="bb-chat-tabs-list-menu-search-results"
+                aria-label={t("Search results")}
+                aria-busy={searchPending}
+              >
+                {searchResults.length > 0 ? (
+                  searchResults.map(renderTabListMenuItem)
+                ) : (
+                  <span className="bb-chat-tabs-list-menu-search-empty">
+                    {t(searchPending ? "Search chats..." : "No matching chats")}
+                  </span>
+                )}
               </DropdownMenu.Group>
             ) : null}
             {!searchActive && menuPinnedTabs.length > 0 ? (
@@ -2005,10 +2016,12 @@ function ChatTabsOverlay() {
               <DropdownMenu.Item
                 className="bb-chat-tabs-list-menu-more"
                 data-pending={historyMorePending ? "true" : "false"}
-                aria-label={t("Show {count} more history chats", { count: Math.min(
-                  HISTORY_MENU_PAGE_SIZE,
-                  menuHistoryTabs.length - visibleHistoryMenuTabs.length,
-                ) })}
+                aria-label={t("Show {count} more history chats", {
+                  count: Math.min(
+                    HISTORY_MENU_PAGE_SIZE,
+                    menuHistoryTabs.length - visibleHistoryMenuTabs.length,
+                  ),
+                })}
                 onPointerEnter={(event) => {
                   if (event.pointerType === "mouse") scheduleHistoryMore();
                 }}
@@ -2080,181 +2093,213 @@ function ChatTabsOverlay() {
               const next = event.relatedTarget;
               if (next instanceof Node && event.currentTarget.contains(next)) return;
               const rect = event.currentTarget.getBoundingClientRect();
-              if (next === null && event.clientX >= rect.left && event.clientX <= rect.right &&
-                  event.clientY >= rect.top && event.clientY <= rect.bottom) return;
+              if (
+                next === null &&
+                event.clientX >= rect.left &&
+                event.clientX <= rect.right &&
+                event.clientY >= rect.top &&
+                event.clientY <= rect.bottom
+              )
+                return;
               dropTargetRef.current = null;
               setDropTarget(null);
             }}
           >
-          {tabs.map(
-            ({
-              entry,
-              hasNestedWork,
-              hasNestedWaiting,
-              isUnread,
-              isWorking,
-              isWaiting,
-              projectName,
-              title,
-            }) => {
-                    const childTree = childThreadTree(entry.threadId, childrenByParent, workIndex);
-                    const active = entry.threadId === context.threadId;
-                    const preview = !entry.pinned;
-                    const editing = inlineRename?.entry.threadId === entry.threadId;
-                    const draggable =
-                      entry.pinned && !editing && !isCompactTabLayout;
-                    const dragging = draggedTab?.threadId === entry.threadId;
-                    const workLabel = hasNestedWork
-                      ? t("nested work is running")
-                      : t("work is running");
-                    const waitingLabel = hasNestedWaiting
-                      ? t("A nested chat needs your input.")
-                      : t("Waiting for your input.");
-                    const tabHint = [
-                      t("Project: {project}", { project: projectName }),
-                      t("Chat: {title}", { title }),
-                      isWaiting ? waitingLabel : hasNestedWork ? t("Nested work is running.") : "",
-                      isUnread ? t("There are unread messages.") : "",
-                      t("Click to open the chat."),
-                      entry.pinned ? t("Drag to change the order.") : "",
-                      preview ? t("Double-click to pin this tab.") : "",
-                      t("Middle-click to close this tab."),
-                    ]
-                      .filter(Boolean)
-                      .join("\n");
-                    return (
-                      <Fragment key={entry.threadId}>
-                        {entry.pinned
-                          ? renderDropSlot(entry.threadId, "before")
-                          : null}
-                      <TabActionsContextMenu
-                        locale={locale}
-                        entry={entry}
-                        isPinned={entry.pinned}
-                        title={title}
-                        onArchive={archiveTab}
-                        onCopyLink={(target) => void copyThreadLink(target)}
-                        onMarkUnread={(target) => void markTabUnread(target)}
-                        onRename={setRenameDialogTarget}
-                        onSetPinned={(target, pinned) =>
-                          void setPinned(target.threadId, pinned)
+            {tabs.map(
+              ({
+                entry,
+                hasNestedWork,
+                hasNestedWaiting,
+                isSubthread,
+                isUnread,
+                isWorking,
+                isWaiting,
+                projectName,
+                title,
+              }) => {
+                const childTree = childThreadTree(entry.threadId, childrenByParent, workIndex);
+                const active = entry.threadId === context.threadId;
+                const preview = !entry.pinned;
+                const editing = inlineRename?.entry.threadId === entry.threadId;
+                const draggable = entry.pinned && !editing && !isCompactTabLayout;
+                const dragging = draggedTab?.threadId === entry.threadId;
+                const workLabel = hasNestedWork
+                  ? t("nested work is running")
+                  : t("work is running");
+                const waitingLabel = hasNestedWaiting
+                  ? t("A nested chat needs your input.")
+                  : t("Waiting for your input.");
+                const tabHint = [
+                  t("Project: {project}", { project: projectName }),
+                  t("Chat: {title}", { title }),
+                  isWaiting ? waitingLabel : hasNestedWork ? t("Nested work is running.") : "",
+                  isUnread ? t("There are unread messages.") : "",
+                  t("Click to open the chat."),
+                  entry.pinned ? t("Drag to change the order.") : "",
+                  preview ? t("Double-click to pin this tab.") : "",
+                  t("Middle-click to close this tab."),
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+                return (
+                  <Fragment key={entry.threadId}>
+                    {entry.pinned ? renderDropSlot(entry.threadId, "before") : null}
+                    <TabActionsContextMenu
+                      locale={locale}
+                      entry={entry}
+                      isPinned={entry.pinned}
+                      isFavorite={
+                        state?.favorites?.some((tab) => tab.threadId === entry.threadId) ?? false
+                      }
+                      onSetFavorite={(target, favorite) =>
+                        void setFavorite(target.threadId, favorite)
+                      }
+                      title={title}
+                      onArchive={archiveTab}
+                      onCopyLink={(target) => void copyThreadLink(target)}
+                      onMarkUnread={(target) => void markTabUnread(target)}
+                      onRename={setRenameDialogTarget}
+                      onSetPinned={(target, pinned) => void setPinned(target.threadId, pinned)}
+                    >
+                      <div
+                        ref={(element) => {
+                          if (element === null) {
+                            tabElementsRef.current.delete(entry.threadId);
+                          } else {
+                            tabElementsRef.current.set(entry.threadId, element);
+                          }
+                        }}
+                        className="bb-chat-tab"
+                        data-active={active ? "true" : "false"}
+                        data-dragging={dragging ? "true" : "false"}
+                        data-draggable={draggable ? "true" : "false"}
+                        data-editing={editing ? "true" : "false"}
+                        data-nested-work={hasNestedWork ? "true" : "false"}
+                        data-waiting={isWaiting ? "true" : "false"}
+                        data-preview={preview ? "true" : "false"}
+                        data-unread={isUnread ? "true" : "false"}
+                        draggable={draggable}
+                        onDragEnd={clearTabDrag}
+                        onDragStart={(event) => handleTabDragStart(event, entry)}
+                        onDragOver={
+                          entry.pinned
+                            ? (event) => {
+                                const target = dropTargetForTab(
+                                  entry,
+                                  event.clientX,
+                                  event.currentTarget,
+                                );
+                                handleDropSlotDragOver(
+                                  event,
+                                  target.targetThreadId,
+                                  target.position,
+                                );
+                              }
+                            : undefined
+                        }
+                        onDrop={
+                          entry.pinned
+                            ? (event) => {
+                                const target = dropTargetForTab(
+                                  entry,
+                                  event.clientX,
+                                  event.currentTarget,
+                                );
+                                commitTabDrop(event, target);
+                              }
+                            : undefined
                         }
                       >
-                        <div
-                          ref={(element) => {
-                            if (element === null) {
-                              tabElementsRef.current.delete(entry.threadId);
-                            } else {
-                              tabElementsRef.current.set(entry.threadId, element);
-                            }
-                          }}
-                          className="bb-chat-tab"
-                          data-active={active ? "true" : "false"}
-                          data-dragging={dragging ? "true" : "false"}
-                          data-draggable={draggable ? "true" : "false"}
-                          data-editing={editing ? "true" : "false"}
-                          data-nested-work={hasNestedWork ? "true" : "false"}
-                          data-waiting={isWaiting ? "true" : "false"}
-                          data-preview={preview ? "true" : "false"}
-                          data-unread={isUnread ? "true" : "false"}
-                          draggable={draggable}
-                          onDragEnd={clearTabDrag}
-                          onDragStart={(event) => handleTabDragStart(event, entry)}
-                          onDragOver={entry.pinned ? (event) => {
-                            const target = dropTargetForTab(entry, event.clientX, event.currentTarget);
-                            handleDropSlotDragOver(event, target.targetThreadId, target.position);
-                          } : undefined}
-                          onDrop={entry.pinned ? (event) => {
-                            const target = dropTargetForTab(entry, event.clientX, event.currentTarget);
-                            commitTabDrop(event, target);
-                          } : undefined}
-                        >
-                          {editing ? (
-                            <input
-                              autoFocus
-                              className="bb-chat-tab-inline-rename"
-                              aria-label={t("Rename tab “{title}”", { title })}
-                              maxLength={300}
-                              value={inlineRename?.value ?? title}
-                              onBlur={() => void commitInlineRename()}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                setInlineRename((current) =>
-                                  current?.entry.threadId === entry.threadId
-                                    ? { ...current, value }
-                                    : current,
-                                );
-                              }}
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  event.preventDefault();
-                                  void commitInlineRename();
-                                } else if (event.key === "Escape") {
-                                  event.preventDefault();
-                                  cancelInlineRename();
-                                }
-                                event.stopPropagation();
-                              }}
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              className="bb-chat-tab-select"
-                              aria-current={active ? "page" : undefined}
-                              aria-description={`${t("Click opens the chat.")} ${t("Project: {project}", { project: projectName })}. ${
-                                t(preview ? "Preview tab." : "Pinned tab. Drag it to change the order.")
-                              } ${t("Middle-click closes this tab.")}`}
-                              aria-label={`${title}${
-                                isWaiting ? `, ${waitingLabel}` : isWorking ? `, ${workLabel}` : ""
-                              }${
-                                isUnread ? `, ${t("unread messages")}` : ""
-                              }`}
-                              title={tabHint}
-                              onMouseDown={(event) => {
-                                if (event.button === 1) event.preventDefault();
-                              }}
-                              onAuxClick={(event) => {
-                                if (event.button !== 1) return;
+                        {editing ? (
+                          <input
+                            autoFocus
+                            className="bb-chat-tab-inline-rename"
+                            aria-label={t("Rename tab “{title}”", { title })}
+                            maxLength={300}
+                            value={inlineRename?.value ?? title}
+                            onBlur={() => void commitInlineRename()}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setInlineRename((current) =>
+                                current?.entry.threadId === entry.threadId
+                                  ? { ...current, value }
+                                  : current,
+                              );
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
                                 event.preventDefault();
-                                event.stopPropagation();
-                                void closeTab(entry);
-                              }}
-                              onClick={() =>
-                                openThread({
-                                  threadId: entry.threadId,
-                                  projectId: entry.projectId,
-                                  title,
-                                })
+                                void commitInlineRename();
+                              } else if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelInlineRename();
                               }
-                              onDoubleClick={() => {
-                                if (preview) void setPinned(entry.threadId, true);
-                              }}
-                            >
-                              {isWaiting ? (
-                                <span className="bb-chat-tab-waiting" title={waitingLabel} aria-hidden>?</span>
-                              ) : isWorking ? (
-                                <span className="bb-chat-tab-working" aria-hidden />
-                              ) : null}
-                              <span className="bb-chat-tab-copy">
-                                <span
-                                  className="bb-chat-tab-title"
-                                  onDoubleClick={(event) => {
-                                    if (!entry.pinned) return;
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    beginInlineRename(entry, title);
-                                  }}
-                                >
-                                  {title}
-                                </span>
+                              event.stopPropagation();
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="bb-chat-tab-select"
+                            aria-current={active ? "page" : undefined}
+                            aria-description={`${t("Click opens the chat.")} ${t("Project: {project}", { project: projectName })}. ${t(
+                              preview ? "Preview tab." : "Pinned tab. Drag it to change the order.",
+                            )} ${t("Middle-click closes this tab.")}`}
+                            aria-label={`${title}${
+                              isWaiting ? `, ${waitingLabel}` : isWorking ? `, ${workLabel}` : ""
+                            }${isUnread ? `, ${t("unread messages")}` : ""}`}
+                            title={tabHint}
+                            onMouseDown={(event) => {
+                              if (event.button === 1) event.preventDefault();
+                            }}
+                            onAuxClick={(event) => {
+                              if (event.button !== 1) return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void closeTab(entry);
+                            }}
+                            onClick={() =>
+                              openThread({
+                                threadId: entry.threadId,
+                                projectId: entry.projectId,
+                                title,
+                              })
+                            }
+                            onDoubleClick={() => {
+                              if (preview) void setPinned(entry.threadId, true);
+                            }}
+                          >
+                            {isWaiting ? (
+                              <span
+                                className="bb-chat-tab-waiting"
+                                title={waitingLabel}
+                                aria-hidden
+                              >
+                                ?
                               </span>
-                              {isUnread ? (
-                                <span className="bb-chat-tab-unread" aria-hidden />
-                              ) : null}
-                            </button>
-                          )}
-                          {!editing ? <ThreadChildrenMenu
+                            ) : isWorking ? (
+                              <span className="bb-chat-tab-working" aria-hidden />
+                            ) : null}
+                            {isSubthread ? <SubthreadBadge locale={locale} /> : null}
+                            <span className="bb-chat-tab-copy">
+                              <span
+                                className="bb-chat-tab-title"
+                                onDoubleClick={(event) => {
+                                  if (!entry.pinned) return;
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  beginInlineRename(entry, title);
+                                }}
+                              >
+                                {title}
+                              </span>
+                            </span>
+                            {isUnread ? <span className="bb-chat-tab-unread" aria-hidden /> : null}
+                          </button>
+                        )}
+                        {!editing ? (
+                          <ThreadChildrenMenu
                             title={title}
                             locale={locale}
                             children={childTree.children}
@@ -2262,30 +2307,33 @@ function ChatTabsOverlay() {
                             onOpen={(candidate) => {
                               // Explicitly create/reopen this child's preview before navigation;
                               // background children never create tabs by themselves.
-                              void syncActivity([candidate], true).then(() => openThread(candidate));
+                              void syncActivity([candidate], true).then(() =>
+                                openThread(candidate),
+                              );
                             }}
-                          /> : null}
-                          <button
-                            type="button"
-                            className="bb-chat-tab-action"
-                            aria-label={t("Close tab “{title}”", { title })}
-                            title={t("Close tab")}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void closeTab(entry);
-                            }}
-                          >
-                            <Icon name="X" className="size-3.5" aria-hidden />
-                          </button>
-                        </div>
-                      </TabActionsContextMenu>
-                      {entry.pinned && entry.threadId === lastPinnedThreadId
-                        ? renderDropSlot(entry.threadId, "after")
-                        : null}
-                      </Fragment>
-                    );
-            },
-          )}
+                          />
+                        ) : null}
+                        <button
+                          type="button"
+                          className="bb-chat-tab-action"
+                          aria-label={t("Close tab “{title}”", { title })}
+                          title={t("Close tab")}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void closeTab(entry);
+                          }}
+                        >
+                          <Icon name="X" className="size-3.5" aria-hidden />
+                        </button>
+                      </div>
+                    </TabActionsContextMenu>
+                    {entry.pinned && entry.threadId === lastPinnedThreadId
+                      ? renderDropSlot(entry.threadId, "after")
+                      : null}
+                  </Fragment>
+                );
+              },
+            )}
             <NewChatSwitcher
               projects={newChatProjects}
               locale={locale}
@@ -2310,35 +2358,71 @@ function ChatTabsOverlay() {
   );
 }
 
-function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
+function PinnedTabsHomepageSection({
+  favorites = false,
+}: PluginHomepageSectionProps & { favorites?: boolean }) {
   const settings = useSettings();
   const locale = usePluginLocale(settings.values?.language as LanguageSetting);
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
-  const showPinnedTabsList = settings.values?.showPinnedTabsList !== false;
-  const { activeWorkflowThreadIds, refresh, state } = useTabsState(
-    showPinnedTabsList,
+  const showPinnedTabsList = favorites || settings.values?.showPinnedTabsList !== false;
+  const { activeWorkflowThreadIds, refresh, state, history, syncActivity, setPinned, setFavorite } =
+    useTabsState(showPinnedTabsList);
+  // Keep only removals made on this visit; remount drops them from the homepage.
+  const [deferredRemovals, setDeferredRemovals] = useState<{ entry: TabEntry; index: number }[]>(
+    [],
   );
-  const sidebarWorkIndex = useMemo(
-    () => buildThreadWorkIndex(sidebar.threads),
-    [sidebar.threads],
-  );
+  const [removalFailed, setRemovalFailed] = useState(false);
+  const [pendingThreadIds, setPendingThreadIds] = useState<ReadonlySet<string>>(new Set());
+  const sidebarWorkIndex = useMemo(() => buildThreadWorkIndex(sidebar.threads), [sidebar.threads]);
   const workIndex = useMemo(
     () => buildThreadWorkIndex(sidebar.threads, activeWorkflowThreadIds),
     [activeWorkflowThreadIds, sidebar.threads],
   );
-  const tabs = useMemo(
-    () =>
-      state === null
-        ? []
-        : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex, locale),
-    [sidebar.projects, sidebar.threads, state, workIndex, locale],
-  );
+  const tabs = useMemo(() => {
+    if (state === null) return [];
+    const entries = [
+      ...(favorites ? (state.favorites ?? []) : state.entries.filter((entry) => entry.pinned)),
+    ];
+    for (const { entry, index } of [...deferredRemovals].sort((a, b) => a.index - b.index)) {
+      const existingIndex = entries.findIndex((tab) => tab.threadId === entry.threadId);
+      const retained = existingIndex === -1 ? entry : entries.splice(existingIndex, 1)[0]!;
+      entries.splice(index, 0, retained);
+    }
+    const unavailableIds = new Set([
+      ...sidebar.threads.filter((thread) => thread.isArchived).map((thread) => thread.id),
+      ...(history?.entries ?? [])
+        .filter((entry) => entry.unavailableReason !== undefined)
+        .map((entry) => entry.threadId),
+    ]);
+    return buildPresentedTabs(
+      {
+        version: 1,
+        entries: entries
+          .filter((entry) => !unavailableIds.has(entry.threadId))
+          .map((entry) => ({ ...entry, pinned: true })),
+      },
+      sidebar.threads,
+      sidebar.projects,
+      workIndex,
+      locale,
+    );
+  }, [
+    sidebar.projects,
+    sidebar.threads,
+    state,
+    workIndex,
+    locale,
+    favorites,
+    deferredRemovals,
+    history,
+  ]);
   const pinnedTabs = useMemo(
     () =>
       tabs
         .filter((tab) => tab.entry.pinned)
-        .map(({ entry, isUnread, isWorking, isWaiting, projectName, title }) => ({
+        .map(({ entry, isUnread, isWorking, isWaiting, isSubthread, projectName, title }) => ({
+          isSubthread,
           isUnread,
           isWorking,
           isWaiting,
@@ -2362,14 +2446,97 @@ function PinnedTabsHomepageSection(_props: PluginHomepageSectionProps) {
   });
 
   return (
-    <PinnedTabsList
-      locale={locale}
-      visible={showPinnedTabsList}
-      loading={state === null}
-      tabs={pinnedTabs}
-      onOpenThread={(threadId) => threadActions.open(threadId)}
-    />
+    <>
+      {removalFailed && showPinnedTabsList ? (
+        <p role="alert" className="bb-chat-tabs-error">
+          {translate(locale, "Could not update the chat.")}
+        </p>
+      ) : null}
+      <PinnedTabsList
+        locale={locale}
+        visible={showPinnedTabsList}
+        loading={state === null}
+        heading={favorites ? "Favorites" : "Tabs"}
+        emptyMessage={
+          favorites
+            ? "No favorite chats yet. Open a tab menu and choose “Add to favorites”."
+            : "No tabs yet. Open a chat and choose “Pin”."
+        }
+        tabs={pinnedTabs}
+        removeLabel={favorites ? "Remove from favorites" : "Unpin"}
+        removedThreadIds={
+          new Set(
+            tabs
+              .filter(
+                (tab) =>
+                  !(
+                    favorites ? state?.favorites : state?.entries.filter((entry) => entry.pinned)
+                  )?.some((entry) => entry.threadId === tab.entry.threadId),
+              )
+              .map((tab) => tab.entry.threadId),
+          )
+        }
+        pendingThreadIds={pendingThreadIds}
+        onRemoveThread={(threadId) => {
+          const index = tabs.findIndex((tab) => tab.entry.threadId === threadId);
+          const tab = tabs[index];
+          if (tab === undefined || pendingThreadIds.has(threadId)) return;
+          const retained = deferredRemovals.some(({ entry }) => entry.threadId === threadId);
+          const saved =
+            (favorites ? state?.favorites : state?.entries.filter((entry) => entry.pinned))?.some(
+              (entry) => entry.threadId === threadId,
+            ) ?? false;
+          const candidate = {
+            threadId,
+            projectId: tab.entry.projectId,
+            title: tab.title,
+            ...(tab.entry.parentThreadId ? { parentThreadId: tab.entry.parentThreadId } : {}),
+          };
+          setRemovalFailed(false);
+          setPendingThreadIds((current) => new Set([...current, threadId]));
+          if (!retained)
+            setDeferredRemovals((current) => [...current, { entry: tab.entry, index }]);
+          void (
+            favorites
+              ? setFavorite(threadId, !saved, candidate)
+              : setPinned(threadId, !saved, candidate)
+          ).then((next) => {
+            if (next === null) {
+              if (!retained)
+                setDeferredRemovals((current) =>
+                  current.filter(({ entry }) => entry.threadId !== threadId),
+                );
+              setRemovalFailed(true);
+            }
+            setPendingThreadIds((current) => new Set([...current].filter((id) => id !== threadId)));
+          });
+        }}
+        onOpenThread={(threadId) => {
+          const tab = pinnedTabs.find((tab) => tab.threadId === threadId);
+          const entry = tabs.find((tab) => tab.entry.threadId === threadId)?.entry;
+          if (favorites && entry !== undefined && tab !== undefined) {
+            void syncActivity(
+              [
+                {
+                  threadId,
+                  projectId: entry.projectId,
+                  title: tab.title,
+                  ...(entry.parentThreadId ? { parentThreadId: entry.parentThreadId } : {}),
+                },
+              ],
+              true,
+            ).then(() => threadActions.open(threadId));
+          } else {
+            threadActions.open(threadId);
+          }
+        }}
+      />
+    </>
   );
+}
+
+function FavoriteTabsHomepageSection(props: PluginHomepageSectionProps) {
+  return <PinnedTabsHomepageSection {...props} favorites />;
 }
 
 export default definePluginApp((app) => {
@@ -2378,6 +2545,11 @@ export default definePluginApp((app) => {
     id: "pinned-tabs",
     title: "Tabs",
     component: PinnedTabsHomepageSection,
+  });
+  app.slots.homepageSection({
+    id: "favorite-tabs",
+    title: "Favorites",
+    component: FavoriteTabsHomepageSection,
   });
   app.slots.experimental_appOverlay({
     id: "chat-tabs",

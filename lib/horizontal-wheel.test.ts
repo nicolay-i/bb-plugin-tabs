@@ -68,5 +68,4 @@ describe("Chat Tabs", () => {
     ).toBe(false);
     expect(strip.scrollLeft).toBe(20);
   });
-
 });

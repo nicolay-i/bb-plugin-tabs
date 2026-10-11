@@ -3,7 +3,7 @@ import { experimental_scanPublicSdkOnly } from "@get-bb/plugin-sdk/testing";
 
 describe("Chat Tabs", () => {
   it("handles behavior 1", async () => {
-    const result = await experimental_scanPublicSdkOnly(process.cwd(), {
+    const result = experimental_scanPublicSdkOnly(process.cwd(), {
       allow: [
         /^react(?:\/.*)?$/u,
         /^@testing-library\/react$/u,
@@ -14,7 +14,17 @@ describe("Chat Tabs", () => {
       ],
     });
 
+    // Development-only imports are allowed only in these exact files, not in plugin code.
+    const developmentImports: Record<string, string[]> = {
+      "eslint.config.mjs": ["@eslint/js", "typescript-eslint", "eslint-plugin-react-hooks"],
+      "test-utils.ts": ["@get-bb/plugin-sdk/testing", "@get-bb/plugin-sdk/testing/app"],
+    };
     expect(result.privateDependencies).toEqual([]);
-    expect(result.violations).toEqual([]);
+    expect(
+      result.violations.filter(
+        ({ file, specifier, reason }) =>
+          reason !== "outside-allowlist" || !developmentImports[file]?.includes(specifier),
+      ),
+    ).toEqual([]);
   });
 });

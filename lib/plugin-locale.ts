@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import translations from "./plugin-translations.json";
 import type { LanguageSetting } from "./languages";
 export type { LanguageSetting } from "./languages";
@@ -44,10 +44,14 @@ export function resolvePluginLocale(
 }
 
 export function usePluginLocale(setting?: LanguageSetting): PluginLocale {
-  const detect = () => resolvePluginLocale(
-    setting,
-    typeof document === "undefined" ? null : document.documentElement.lang,
-    typeof navigator === "undefined" ? "en" : navigator.language,
+  const detect = useCallback(
+    () =>
+      resolvePluginLocale(
+        setting,
+        typeof document === "undefined" ? null : document.documentElement.lang,
+        typeof navigator === "undefined" ? "en" : navigator.language,
+      ),
+    [setting],
   );
   const [locale, setLocale] = useState(detect);
   useEffect(() => {
@@ -57,7 +61,7 @@ export function usePluginLocale(setting?: LanguageSetting): PluginLocale {
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
     return () => observer.disconnect();
-  }, [setting]);
+  }, [detect]);
   return setting && setting !== "Auto" ? manualLocales[setting] : locale;
 }
 
@@ -67,7 +71,7 @@ export function translate(
   key: TranslationKey,
   variables: Record<string, string | number> = {},
 ): string {
-  const template: string = locale === "en" ? key : translations[locale][key] ?? key;
+  const template: string = locale === "en" ? key : (translations[locale][key] ?? key);
   return template.replace(/\{([a-z]+)\}/g, (match, name: string) =>
     name in variables ? String(variables[name]) : match,
   );

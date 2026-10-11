@@ -10,13 +10,9 @@ export const TABS_HISTORY_CHANGED_CHANNEL = "tabs-history-changed";
  * opened. An absent value means an available chat, which remains compatible
  * with V1 history saved before archive/delete markers existed.
  */
-export const TAB_HISTORY_UNAVAILABLE_REASONS = [
-  "archived",
-  "deleted",
-] as const;
+export const TAB_HISTORY_UNAVAILABLE_REASONS = ["archived", "deleted"] as const;
 
-export type TabHistoryUnavailableReason =
-  (typeof TAB_HISTORY_UNAVAILABLE_REASONS)[number];
+export type TabHistoryUnavailableReason = (typeof TAB_HISTORY_UNAVAILABLE_REASONS)[number];
 
 /** `null` means that the chat is available again. */
 export type TabHistoryAvailability = TabHistoryUnavailableReason | null;
@@ -49,9 +45,7 @@ function readNonEmptyString(value: unknown): string | null {
 }
 
 function readTimestamp(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : 0;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 function normalizeCandidate(value: TabCandidate): TabCandidate | null {
@@ -59,13 +53,12 @@ function normalizeCandidate(value: TabCandidate): TabCandidate | null {
   const projectId = readNonEmptyString(value.projectId);
   const title = readNonEmptyString(value.title);
   if (threadId === null || projectId === null || title === null) return null;
-  return { threadId, projectId, title };
+  const parentThreadId = readNonEmptyString(value.parentThreadId);
+  return { threadId, projectId, title, ...(parentThreadId ? { parentThreadId } : {}) };
 }
 
 function readUnavailableReason(value: unknown): TabHistoryUnavailableReason | null {
-  return TAB_HISTORY_UNAVAILABLE_REASONS.includes(
-    value as TabHistoryUnavailableReason,
-  )
+  return TAB_HISTORY_UNAVAILABLE_REASONS.includes(value as TabHistoryUnavailableReason)
     ? (value as TabHistoryUnavailableReason)
     : null;
 }
@@ -76,6 +69,7 @@ function readEntry(value: unknown): TabHistoryEntry | null {
     threadId: value.threadId,
     projectId: value.projectId,
     title: value.title,
+    parentThreadId: value.parentThreadId,
   } as TabCandidate);
   if (candidate === null) return null;
   const unavailableReason = readUnavailableReason(value.unavailableReason);
@@ -117,9 +111,7 @@ export function normalizeTabHistory(value: unknown): TabHistoryState {
   return {
     version: TAB_HISTORY_VERSION,
     entries: trim(
-      [...entriesById.values()].sort(
-        (left, right) => right.visitedAt - left.visitedAt,
-      ),
+      [...entriesById.values()].sort((left, right) => right.visitedAt - left.visitedAt),
     ),
   };
 }
@@ -174,10 +166,7 @@ export function setTabHistoryAvailability(
   return changed ? { version: TAB_HISTORY_VERSION, entries } : current;
 }
 
-export function tabHistoriesEqual(
-  left: TabHistoryState,
-  right: TabHistoryState,
-): boolean {
+export function tabHistoriesEqual(left: TabHistoryState, right: TabHistoryState): boolean {
   if (left.version !== right.version || left.entries.length !== right.entries.length) {
     return false;
   }
@@ -188,6 +177,7 @@ export function tabHistoriesEqual(
       entry.threadId === other.threadId &&
       entry.projectId === other.projectId &&
       entry.title === other.title &&
+      entry.parentThreadId === other.parentThreadId &&
       entry.visitedAt === other.visitedAt &&
       entry.unavailableReason === other.unavailableReason
     );

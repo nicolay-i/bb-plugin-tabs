@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.10",
-  "description": "Pinned and preview chat tabs with history, input-needed indicators, and 15 interface languages.",
+  "version": "0.1.11",
+  "description": "Pinned and preview chat tabs with favorites, history, subthread markers, and 15 interface languages.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -20,7 +20,11 @@
   ],
   "type": "module",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2 --testTimeout=15000",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build": "bb plugin build"
@@ -31,7 +35,7 @@
   },
   "bb": {
     "name": "Chat Tabs",
-    "description": "Keep important BB conversations one click away with pinned and preview tabs. Search chat titles across BB, spot questions awaiting your reply, and use tabs and settings in 15 interface languages.",
+    "description": "Keep important BB chats one click away with pinned tabs, favorites, search, and live activity indicators in 15 languages.",
     "branding": {
       "icon": "./assets/icon.svg"
     },
@@ -44,6 +48,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@get-bb/plugin-sdk": "0.4.104",
     "@pierre/diffs": "^1.2.9",
     "@radix-ui/react-alert-dialog": "^1.1.19",
@@ -65,11 +70,15 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.5.0",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "hono": "^4.11.9",
     "jsdom": "^30.0.1",
+    "prettier": "^3.9.10",
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.4.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.71.1",
     "vaul": "^1.1.2",
     "vitest": "^5.0.0"
   }

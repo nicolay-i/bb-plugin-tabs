@@ -16,9 +16,10 @@ export function recentProjects(
   }
   return projects
     .filter((project) => !project.isPersonal && latestByProject.has(project.id))
-    .sort((a, b) =>
-      (latestByProject.get(b.id) ?? 0) - (latestByProject.get(a.id) ?? 0) ||
-      a.name.localeCompare(b.name),
+    .sort(
+      (a, b) =>
+        (latestByProject.get(b.id) ?? 0) - (latestByProject.get(a.id) ?? 0) ||
+        a.name.localeCompare(b.name),
     )
     .slice(0, limit);
 }

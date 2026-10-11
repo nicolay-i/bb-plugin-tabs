@@ -2,7 +2,22 @@
 
 All notable changes to Chat Tabs are documented here.
 
-## Unreleased
+## 0.1.11
+
+### Added
+
+- Subthreads now have a small icon-only branch marker in tabs, homepage cards, pinned lists, history, and search, with a localized tooltip and accessible label. Root chats keep their existing appearance. Parent metadata persists outside the loaded sidebar; legacy history and favorites are enriched by the existing availability lookup.
+- New chat cards can now toggle pins and favorites directly, including restoring an accidentally removed chat before leaving the homepage. Changes save immediately while the card stays in place and remains openable until the homepage is reopened. The button is disabled only while saving; failed saves leave the action available and show an error.
+- Favorite chats: add or remove a chat through its tab context menu. A separate **Favorites** list on New chat uses the existing project/status cards and explicitly reopens closed chats. Favorites persist independently of pins and preview tabs, synchronize across windows, and disappear when the chat is archived or deleted. All 15 interface languages are supported.
+
+### Changed
+
+- More compact homepage cards, with smaller icons, text, and padding while preserving 44px touch targets on coarse-pointer devices.
+- Local development checks now run formatting, ESLint, TypeScript, and the full test suite through `npm run check`. Typed RPC test adapters preserve missing-handler failures. No CI/CD is required.
+
+### Fixed
+
+- On first overlay mount, the viewed chat becomes the preview even after delayed provisioning or client/server clock skew. Removed the two-minute creation-time heuristic; persisted closed-thread IDs still reject automatic reopening, while explicit navigation can reopen a closed tab. Current chats resolved outside the sidebar also work without creation-time metadata.
 
 ## 0.1.10
 

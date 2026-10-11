@@ -13,7 +13,9 @@ export interface ChildThreadNode {
   children: ChildThreadNode[];
 }
 
-export function indexThreadChildren(threads: readonly PluginSidebarThread[]): ReadonlyMap<string, readonly PluginSidebarThread[]> {
+export function indexThreadChildren(
+  threads: readonly PluginSidebarThread[],
+): ReadonlyMap<string, readonly PluginSidebarThread[]> {
   const children = new Map<string, PluginSidebarThread[]>();
   const seen = new Set<string>();
   for (const thread of threads) {
@@ -27,7 +29,11 @@ export function indexThreadChildren(threads: readonly PluginSidebarThread[]): Re
 }
 
 /** Count direct signals, not rolled-up parent signals: one busy grandchild counts once. */
-export function childThreadTree(rootId: string, childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>, work: ThreadWorkIndex): { children: ChildThreadNode[]; attentionCount: number } {
+export function childThreadTree(
+  rootId: string,
+  childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>,
+  work: ThreadWorkIndex,
+): { children: ChildThreadNode[]; attentionCount: number } {
   const seen = new Set([rootId]);
   const visit = (parentId: string): ChildThreadNode[] => {
     const result: ChildThreadNode[] = [];
@@ -53,5 +59,9 @@ export function childThreadTree(rootId: string, childrenByParent: ReadonlyMap<st
 }
 
 function countAttention(children: readonly ChildThreadNode[]): number {
-  return children.reduce((count, node) => count + Number(node.isWorking || node.isWaiting || node.isUnread) + node.attentionCount, 0);
+  return children.reduce(
+    (count, node) =>
+      count + Number(node.isWorking || node.isWaiting || node.isUnread) + node.attentionCount,
+    0,
+  );
 }

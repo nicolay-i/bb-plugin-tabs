@@ -1,5 +1,11 @@
 {
   "ru": {
+    "Subthread": "Сабтред",
+    "Could not update the chat.": "Не удалось обновить чат.",
+    "Favorites": "Избранные чаты",
+    "Add to favorites": "Добавить в избранное",
+    "Remove from favorites": "Убрать из избранного",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Избранных чатов пока нет. Откройте меню вкладки и выберите «Добавить в избранное».",
     "Untitled": "Без названия",
     "Personal": "Личный",
     "Project": "Проект",
@@ -101,6 +107,12 @@
     "Subthreads of “{title}”": "Сабтреды «{title}»"
   },
   "de": {
+    "Subthread": "Unterchat",
+    "Could not update the chat.": "Der Chat konnte nicht aktualisiert werden.",
+    "Favorites": "Favoriten",
+    "Add to favorites": "Zu Favoriten hinzufügen",
+    "Remove from favorites": "Aus Favoriten entfernen",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Noch keine Favoriten. Öffnen Sie das Tab-Menü und wählen Sie „Zu Favoriten hinzufügen“.",
     "Untitled": "Ohne Titel",
     "Personal": "Persönlich",
     "Project": "Projekt",
@@ -202,6 +214,12 @@
     "Subthreads of “{title}”": "Unterchats von „{title}“"
   },
   "es": {
+    "Subthread": "Subchat",
+    "Could not update the chat.": "No se pudo actualizar el chat.",
+    "Favorites": "Favoritos",
+    "Add to favorites": "Añadir a favoritos",
+    "Remove from favorites": "Quitar de favoritos",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Aún no hay chats favoritos. Abra el menú de la pestaña y elija «Añadir a favoritos».",
     "Untitled": "Sin título",
     "Personal": "personales",
     "Project": "Proyecto",
@@ -303,6 +321,12 @@
     "Subthreads of “{title}”": "Subchats de «{title}»"
   },
   "pt-BR": {
+    "Subthread": "Subchat",
+    "Could not update the chat.": "Não foi possível atualizar o chat.",
+    "Favorites": "Favoritos",
+    "Add to favorites": "Adicionar aos favoritos",
+    "Remove from favorites": "Remover dos favoritos",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Ainda não há chats favoritos. Abra o menu da aba e escolha “Adicionar aos favoritos”.",
     "Untitled": "Sem título",
     "Personal": "Pessoal",
     "Project": "Projeto",
@@ -404,6 +428,12 @@
     "Subthreads of “{title}”": "Subchats de «{title}»"
   },
   "fr": {
+    "Subthread": "Sous-discussion",
+    "Could not update the chat.": "Impossible de mettre à jour la discussion.",
+    "Favorites": "Favoris",
+    "Add to favorites": "Ajouter aux favoris",
+    "Remove from favorites": "Retirer des favoris",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Aucune discussion favorite. Ouvrez le menu de l’onglet et choisissez « Ajouter aux favoris ».",
     "Untitled": "Sans titre",
     "Personal": "Personnel",
     "Project": "Projet",
@@ -505,6 +535,12 @@
     "Subthreads of “{title}”": "Sous-discussions de «{title}»"
   },
   "hi": {
+    "Subthread": "उप-चैट",
+    "Could not update the chat.": "चैट अपडेट नहीं हो सकी।",
+    "Favorites": "पसंदीदा चैट",
+    "Add to favorites": "पसंदीदा में जोड़ें",
+    "Remove from favorites": "पसंदीदा से हटाएँ",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "अभी कोई पसंदीदा चैट नहीं है। टैब मेनू खोलें और “पसंदीदा में जोड़ें” चुनें।",
     "Untitled": "शीर्षकहीन",
     "Personal": "निजी",
     "Project": "प्रोजेक्ट",
@@ -606,6 +642,12 @@
     "Subthreads of “{title}”": "“{title}” की उप-चैट"
   },
   "zh-CN": {
+    "Subthread": "子聊天",
+    "Could not update the chat.": "无法更新聊天。",
+    "Favorites": "收藏的聊天",
+    "Add to favorites": "添加到收藏",
+    "Remove from favorites": "取消收藏",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "还没有收藏的聊天。打开标签页菜单并选择“添加到收藏”。",
     "Untitled": "无题",
     "Personal": "个人",
     "Project": "项目",
@@ -707,6 +749,12 @@
     "Subthreads of “{title}”": "“{title}”的子聊天"
   },
   "ar": {
+    "Subthread": "محادثة فرعية",
+    "Could not update the chat.": "تعذر تحديث المحادثة.",
+    "Favorites": "المحادثات المفضلة",
+    "Add to favorites": "إضافة إلى المفضلة",
+    "Remove from favorites": "إزالة من المفضلة",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "لا توجد محادثات مفضلة بعد. افتح قائمة علامة التبويب واختر «إضافة إلى المفضلة».",
     "Untitled": "بدون عنوان",
     "Personal": "شخصي",
     "Project": "مشروع",
@@ -808,6 +856,12 @@
     "Subthreads of “{title}”": "المحادثات الفرعية لـ «{title}»"
   },
   "ja": {
+    "Subthread": "サブチャット",
+    "Could not update the chat.": "チャットを更新できませんでした。",
+    "Favorites": "お気に入り",
+    "Add to favorites": "お気に入りに追加",
+    "Remove from favorites": "お気に入りから削除",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "お気に入りのチャットはまだありません。タブメニューから「お気に入りに追加」を選択してください。",
     "Untitled": "無題",
     "Personal": "個人的な",
     "Project": "プロジェクト",
@@ -909,6 +963,12 @@
     "Subthreads of “{title}”": "「{title}」のサブチャット"
   },
   "id": {
+    "Subthread": "Subobrolan",
+    "Could not update the chat.": "Tidak dapat memperbarui obrolan.",
+    "Favorites": "Favorit",
+    "Add to favorites": "Tambahkan ke favorit",
+    "Remove from favorites": "Hapus dari favorit",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Belum ada obrolan favorit. Buka menu tab dan pilih “Tambahkan ke favorit”.",
     "Untitled": "Tanpa judul",
     "Personal": "Pribadi",
     "Project": "Proyek",
@@ -1010,6 +1070,12 @@
     "Subthreads of “{title}”": "Subobrolan “{title}”"
   },
   "tr": {
+    "Subthread": "Alt sohbet",
+    "Could not update the chat.": "Sohbet güncellenemedi.",
+    "Favorites": "Favoriler",
+    "Add to favorites": "Favorilere ekle",
+    "Remove from favorites": "Favorilerden kaldır",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Henüz favori sohbet yok. Sekme menüsünü açıp “Favorilere ekle”yi seçin.",
     "Untitled": "İsimsiz",
     "Personal": "Kişisel",
     "Project": "Proje",
@@ -1111,6 +1177,12 @@
     "Subthreads of “{title}”": "“{title}” alt sohbetleri"
   },
   "ko": {
+    "Subthread": "하위 채팅",
+    "Could not update the chat.": "채팅을 업데이트하지 못했습니다.",
+    "Favorites": "즐겨찾기",
+    "Add to favorites": "즐겨찾기에 추가",
+    "Remove from favorites": "즐겨찾기에서 삭제",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "아직 즐겨찾기 채팅이 없습니다. 탭 메뉴에서 “즐겨찾기에 추가”를 선택하세요.",
     "Untitled": "제목 없음",
     "Personal": "개인",
     "Project": "프로젝트",
@@ -1212,6 +1284,12 @@
     "Subthreads of “{title}”": "“{title}”의 하위 채팅"
   },
   "vi": {
+    "Subthread": "Trò chuyện con",
+    "Could not update the chat.": "Không thể cập nhật cuộc trò chuyện.",
+    "Favorites": "Yêu thích",
+    "Add to favorites": "Thêm vào yêu thích",
+    "Remove from favorites": "Xóa khỏi yêu thích",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Chưa có cuộc trò chuyện yêu thích. Mở menu thẻ và chọn “Thêm vào yêu thích”.",
     "Untitled": "Không có tiêu đề",
     "Personal": "cá nhân",
     "Project": "dự án",
@@ -1313,6 +1391,12 @@
     "Subthreads of “{title}”": "Trò chuyện con của “{title}”"
   },
   "it": {
+    "Subthread": "Chat secondaria",
+    "Could not update the chat.": "Impossibile aggiornare la chat.",
+    "Favorites": "Preferiti",
+    "Add to favorites": "Aggiungi ai preferiti",
+    "Remove from favorites": "Rimuovi dai preferiti",
+    "No favorite chats yet. Open a tab menu and choose “Add to favorites”.": "Nessuna chat preferita. Apri il menu della scheda e scegli “Aggiungi ai preferiti”.",
     "Untitled": "Senza titolo",
     "Personal": "Personale",
     "Project": "Progetto",

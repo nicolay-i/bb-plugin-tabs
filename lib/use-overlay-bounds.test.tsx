@@ -6,9 +6,13 @@ import { useOverlayBounds } from "./use-overlay-bounds";
 function Overlay({ enabled = true }: { enabled?: boolean }) {
   return <aside data-testid="overlay" ref={useOverlayBounds(enabled)} />;
 }
-afterEach(() => { cleanup(); document.body.replaceChildren(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
 
-function content(left: number, right: number, attribute = 'data-sidebar') {
+function content(left: number, right: number, attribute = "data-sidebar") {
   const element = document.createElement("div");
   element.setAttribute(attribute, attribute === "data-sidebar" ? "inset" : "");
   const bounds = vi.fn(() => ({ left, right }) as DOMRect);
@@ -23,11 +27,16 @@ describe("Overlay bounds without CSS anchors", () => {
     let resized = () => {};
     const disconnect = vi.fn();
     const observe = vi.fn();
-    vi.stubGlobal("ResizeObserver", class {
-      constructor(callback: () => void) { resized = callback; }
-      observe = observe;
-      disconnect = disconnect;
-    });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resized = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
     const inset = content(280, window.innerWidth);
     const view = render(<Overlay />);
     const overlay = view.getByTestId("overlay");
@@ -52,7 +61,9 @@ describe("Overlay bounds without CSS anchors", () => {
     const main = content(260, 800, "data-thread-window");
     const view = render(<Overlay />);
     expect(view.getByTestId("overlay").style.right).toBe(`${window.innerWidth - 800}px`);
-    await act(async () => { main.element.remove(); });
+    await act(async () => {
+      main.element.remove();
+    });
     expect(view.getByTestId("overlay").style.right).toBe("0px");
     expect(view.getByTestId("overlay").style.left).toBe("260px");
   });

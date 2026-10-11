@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createFakePluginHost,
-  makeThreadResponse,
-} from "@get-bb/plugin-sdk/testing";
+import { makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
+import { createTabsTestHost as createFakePluginHost, withTabsRpcTypes } from "./test-utils";
 
 const loadedHosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 
@@ -19,89 +17,386 @@ async function loadPlugin() {
 }
 
 describe("Chat Tabs", () => {
+  it("hydrates parent metadata in legacy history and favorites and returns it in search/current resolution", async () => {
+    const child = makeThreadResponse({
+      id: "thr_child",
+      projectId: "proj_api",
+      title: "Child",
+      parentThreadId: "thr_root",
+    });
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: {
+        threads: { get: async () => child, list: async () => [child] },
+        projects: { list: async () => [] },
+      },
+    });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    const candidate = { threadId: child.id, projectId: child.projectId, title: child.title! };
+    await host.harness.behavior.callRpc("tabs_open", candidate);
+    await host.harness.behavior.callRpc("tabs_history_visit", candidate);
+    await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: child.id,
+      favorite: true,
+    });
+    await host.harness.behavior.callRpc("tabs_close", { threadId: child.id });
+    const snapshot = await host.harness.behavior.callRpc("tabs_list", null);
+    expect(snapshot.state.favorites?.[0]?.parentThreadId).toBe("thr_root");
+    expect(snapshot.history?.entries[0]?.parentThreadId).toBe("thr_root");
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(1);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_search", { query: "Child" })).candidates[0]
+        ?.parentThreadId,
+    ).toBe("thr_root");
+    expect(
+      (await host.harness.behavior.callRpc("tabs_resolve_current", { threadId: child.id }))
+        .candidate?.parentThreadId,
+    ).toBe("thr_root");
+    await host.harness.behavior.callRpc("tabs_history_visit", {
+      ...candidate,
+      parentThreadId: "thr_root",
+    });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).history?.entries[0]?.parentThreadId,
+    ).toBe("thr_root");
+  });
+
+  it("restores a removed favorite from a retained card without opening a preview", async () => {
+    const host = await loadPlugin();
+    const candidate = { threadId: "thr_restore", projectId: "proj_api", title: "Restore" };
+    await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+    await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: true,
+    });
+    await host.harness.behavior.callRpc("tabs_close", { threadId: candidate.threadId });
+    await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: false,
+    });
+    const restored = await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: true,
+      candidate,
+    });
+    expect(restored.state.entries).toEqual([]);
+    expect(restored.state.favorites).toEqual([expect.objectContaining(candidate)]);
+    await expect(
+      host.harness.behavior.callRpc("tabs_set_favorite", {
+        threadId: "thr_other",
+        favorite: true,
+        candidate,
+      }),
+    ).rejects.toThrow("rpc input validation failed");
+    await expect(
+      host.harness.behavior.callRpc("tabs_set_favorite", {
+        threadId: candidate.threadId,
+        favorite: true,
+        candidate: { ...candidate, title: "" },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("persists favorites independently of pins, previews, and close across reload", async () => {
+    let host = await loadPlugin();
+    const candidate = { threadId: "thr_favorite", projectId: "proj_api", title: "Favorite" };
+    await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+    const saved = await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: true,
+    });
+    expect(saved.state.entries[0]?.pinned).toBe(false);
+    await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: true,
+    });
+    await host.harness.behavior.callRpc("tabs_set_pinned", {
+      threadId: candidate.threadId,
+      pinned: true,
+    });
+    await host.harness.behavior.callRpc("tabs_set_pinned", {
+      threadId: candidate.threadId,
+      pinned: false,
+    });
+    await host.harness.behavior.callRpc("tabs_sync_activity", {
+      threads: [{ ...candidate, threadId: "thr_other" }],
+    });
+    await host.harness.behavior.callRpc("tabs_sync_activity", {
+      threads: [{ ...candidate, title: "Renamed" }],
+      reopen: true,
+    });
+    const closed = await host.harness.behavior.callRpc("tabs_close", {
+      threadId: candidate.threadId,
+    });
+    expect(closed.state.entries).toEqual([]);
+    expect(closed.state.favorites).toEqual([
+      expect.objectContaining({ threadId: candidate.threadId, title: "Renamed" }),
+    ]);
+    expect(
+      host.harness.inspection.realtimeSignals.filter((signal) => signal.channel === "tabs-changed"),
+    ).toHaveLength(7);
+    host = withTabsRpcTypes(await host.harness.lifecycle.reload(plugin));
+    loadedHosts[loadedHosts.length - 1] = host;
+    expect((await host.harness.behavior.callRpc("tabs_list", null)).state.favorites).toEqual(
+      closed.state.favorites,
+    );
+    const removed = await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: false,
+    });
+    expect(removed.state.favorites ?? []).toEqual([]);
+    expect(
+      host.harness.inspection.realtimeSignals.filter((signal) => signal.channel === "tabs-changed"),
+    ).toHaveLength(1);
+    await expect(
+      host.harness.behavior.callRpc("tabs_set_favorite", {
+        threadId: candidate.threadId,
+        favorite: "true",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("reconciles unavailable favorites on startup even after their tabs were closed", async () => {
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) => makeThreadResponse({ id: threadId, archivedAt: 1 }),
+        },
+      },
+    });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    const candidate = { threadId: "thr_favorite", projectId: "proj_api", title: "Favorite" };
+    await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+    await host.harness.behavior.callRpc("tabs_set_favorite", {
+      threadId: candidate.threadId,
+      favorite: true,
+    });
+    await host.harness.behavior.callRpc("tabs_close", { threadId: candidate.threadId });
+    expect((await host.harness.behavior.callRpc("tabs_list", null)).state.favorites ?? []).toEqual(
+      [],
+    );
+    expect(host.harness.inspection.sdk.callsTo("threads.get")).toHaveLength(1);
+  });
+
+  it.each(["thread.archived", "thread.deleted"] as const)(
+    "removes closed favorites on %s",
+    async (event) => {
+      const host = await loadPlugin();
+      const candidate = { threadId: "thr_favorite", projectId: "proj_api", title: "Favorite" };
+      await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+      await host.harness.behavior.callRpc("tabs_set_favorite", {
+        threadId: candidate.threadId,
+        favorite: true,
+      });
+      await host.harness.behavior.callRpc("tabs_close", { threadId: candidate.threadId });
+      const emitted = await host.harness.behavior.emitThreadEvent(event, {
+        thread: makeThreadResponse({
+          id: candidate.threadId,
+          archivedAt: event === "thread.archived" ? 1 : null,
+          deletedAt: event === "thread.deleted" ? 1 : null,
+        }),
+      });
+      expect(emitted.errors).toEqual([]);
+      expect(
+        (await host.harness.behavior.callRpc("tabs_list", null)).state.favorites ?? [],
+      ).toEqual([]);
+    },
+  );
+
   it("saves localized settings through validated patches without resetting unrelated fields", async () => {
     const host = await loadPlugin();
     await host.harness.behavior.setSettings({ showTabsOnDesktop: false });
-    const updated = await host.harness.behavior.callRpc("tabs_settings_update", { language: "Русский", searchArchivedChats: true });
+    const updated = await host.harness.behavior.callRpc("tabs_settings_update", {
+      language: "Русский",
+      searchArchivedChats: true,
+    });
     expect(updated.values.language).toBe("Русский");
     expect(updated.values.searchArchivedChats).toBe(true);
     expect(updated.values.showTabsOnDesktop).toBe(false);
-    for (const invalid of [{ language: "Unknown" }, { searchArchivedChats: "true" }, { unexpected: true }, {}]) {
-      await expect(host.harness.behavior.callRpc("tabs_settings_update", invalid)).rejects.toThrow();
+    for (const invalid of [
+      { language: "Unknown" },
+      { searchArchivedChats: "true" },
+      { unexpected: true },
+      {},
+    ]) {
+      await expect(
+        host.harness.behavior.callRpc("tabs_settings_update", invalid),
+      ).rejects.toThrow();
     }
-    expect((await host.harness.behavior.callRpc("tabs_settings_update", { tabListButtonPosition: "Right" })).values.language).toBe("Русский");
+    expect(
+      (
+        await host.harness.behavior.callRpc("tabs_settings_update", {
+          tabListButtonPosition: "Right",
+        })
+      ).values.language,
+    ).toBe("Русский");
   });
 
   it("searches project names, combines project/title tokens, and returns project metadata for old chats", async () => {
     const projects = vi.fn().mockResolvedValue([
-      { id: "proj_office", name: "Офис CRM" }, { id: "proj_tools", name: "Tools" },
+      { id: "proj_office", name: "Офис CRM" },
+      { id: "proj_tools", name: "Tools" },
     ]);
-    const list = vi.fn(async (args?: { archived?: boolean }) => args?.archived
-      ? [makeThreadResponse({ id: "thr_archived_project", projectId: "proj_office", title: "Old migration", archivedAt: 1 })]
-      : [makeThreadResponse({ id: "thr_project", projectId: "proj_office", title: "Fix login" }),
-        makeThreadResponse({ id: "thr_other_project", projectId: "proj_tools", title: "Fix login" })]);
-    const host = createFakePluginHost({ pluginId: "tabs", sdk: { projects: { list: projects }, threads: { list } } });
+    const list = vi.fn(async (args?: { archived?: boolean }) =>
+      args?.archived
+        ? [
+            makeThreadResponse({
+              id: "thr_archived_project",
+              projectId: "proj_office",
+              title: "Old migration",
+              archivedAt: 1,
+            }),
+          ]
+        : [
+            makeThreadResponse({ id: "thr_project", projectId: "proj_office", title: "Fix login" }),
+            makeThreadResponse({
+              id: "thr_other_project",
+              projectId: "proj_tools",
+              title: "Fix login",
+            }),
+          ],
+    );
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: { projects: { list: projects }, threads: { list } },
+    });
     loadedHosts.push(host);
     await plugin(host.bb);
     const result = await host.harness.behavior.callRpc("tabs_search", { query: "офис" });
     expect(result.candidates.map((item) => item.threadId)).toEqual(["thr_project"]);
     expect(result.candidates[0]?.projectName).toBe("Офис CRM");
-    expect((await host.harness.behavior.callRpc("tabs_search", { query: "офис login" })).candidates).toEqual(result.candidates);
-    expect((await host.harness.behavior.callRpc("tabs_search", { query: "login" })).candidates).toHaveLength(2);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_search", { query: "офис login" })).candidates,
+    ).toEqual(result.candidates);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_search", { query: "login" })).candidates,
+    ).toHaveLength(2);
     expect(projects).toHaveBeenCalledTimes(1);
     expect(projects).toHaveBeenCalledWith({ includePersonal: true });
-    const archived = await host.harness.behavior.callRpc("tabs_search", { query: "офис", includeArchived: true });
-    expect(archived.candidates.map((item) => item.threadId)).toEqual(["thr_project", "thr_archived_project"]);
+    const archived = await host.harness.behavior.callRpc("tabs_search", {
+      query: "офис",
+      includeArchived: true,
+    });
+    expect(archived.candidates.map((item) => item.threadId)).toEqual([
+      "thr_project",
+      "thr_archived_project",
+    ]);
     expect(archived.candidates[1]?.archived).toBe(true);
   });
 
   it("keeps title search working if project metadata cannot be fetched", async () => {
-    const host = createFakePluginHost({ pluginId: "tabs", sdk: {
-      projects: { list: vi.fn().mockRejectedValue(new Error("Project metadata temporarily unavailable")) },
-      threads: { list: async () => [makeThreadResponse({ id: "thr_title_fallback", title: "Login fix" })] },
-    } });
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: {
+        projects: {
+          list: vi.fn().mockRejectedValue(new Error("Project metadata temporarily unavailable")),
+        },
+        threads: {
+          list: async () => [makeThreadResponse({ id: "thr_title_fallback", title: "Login fix" })],
+        },
+      },
+    });
     loadedHosts.push(host);
     await plugin(host.bb);
-    expect((await host.harness.behavior.callRpc("tabs_search", { query: "login" })).candidates.map((item) => item.threadId)).toEqual(["thr_title_fallback"]);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_search", { query: "login" })).candidates.map(
+        (item) => item.threadId,
+      ),
+    ).toEqual(["thr_title_fallback"]);
   });
 
   it("optionally searches archived chats with separate caches and never includes deleted or hidden chats", async () => {
-    const list = vi.fn(async (args?: { archived?: boolean }) => args?.archived ? [
-      makeThreadResponse({ id: "thr_archived_search", title: "Old task", archivedAt: 1 }),
-      makeThreadResponse({ id: "thr_deleted_search", title: "Old task", deletedAt: 1, archivedAt: 1 }),
-      makeThreadResponse({ id: "thr_hidden_search", title: "Old task", visibility: "hidden", archivedAt: 1 }),
-    ] : [makeThreadResponse({ id: "thr_active_search", title: "Old task" })]);
-    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list }, projects: { list: async () => [] } } });
+    const list = vi.fn(async (args?: { archived?: boolean }) =>
+      args?.archived
+        ? [
+            makeThreadResponse({ id: "thr_archived_search", title: "Old task", archivedAt: 1 }),
+            makeThreadResponse({
+              id: "thr_deleted_search",
+              title: "Old task",
+              deletedAt: 1,
+              archivedAt: 1,
+            }),
+            makeThreadResponse({
+              id: "thr_hidden_search",
+              title: "Old task",
+              visibility: "hidden",
+              archivedAt: 1,
+            }),
+          ]
+        : [makeThreadResponse({ id: "thr_active_search", title: "Old task" })],
+    );
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: { threads: { list }, projects: { list: async () => [] } },
+    });
     loadedHosts.push(host);
     await plugin(host.bb);
-    await expect(host.harness.behavior.setSettings({ searchArchivedChats: true })).resolves.toBeUndefined();
-    await expect(host.harness.behavior.setSettings({ searchArchivedChats: "true" })).rejects.toThrow();
+    await expect(
+      host.harness.behavior.setSettings({ searchArchivedChats: true }),
+    ).resolves.toBeUndefined();
+    await expect(
+      host.harness.behavior.setSettings({ searchArchivedChats: "true" }),
+    ).rejects.toThrow();
     const active = await host.harness.behavior.callRpc("tabs_search", { query: "Old task" });
     expect(active.candidates.map((item) => item.threadId)).toEqual(["thr_active_search"]);
-    const all = await host.harness.behavior.callRpc("tabs_search", { query: "Old task", includeArchived: true });
-    expect(all.candidates.map((item) => item.threadId)).toEqual(["thr_active_search", "thr_archived_search"]);
+    const all = await host.harness.behavior.callRpc("tabs_search", {
+      query: "Old task",
+      includeArchived: true,
+    });
+    expect(all.candidates.map((item) => item.threadId)).toEqual([
+      "thr_active_search",
+      "thr_archived_search",
+    ]);
     expect(all.candidates[1]?.archived).toBe(true);
-    expect((await host.harness.behavior.callRpc("tabs_search", { query: "Old task", includeArchived: false })).candidates).toEqual(active.candidates);
+    expect(
+      (
+        await host.harness.behavior.callRpc("tabs_search", {
+          query: "Old task",
+          includeArchived: false,
+        })
+      ).candidates,
+    ).toEqual(active.candidates);
     expect(list).toHaveBeenCalledTimes(3);
   });
 
   it("searches titles beyond plugin history and the first BB page, caches only metadata, and excludes unavailable chats", async () => {
     const title = "Обновить систему до версии 0.43.3 — office";
-    const page = Array.from({ length: 200 }, (_, i) => makeThreadResponse({ id: `thr_page_${i}`, title: "Unrelated chat" }));
-    const list = vi.fn(async (args?: { offset?: number }) => args?.offset === 0 ? page : [
-      makeThreadResponse({ id: "thr_office", projectId: "proj_office", title }),
-      makeThreadResponse({ id: "thr_archived", title, archivedAt: 1 }),
-      makeThreadResponse({ id: "thr_deleted", title, deletedAt: 1 }),
-      makeThreadResponse({ id: "thr_hidden", title, visibility: "hidden" }),
-    ]);
-    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list }, projects: { list: async () => [] } } });
+    const page = Array.from({ length: 200 }, (_, i) =>
+      makeThreadResponse({ id: `thr_page_${i}`, title: "Unrelated chat" }),
+    );
+    const list = vi.fn(async (args?: { offset?: number }) =>
+      args?.offset === 0
+        ? page
+        : [
+            makeThreadResponse({ id: "thr_office", projectId: "proj_office", title }),
+            makeThreadResponse({ id: "thr_archived", title, archivedAt: 1 }),
+            makeThreadResponse({ id: "thr_deleted", title, deletedAt: 1 }),
+            makeThreadResponse({ id: "thr_hidden", title, visibility: "hidden" }),
+          ],
+    );
+    const host = createFakePluginHost({
+      pluginId: "tabs",
+      sdk: { threads: { list }, projects: { list: async () => [] } },
+    });
     loadedHosts.push(host);
     await plugin(host.bb);
     const result = await host.harness.behavior.callRpc("tabs_search", { query: "43" });
-    expect(result.candidates).toEqual([{ threadId: "thr_office", projectId: "proj_office", title }]);
+    expect(result.candidates).toEqual([
+      { threadId: "thr_office", projectId: "proj_office", title },
+    ]);
     expect(list).toHaveBeenCalledTimes(2);
-    expect(list).toHaveBeenNthCalledWith(2, { archived: false, includeHidden: false, limit: 200, offset: 200 });
-    expect((await host.harness.behavior.callRpc("tabs_search", { query: title })).candidates).toEqual(result.candidates);
+    expect(list).toHaveBeenNthCalledWith(2, {
+      archived: false,
+      includeHidden: false,
+      limit: 200,
+      offset: 200,
+    });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_search", { query: title })).candidates,
+    ).toEqual(result.candidates);
     expect(list).toHaveBeenCalledTimes(2);
   });
 
@@ -126,14 +421,18 @@ describe("Chat Tabs", () => {
     ).resolves.toBeUndefined();
     await expect(
       host.harness.behavior.setSettings({ showPinnedTabsList: "false" }),
-    ).rejects.toThrow('expects a boolean');
+    ).rejects.toThrow("expects a boolean");
   });
 
   it("handles behavior 2", async () => {
     const host = await loadPlugin();
 
-    await expect(host.harness.behavior.setSettings({ language: "Русский" })).resolves.toBeUndefined();
-    await expect(host.harness.behavior.setSettings({ language: "Italiano" })).resolves.toBeUndefined();
+    await expect(
+      host.harness.behavior.setSettings({ language: "Русский" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      host.harness.behavior.setSettings({ language: "Italiano" }),
+    ).resolves.toBeUndefined();
     await expect(host.harness.behavior.setSettings({ language: "Unsupported" })).rejects.toThrow();
     await expect(
       host.harness.behavior.setSettings({
@@ -194,9 +493,7 @@ describe("Chat Tabs", () => {
       ]),
     );
     expect(
-      host.harness.inspection.realtimeSignals.filter(
-        (signal) => signal.channel === "tabs-changed",
-      ),
+      host.harness.inspection.realtimeSignals.filter((signal) => signal.channel === "tabs-changed"),
     ).toHaveLength(3);
   });
 
@@ -205,16 +502,21 @@ describe("Chat Tabs", () => {
     const candidate = { threadId: "thr_closed", projectId: "proj_api", title: "Closed chat" };
 
     await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
-    const closed = await host.harness.behavior.callRpc("tabs_close", { threadId: candidate.threadId });
+    const closed = await host.harness.behavior.callRpc("tabs_close", {
+      threadId: candidate.threadId,
+    });
     expect(closed.removed).toBe(true);
     expect(closed.state.entries).toEqual([]);
 
-    const stale = await host.harness.behavior.callRpc("tabs_sync_activity", { threads: [candidate] });
+    const stale = await host.harness.behavior.callRpc("tabs_sync_activity", {
+      threads: [candidate],
+    });
     expect(stale.state.entries).toEqual([]);
     expect((await host.harness.behavior.callRpc("tabs_list", null)).state.entries).toEqual([]);
 
     const reopened = await host.harness.behavior.callRpc("tabs_sync_activity", {
-      threads: [candidate], reopen: true,
+      threads: [candidate],
+      reopen: true,
     });
     expect(reopened.state.entries).toEqual([
       expect.objectContaining({ threadId: candidate.threadId, pinned: false }),
@@ -273,15 +575,12 @@ describe("Chat Tabs", () => {
       projectId: "proj_api",
       title: "Archivable",
     });
-    const archivedEvent = await host.harness.behavior.emitThreadEvent(
-      "thread.archived",
-      {
-        thread: makeThreadResponse({
-          id: "thr_archived",
-          archivedAt: 10,
-        }),
-      },
-    );
+    const archivedEvent = await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: makeThreadResponse({
+        id: "thr_archived",
+        archivedAt: 10,
+      }),
+    });
     expect(archivedEvent.errors).toEqual([]);
 
     const archived = await host.harness.behavior.callRpc("tabs_list", null);
@@ -312,46 +611,55 @@ describe("Chat Tabs", () => {
       projectId: "proj_api",
       title: "Deletable",
     });
-    const deletedEvent = await host.harness.behavior.emitThreadEvent(
-      "thread.deleted",
-      {
-        thread: makeThreadResponse({
-          id: "thr_deleted",
-          deletedAt: 20,
-        }),
-      },
-    );
+    const deletedEvent = await host.harness.behavior.emitThreadEvent("thread.deleted", {
+      thread: makeThreadResponse({
+        id: "thr_deleted",
+        deletedAt: 20,
+      }),
+    });
     expect(deletedEvent.errors).toEqual([]);
 
     const deleted = await host.harness.behavior.callRpc("tabs_list", null);
     expect(deleted.state.entries).toEqual([]);
-    expect(
-      deleted.history?.entries.find((entry) => entry.threadId === "thr_deleted"),
-    ).toEqual(expect.objectContaining({ unavailableReason: "deleted" }));
+    expect(deleted.history?.entries.find((entry) => entry.threadId === "thr_deleted")).toEqual(
+      expect.objectContaining({ unavailableReason: "deleted" }),
+    );
   });
 
   it("resolves an open chat that is absent from the sidebar snapshot", async () => {
     const host = createFakePluginHost({
       pluginId: "tabs",
-      sdk: { threads: { get: async ({ threadId }: { threadId: string }) =>
-        makeThreadResponse({
-          id: threadId,
-          projectId: "proj_api",
-          title: "Missing from sidebar",
-          archivedAt: threadId === "thr_archived" ? 1 : null,
-        }),
-      } },
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) =>
+            makeThreadResponse({
+              id: threadId,
+              projectId: "proj_api",
+              title: "Missing from sidebar",
+              archivedAt: threadId === "thr_archived" ? 1 : null,
+            }),
+        },
+      },
     });
     loadedHosts.push(host);
     await plugin(host.bb);
-    await expect(host.harness.behavior.callRpc("tabs_resolve_current", {
-      threadId: "thr_open",
-    })).resolves.toEqual({ createdAt: expect.any(Number), candidate: {
-      threadId: "thr_open", projectId: "proj_api", title: "Missing from sidebar",
-    } });
-    await expect(host.harness.behavior.callRpc("tabs_resolve_current", {
-      threadId: "thr_archived",
-    })).resolves.toEqual({ candidate: null, createdAt: expect.any(Number) });
+    await expect(
+      host.harness.behavior.callRpc("tabs_resolve_current", {
+        threadId: "thr_open",
+      }),
+    ).resolves.toEqual({
+      createdAt: expect.any(Number),
+      candidate: {
+        threadId: "thr_open",
+        projectId: "proj_api",
+        title: "Missing from sidebar",
+      },
+    });
+    await expect(
+      host.harness.behavior.callRpc("tabs_resolve_current", {
+        threadId: "thr_archived",
+      }),
+    ).resolves.toEqual({ candidate: null, createdAt: expect.any(Number) });
   });
 
   it("handles behavior 6", async () => {
@@ -390,10 +698,7 @@ describe("Chat Tabs", () => {
     const reconciled = await host.harness.behavior.callRpc("tabs_list", null);
     expect(reconciled.state.entries).toEqual([]);
     expect(
-      reconciled.history?.entries.map((entry) => [
-        entry.threadId,
-        entry.unavailableReason,
-      ]),
+      reconciled.history?.entries.map((entry) => [entry.threadId, entry.unavailableReason]),
     ).toEqual([
       ["thr_legacy_deleted", "deleted"],
       ["thr_legacy_archived", "archived"],
@@ -467,9 +772,7 @@ describe("Chat Tabs", () => {
     });
     expect(unchanged.state).toEqual(result.state);
     expect(
-      host.harness.inspection.realtimeSignals.filter(
-        (signal) => signal.channel === "tabs-changed",
-      ),
+      host.harness.inspection.realtimeSignals.filter((signal) => signal.channel === "tabs-changed"),
     ).toHaveLength(4);
   });
 
@@ -482,8 +785,7 @@ describe("Chat Tabs", () => {
             const input = args.input as { threadId: string };
             return {
               runs:
-                input.threadId === "thr_system_all" ||
-                input.threadId === "thr_child"
+                input.threadId === "thr_system_all" || input.threadId === "thr_child"
                   ? [{ status: "running" }]
                   : [{ status: "succeeded" }],
             };

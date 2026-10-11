@@ -10,16 +10,12 @@ const tabs = [
 describe("Chat Tabs", () => {
   it("handles behavior 1", () => {
     expect(cycleTab(tabs, "thr_second", "next")?.threadId).toBe("thr_third");
-    expect(cycleTab(tabs, "thr_second", "previous")?.threadId).toBe(
-      "thr_first",
-    );
+    expect(cycleTab(tabs, "thr_second", "previous")?.threadId).toBe("thr_first");
   });
 
   it("handles behavior 2", () => {
     expect(cycleTab(tabs, "thr_third", "next")?.threadId).toBe("thr_first");
-    expect(cycleTab(tabs, "thr_first", "previous")?.threadId).toBe(
-      "thr_third",
-    );
+    expect(cycleTab(tabs, "thr_first", "previous")?.threadId).toBe("thr_third");
   });
 
   it("handles behavior 3", () => {

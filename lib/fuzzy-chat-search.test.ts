@@ -36,7 +36,8 @@ describe("fuzzy chat search", () => {
   });
   it("prioritizes prefix and word matches before subsequences", () => {
     expect(fuzzyChatSearch(chats, "release").map((chat) => chat.title)).toEqual([
-      "Release notes", "Prepare the release",
+      "Release notes",
+      "Prepare the release",
     ]);
     expect(fuzzyChatSearch(chats, "rmp").map((chat) => chat.title)).toEqual([
       "Review migration plan",

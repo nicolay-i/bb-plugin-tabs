@@ -3,18 +3,39 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { childThreadTree, indexThreadChildren } from "./thread-children";
 import { buildThreadWorkIndex } from "./thread-work";
 
-function thread(id: string, parentThreadId: string | null, overrides: Partial<PluginSidebarThread> = {}): PluginSidebarThread {
+function thread(
+  id: string,
+  parentThreadId: string | null,
+  overrides: Partial<PluginSidebarThread> = {},
+): PluginSidebarThread {
   return {
-    id, parentThreadId, projectId: "proj_api", title: id, titleFallback: null,
-    sectionId: null, originKind: parentThreadId ? "fork" : null, originPluginId: null,
-    providerId: "pi", hasPendingInteraction: false,
+    id,
+    parentThreadId,
+    projectId: "proj_api",
+    title: id,
+    titleFallback: null,
+    sectionId: null,
+    originKind: parentThreadId ? "fork" : null,
+    originPluginId: null,
+    providerId: "pi",
+    hasPendingInteraction: false,
     activity: { workflows: 0, backgroundAgents: 0, backgroundCommands: 0, planMode: 0, goals: 0 },
-    indicator: "none", indicatorLabel: null, isUnread: false, isPinned: false, isArchived: false,
-    environment: null, host: null, createdAt: 1, updatedAt: 1, lastReadAt: null, latestAttentionAt: 0,
+    indicator: "none",
+    indicatorLabel: null,
+    isUnread: false,
+    isPinned: false,
+    isArchived: false,
+    environment: null,
+    host: null,
+    createdAt: 1,
+    updatedAt: 1,
+    lastReadAt: null,
+    latestAttentionAt: 0,
     ...overrides,
   };
 }
-const tree = (threads: PluginSidebarThread[], active: ReadonlySet<string> = new Set()) => childThreadTree("root", indexThreadChildren(threads), buildThreadWorkIndex(threads, active));
+const tree = (threads: PluginSidebarThread[], active: ReadonlySet<string> = new Set()) =>
+  childThreadTree("root", indexThreadChildren(threads), buildThreadWorkIndex(threads, active));
 
 describe("Child thread tree", () => {
   it("counts distinct active, waiting and unread descendants, not rolled-up parents", () => {
@@ -43,7 +64,9 @@ describe("Child thread tree", () => {
   it("does not include archived subtrees, unrelated threads, duplicates or the root itself", () => {
     const child = thread("child", "root", { isUnread: true });
     const result = tree([
-      thread("root", null), child, child,
+      thread("root", null),
+      child,
+      child,
       thread("archived", "root", { isArchived: true, isUnread: true }),
       thread("hidden_under_archive", "archived", { isUnread: true }),
       thread("other", "unrelated", { isUnread: true }),

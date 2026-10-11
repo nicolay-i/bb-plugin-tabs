@@ -14,9 +14,7 @@ export interface RenameTabTarget {
 
 export function normalizeTabTitle(value: string): string | null {
   const title = value.trim();
-  return title.length > 0 && title.length <= MAX_THREAD_TITLE_LENGTH
-    ? title
-    : null;
+  return title.length > 0 && title.length <= MAX_THREAD_TITLE_LENGTH ? title : null;
 }
 
 interface TabActionsContextMenuProps {
@@ -24,6 +22,8 @@ interface TabActionsContextMenuProps {
   locale?: PluginLocale;
   entry: TabEntry;
   isPinned: boolean;
+  isFavorite: boolean;
+  onSetFavorite: (entry: TabEntry, favorite: boolean) => void;
   onArchive: (entry: TabEntry) => void;
   onCopyLink: (entry: TabEntry) => void;
   onMarkUnread: (entry: TabEntry) => void;
@@ -37,6 +37,8 @@ export function TabActionsContextMenu({
   children,
   entry,
   isPinned,
+  isFavorite,
+  onSetFavorite,
   onArchive,
   onCopyLink,
   onMarkUnread,
@@ -75,6 +77,13 @@ export function TabActionsContextMenu({
           >
             <Icon name={isPinned ? "PinOff" : "Pin"} aria-hidden />
             {isPinned ? t("Unpin") : t("Pin")}
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className="bb-chat-tab-context-menu-item"
+            onSelect={() => onSetFavorite(entry, !isFavorite)}
+          >
+            <Icon name="Star" aria-hidden />
+            {isFavorite ? t("Remove from favorites") : t("Add to favorites")}
           </ContextMenu.Item>
           <ContextMenu.Item
             className="bb-chat-tab-context-menu-item"
@@ -162,9 +171,7 @@ export function RenameTabDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="bb-chat-tab-rename-overlay" />
         <Dialog.Content className="bb-chat-tab-rename-dialog" lang={locale}>
-          <Dialog.Title className="bb-chat-tab-rename-title">
-            {t("Rename chat")}
-          </Dialog.Title>
+          <Dialog.Title className="bb-chat-tab-rename-title">{t("Rename chat")}</Dialog.Title>
           <Dialog.Description className="bb-chat-tab-rename-description">
             {t("The new title will also be shown in the BB sidebar.")}
           </Dialog.Description>

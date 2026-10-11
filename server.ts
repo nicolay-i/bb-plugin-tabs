@@ -12,7 +12,6 @@ import {
   visitTabHistory,
   type TabHistoryAvailability,
   type TabHistoryState,
-  type TabHistoryUnavailableReason,
 } from "./lib/tab-history";
 import {
   addTabCandidates,
@@ -23,6 +22,7 @@ import {
   normalizeTabsState,
   openTabCandidate,
   setTabPinned,
+  setTabFavorite,
   tabsStatesEqual,
   TABS_CHANGED_CHANNEL,
   type TabCandidate,
@@ -46,6 +46,7 @@ const tabCandidateSchema = z
     threadId: z.string().trim().min(1).max(200),
     projectId: z.string().trim().min(1).max(200),
     title: z.string().trim().min(1).max(300),
+    parentThreadId: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 
@@ -79,6 +80,7 @@ const tabsStateSchema = z
   .object({
     version: z.literal(1),
     entries: z.array(tabEntrySchema).max(100),
+    favorites: z.array(tabEntrySchema).max(100).optional(),
   })
   .strict();
 
@@ -95,31 +97,47 @@ const workflowActiveRunsResponseSchema = z
 
 export const rpcContract = defineRpcContract({
   tabs_settings_update: {
-    input: z.object({
-      language: z.enum(LANGUAGE_OPTIONS).optional(),
-      searchArchivedChats: z.boolean().optional(),
-      showPinnedTabsList: z.boolean().optional(),
-      showTabsOnDesktop: z.boolean().optional(),
-      showTabsOnMobile: z.boolean().optional(),
-      showTabListButton: z.boolean().optional(),
-      showTabListPinned: z.boolean().optional(),
-      showTabListHistory: z.boolean().optional(),
-      tabListButtonPosition: z.enum(["Left", "Right"]).optional(),
-    }).strict().refine((values) => Object.keys(values).length > 0, "No settings supplied"),
-    output: z.object({ values: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])) }).strict(),
+    input: z
+      .object({
+        language: z.enum(LANGUAGE_OPTIONS).optional(),
+        searchArchivedChats: z.boolean().optional(),
+        showPinnedTabsList: z.boolean().optional(),
+        showTabsOnDesktop: z.boolean().optional(),
+        showTabsOnMobile: z.boolean().optional(),
+        showTabListButton: z.boolean().optional(),
+        showTabListPinned: z.boolean().optional(),
+        showTabListHistory: z.boolean().optional(),
+        tabListButtonPosition: z.enum(["Left", "Right"]).optional(),
+      })
+      .strict()
+      .refine((values) => Object.keys(values).length > 0, "No settings supplied"),
+    output: z
+      .object({ values: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])) })
+      .strict(),
   },
   tabs_search: {
-    input: z.object({ query: z.string().trim().min(1).max(300), includeArchived: z.boolean().optional() }).strict(),
-    output: z.object({ candidates: z.array(tabCandidateSchema.extend({ archived: z.boolean().optional(), projectName: z.string().optional() })).max(30) }).strict(),
+    input: z
+      .object({ query: z.string().trim().min(1).max(300), includeArchived: z.boolean().optional() })
+      .strict(),
+    output: z
+      .object({
+        candidates: z
+          .array(
+            tabCandidateSchema.extend({
+              archived: z.boolean().optional(),
+              projectName: z.string().optional(),
+            }),
+          )
+          .max(30),
+      })
+      .strict(),
   },
   tabs_list: {
     // The frontend also supplies descendants of open tabs, so durable work in a
     // nested chat can be folded into its parent.
     input: z
       .object({
-        workflowThreadIds: z
-          .array(z.string().trim().min(1).max(200))
-          .max(100),
+        workflowThreadIds: z.array(z.string().trim().min(1).max(200)).max(100),
       })
       .strict()
       .nullable(),
@@ -128,10 +146,7 @@ export const rpcContract = defineRpcContract({
         state: tabsStateSchema,
         // Optional preserves compatibility with app bundles already loaded when
         // the plugin reloads.
-        activeWorkflowThreadIds: z
-          .array(z.string().trim().min(1).max(200))
-          .max(100)
-          .optional(),
+        activeWorkflowThreadIds: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
         // Optional preserves compatibility with an app bundle loaded before
         // plugin-owned visit history was added.
         history: tabHistoryStateSchema.optional(),
@@ -141,10 +156,12 @@ export const rpcContract = defineRpcContract({
   /** Resolves the viewed chat when the sidebar snapshot omits it. */
   tabs_resolve_current: {
     input: z.object({ threadId: z.string().trim().min(1).max(200) }).strict(),
-    output: z.object({
-      candidate: tabCandidateSchema.nullable(),
-      createdAt: z.number().finite().nonnegative().optional(),
-    }).strict(),
+    output: z
+      .object({
+        candidate: tabCandidateSchema.nullable(),
+        createdAt: z.number().finite().nonnegative().optional(),
+      })
+      .strict(),
   },
   /** Updates the one preview tab from the latest active candidate. */
   tabs_sync_activity: {
@@ -168,16 +185,26 @@ export const rpcContract = defineRpcContract({
     output: z.object({ state: tabsStateSchema }).strict(),
   },
   tabs_set_pinned: {
+    input: z.object({ threadId: z.string().trim().min(1).max(200), pinned: z.boolean() }).strict(),
+    output: z.object({ state: tabsStateSchema }).strict(),
+  },
+  tabs_set_favorite: {
     input: z
-      .object({ threadId: z.string().trim().min(1).max(200), pinned: z.boolean() })
-      .strict(),
+      .object({
+        threadId: z.string().trim().min(1).max(200),
+        favorite: z.boolean(),
+        candidate: tabCandidateSchema.optional(),
+      })
+      .strict()
+      .refine(
+        (input) => input.candidate === undefined || input.candidate.threadId === input.threadId,
+        "Candidate must match threadId",
+      ),
     output: z.object({ state: tabsStateSchema }).strict(),
   },
   tabs_close: {
     input: z.object({ threadId: z.string().trim().min(1).max(200) }).strict(),
-    output: z
-      .object({ state: tabsStateSchema, removed: z.boolean() })
-      .strict(),
+    output: z.object({ state: tabsStateSchema, removed: z.boolean() }).strict(),
   },
   /** Moves two pinned tabs in their shared horizontal strip. */
   tabs_move: {
@@ -194,7 +221,10 @@ export default async function plugin(bb: BbPluginApi) {
   const settingsHandle = bb.settings.define({
     ...SETTINGS,
     language: { ...SETTINGS.language, options: [...SETTINGS.language.options] },
-    tabListButtonPosition: { ...SETTINGS.tabListButtonPosition, options: [...SETTINGS.tabListButtonPosition.options] },
+    tabListButtonPosition: {
+      ...SETTINGS.tabListButtonPosition,
+      options: [...SETTINGS.tabListButtonPosition.options],
+    },
   });
 
   type TabsSnapshot = {
@@ -213,18 +243,13 @@ export default async function plugin(bb: BbPluginApi) {
     }>
   >();
   const activitySyncInFlight = new Map<string, Promise<{ state: TabsState }>>();
-  const historyVisitInFlight = new Map<
-    string,
-    Promise<{ history: TabHistoryState }>
-  >();
+  const historyVisitInFlight = new Map<string, Promise<{ history: TabHistoryState }>>();
   const workflowStatusInFlight = new Map<string, Promise<boolean>>();
   // An ID is reconciled once per plugin generation; lifecycle events deliver
   // subsequent changes. This adds no polling to tabs_list.
   const threadAvailabilityById = new Map<string, TabHistoryAvailability>();
-  const threadAvailabilityInFlight = new Map<
-    string,
-    Promise<TabHistoryAvailability | undefined>
-  >();
+  const threadParentIdsById = new Map<string, string | null>();
+  const threadAvailabilityInFlight = new Map<string, Promise<TabHistoryAvailability | undefined>>();
   const threadAvailabilityRetryAt = new Map<string, number>();
 
   async function readState(): Promise<TabsState> {
@@ -235,7 +260,9 @@ export default async function plugin(bb: BbPluginApi) {
   async function readClosedThreadIds(): Promise<string[]> {
     const stored = await bb.storage.kv.get<unknown>(CLOSED_THREADS_KEY);
     return Array.isArray(stored)
-      ? [...new Set(stored.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(-100)
+      ? [
+          ...new Set(stored.filter((id): id is string => typeof id === "string" && id.length > 0)),
+        ].slice(-100)
       : [];
   }
 
@@ -264,9 +291,7 @@ export default async function plugin(bb: BbPluginApi) {
         input: { threadId },
         outputSchema: workflowActiveRunsResponseSchema,
       });
-      return result.runs.some(
-        (run) => run.status === "queued" || run.status === "running",
-      );
+      return result.runs.some((run) => run.status === "queued" || run.status === "running");
     })();
     workflowStatusInFlight.set(threadId, operation);
     try {
@@ -290,10 +315,7 @@ export default async function plugin(bb: BbPluginApi) {
     if (Date.now() < workflowRpcRetryAt) return [];
 
     const threadIds = [
-      ...new Set([
-        ...entries.map((entry) => entry.threadId),
-        ...additionalThreadIds,
-      ]),
+      ...new Set([...entries.map((entry) => entry.threadId), ...additionalThreadIds]),
     ].slice(0, 100);
     const activeThreadIds = new Set<string>();
     let nextIndex = 0;
@@ -317,9 +339,8 @@ export default async function plugin(bb: BbPluginApi) {
     };
 
     await Promise.all(
-      Array.from(
-        { length: Math.min(MAX_WORKFLOW_RPC_CONCURRENCY, threadIds.length) },
-        () => worker(),
+      Array.from({ length: Math.min(MAX_WORKFLOW_RPC_CONCURRENCY, threadIds.length) }, () =>
+        worker(),
       ),
     );
 
@@ -341,9 +362,7 @@ export default async function plugin(bb: BbPluginApi) {
    * archive → unarchive must not leave an old tombstone from independently
    * scheduled KV mutations.
    */
-  function mutateSnapshots(
-    apply: (current: TabsSnapshot) => TabsSnapshot,
-  ): Promise<TabsSnapshot> {
+  function mutateSnapshots(apply: (current: TabsSnapshot) => TabsSnapshot): Promise<TabsSnapshot> {
     const operation = mutationTail.then(async () => {
       const [state, history] = await Promise.all([readState(), readHistory()]);
       const current: TabsSnapshot = { state, history };
@@ -392,16 +411,22 @@ export default async function plugin(bb: BbPluginApi) {
 
   function mutate(
     apply: (current: TabsState, closedIds: readonly string[]) => TabsState,
-    updateClosedIds?: (current: TabsState, next: TabsState, closedIds: readonly string[]) => string[],
+    updateClosedIds?: (
+      current: TabsState,
+      next: TabsState,
+      closedIds: readonly string[],
+    ) => string[],
   ): Promise<TabsState> {
     const operation = mutationTail.then(async () => {
       const current = await readState();
       const closedIds = updateClosedIds === undefined ? [] : await readClosedThreadIds();
       const next = normalizeTabsState(apply(current, closedIds));
       const updatedClosedIds = updateClosedIds?.(current, next, closedIds);
-      if (updatedClosedIds !== undefined &&
-          (updatedClosedIds.length !== closedIds.length ||
-            updatedClosedIds.some((id, index) => id !== closedIds[index]))) {
+      if (
+        updatedClosedIds !== undefined &&
+        (updatedClosedIds.length !== closedIds.length ||
+          updatedClosedIds.some((id, index) => id !== closedIds[index]))
+      ) {
         await bb.storage.kv.set(CLOSED_THREADS_KEY, updatedClosedIds);
       }
       if (!tabsStatesEqual(current, next)) {
@@ -424,11 +449,7 @@ export default async function plugin(bb: BbPluginApi) {
       status?: unknown;
       statusCode?: unknown;
     };
-    return (
-      error.code === "not_found" ||
-      error.status === 404 ||
-      error.statusCode === 404
-    );
+    return error.code === "not_found" || error.status === 404 || error.statusCode === 404;
   }
 
   /**
@@ -451,12 +472,9 @@ export default async function plugin(bb: BbPluginApi) {
     const operation = (async () => {
       try {
         const thread = await bb.sdk.threads.get({ threadId });
+        threadParentIdsById.set(threadId, thread.parentThreadId);
         const availability: TabHistoryAvailability =
-          thread.deletedAt !== null
-            ? "deleted"
-            : thread.archivedAt !== null
-              ? "archived"
-              : null;
+          thread.deletedAt !== null ? "deleted" : thread.archivedAt !== null ? "archived" : null;
         threadAvailabilityById.set(threadId, availability);
         threadAvailabilityRetryAt.delete(threadId);
         return availability;
@@ -468,10 +486,7 @@ export default async function plugin(bb: BbPluginApi) {
         }
         // Do not hide a chat after a transient or permission failure. Retry is
         // bounded so tabs_list does not become a frequent source of log errors.
-        threadAvailabilityRetryAt.set(
-          threadId,
-          Date.now() + THREAD_AVAILABILITY_RETRY_MS,
-        );
+        threadAvailabilityRetryAt.set(threadId, Date.now() + THREAD_AVAILABILITY_RETRY_MS);
         return undefined;
       }
     })();
@@ -514,14 +529,13 @@ export default async function plugin(bb: BbPluginApi) {
   }
 
   /**
-   * On cold start, reconcile no more than 200 plugin-owned IDs (100 tabs plus
-   * 100 history records). The result remains cached until a lifecycle event.
+   * On cold start, reconcile no more than 300 plugin-owned IDs (100 tabs,
+   * 100 favorites, 100 history records), cached until a lifecycle event.
    */
-  async function reconcileTrackedThreadAvailability(
-    snapshot: TabsSnapshot,
-  ): Promise<TabsSnapshot> {
+  async function reconcileTrackedThreadAvailability(snapshot: TabsSnapshot): Promise<TabsSnapshot> {
     const availability = await resolveTrackedThreadAvailability([
       ...snapshot.state.entries.map((entry) => entry.threadId),
+      ...(snapshot.state.favorites ?? []).map((entry) => entry.threadId),
       ...snapshot.history.entries.map((entry) => entry.threadId),
     ]);
     if (availability.size === 0) return snapshot;
@@ -529,9 +543,24 @@ export default async function plugin(bb: BbPluginApi) {
     const unavailableThreadIds = [...availability]
       .filter(([, status]) => status !== null)
       .map(([threadId]) => threadId);
+    const withKnownParent = <T extends TabCandidate>(entry: T): T => {
+      const parentThreadId = threadParentIdsById.get(entry.threadId);
+      return parentThreadId ? { ...entry, parentThreadId } : entry;
+    };
     return mutateSnapshots(({ state, history }) => ({
-      state: closeTabs(state, unavailableThreadIds),
-      history: setTabHistoryAvailability(history, availability),
+      state: closeTabs(
+        {
+          ...state,
+          entries: state.entries.map(withKnownParent),
+          ...(state.favorites ? { favorites: state.favorites.map(withKnownParent) } : {}),
+        },
+        unavailableThreadIds,
+        true,
+      ),
+      history: setTabHistoryAvailability(
+        { ...history, entries: history.entries.map(withKnownParent) },
+        availability,
+      ),
     }));
   }
 
@@ -541,13 +570,11 @@ export default async function plugin(bb: BbPluginApi) {
   ): Promise<void> {
     threadAvailabilityById.set(threadId, availability);
     threadAvailabilityRetryAt.delete(threadId);
-    const updates = new Map<string, TabHistoryAvailability>([
-      [threadId, availability],
-    ]);
+    const updates = new Map<string, TabHistoryAvailability>([[threadId, availability]]);
     await mutateSnapshots(({ state, history }) => ({
       // Unarchive makes the history entry clickable again, but deliberately
       // does not restore its old pin or preview: archive already closed state.
-      state: availability === null ? state : closeTabs(state, [threadId]),
+      state: availability === null ? state : closeTabs(state, [threadId], true),
       history: setTabHistoryAvailability(history, updates),
     }));
   }
@@ -582,13 +609,29 @@ export default async function plugin(bb: BbPluginApi) {
       const pageSize = 200;
       for (const archived of includeArchived ? [false, true] : [false]) {
         for (let offset = 0; ; offset += pageSize) {
-          const page = await bb.sdk.threads.list({ archived, includeHidden: false, limit: pageSize, offset });
+          const page = await bb.sdk.threads.list({
+            archived,
+            includeHidden: false,
+            limit: pageSize,
+            offset,
+          });
           for (const thread of page) {
-            if ((!includeArchived && thread.archivedAt !== null) || thread.deletedAt !== null || thread.visibility === "hidden" || seen.has(thread.id)) continue;
+            if (
+              (!includeArchived && thread.archivedAt !== null) ||
+              thread.deletedAt !== null ||
+              thread.visibility === "hidden" ||
+              seen.has(thread.id)
+            )
+              continue;
             seen.add(thread.id);
-            candidates.push({ threadId: thread.id, projectId: thread.projectId,
+            candidates.push({
+              threadId: thread.id,
+              projectId: thread.projectId,
               title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
-              ...(projectNames.has(thread.projectId) ? { projectName: projectNames.get(thread.projectId) } : {}),
+              ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
+              ...(projectNames.has(thread.projectId)
+                ? { projectName: projectNames.get(thread.projectId) }
+                : {}),
               ...(thread.archivedAt !== null ? { archived: true } : {}),
             });
           }
@@ -599,20 +642,25 @@ export default async function plugin(bb: BbPluginApi) {
       return candidates;
     })();
     searchInFlight.set(includeArchived, operation);
-    try { return await operation; }
-    finally { searchInFlight.delete(includeArchived); }
+    try {
+      return await operation;
+    } finally {
+      searchInFlight.delete(includeArchived);
+    }
   };
 
   bb.rpc.register(rpcContract, {
-    tabs_settings_update: async (values) => ({ values: await settingsHandle.experimental_set(values) }),
-    tabs_search: async ({ query, includeArchived }) => ({ candidates: fuzzyChatSearch(await searchCandidates(includeArchived === true), query) }),
+    tabs_settings_update: async (values) => ({
+      values: await settingsHandle.experimental_set(values),
+    }),
+    tabs_search: async ({ query, includeArchived }) => ({
+      candidates: fuzzyChatSearch(await searchCandidates(includeArchived === true), query),
+    }),
     tabs_list: async (input) => {
       // Multiple renderer surfaces or Strict Mode can request the same snapshot
       // together. Avoid duplicating KV reads and up to 100 nested workflow RPCs;
       // mutations and realtime still invalidate clients.
-      const requestKey = [...new Set(input?.workflowThreadIds ?? [])]
-        .sort()
-        .join("\u0000");
+      const requestKey = [...new Set(input?.workflowThreadIds ?? [])].sort().join("\u0000");
       const existing = tabsListInFlight.get(requestKey);
       if (existing !== undefined) return existing;
 
@@ -624,7 +672,7 @@ export default async function plugin(bb: BbPluginApi) {
           await readSnapshotAfterPendingMutations(),
         );
         const activeWorkflowIds = await activeWorkflowThreadIds(
-          snapshot.state.entries,
+          [...snapshot.state.entries, ...(snapshot.state.favorites ?? [])],
           input?.workflowThreadIds,
         );
         return {
@@ -646,13 +694,15 @@ export default async function plugin(bb: BbPluginApi) {
       const thread = await bb.sdk.threads.get({ threadId });
       return {
         createdAt: thread.createdAt,
-        candidate: thread.archivedAt !== null || thread.deletedAt !== null
-          ? null
-          : {
-              threadId: thread.id,
-              projectId: thread.projectId,
-              title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
-            },
+        candidate:
+          thread.archivedAt !== null || thread.deletedAt !== null
+            ? null
+            : {
+                threadId: thread.id,
+                projectId: thread.projectId,
+                title: thread.title?.trim() || thread.titleFallback?.trim() || "Untitled",
+                ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
+              },
       };
     },
     tabs_sync_activity: async ({ threads, reopen }) => {
@@ -667,14 +717,19 @@ export default async function plugin(bb: BbPluginApi) {
         state: await mutate(
           (current, closedIds) => {
             const candidate = threads.at(-1);
-            if (candidate !== undefined && reopen !== true && closedIds.includes(candidate.threadId)) {
+            if (
+              candidate !== undefined &&
+              reopen !== true &&
+              closedIds.includes(candidate.threadId)
+            ) {
               return current;
             }
             return addTabCandidates(current, threads as TabCandidate[], Date.now());
           },
-          (_current, _next, closedIds) => reopen === true
-            ? closedIds.filter((id) => id !== threads.at(-1)?.threadId)
-            : [...closedIds],
+          (_current, _next, closedIds) =>
+            reopen === true
+              ? closedIds.filter((id) => id !== threads.at(-1)?.threadId)
+              : [...closedIds],
         ),
       }))();
       activitySyncInFlight.set(requestKey, operation);
@@ -714,6 +769,9 @@ export default async function plugin(bb: BbPluginApi) {
     tabs_set_pinned: async ({ threadId, pinned }) => ({
       state: await mutate((current) => setTabPinned(current, threadId, pinned)),
     }),
+    tabs_set_favorite: async ({ threadId, favorite, candidate }) => ({
+      state: await mutate((current) => setTabFavorite(current, threadId, favorite, candidate)),
+    }),
     tabs_close: async ({ threadId }) => {
       let removed = false;
       const state = await mutate(
@@ -722,9 +780,10 @@ export default async function plugin(bb: BbPluginApi) {
           removed = next.entries.length !== current.entries.length;
           return next;
         },
-        (_current, _next, closedIds) => removed
-          ? [...closedIds.filter((id) => id !== threadId), threadId].slice(-100)
-          : [...closedIds],
+        (_current, _next, closedIds) =>
+          removed
+            ? [...closedIds.filter((id) => id !== threadId), threadId].slice(-100)
+            : [...closedIds],
       );
       return { state, removed };
     },

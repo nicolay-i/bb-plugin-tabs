@@ -7,9 +7,51 @@ import {
   normalizeTabsState,
   openTabCandidate,
   setTabPinned,
+  setTabFavorite,
+  tabsStatesEqual,
+  MAX_TAB_ENTRIES,
 } from "./tabs-model";
 
 describe("Chat Tabs", () => {
+  it("normalizes favorite snapshots without treating them as open previews", () => {
+    const entry = {
+      threadId: "thr_saved",
+      projectId: "proj_api",
+      title: "Saved",
+      pinned: false,
+      openedAt: 1,
+    };
+    const state = normalizeTabsState({
+      version: 1,
+      entries: [],
+      favorites: [entry, null, { ...entry, title: "Latest" }, { threadId: "" }],
+    });
+    expect(state.entries).toEqual([]);
+    expect(state.favorites).toEqual([{ ...entry, title: "Latest" }]);
+    expect(tabsStatesEqual(state, { version: 1, entries: [] })).toBe(false);
+    expect(tabsStatesEqual(state, normalizeTabsState(state))).toBe(true);
+    expect(closeTabs(state, [entry.threadId]).favorites).toEqual(state.favorites);
+    expect(normalizeTabsState(closeTabs(state, [entry.threadId], true)).favorites).toBeUndefined();
+  });
+
+  it("rejects unknown favorites and overflow without evicting saved chats", () => {
+    const entries = Array.from({ length: MAX_TAB_ENTRIES }, (_, index) => ({
+      threadId: `thr_${index}`,
+      projectId: "proj_api",
+      title: "Saved",
+      pinned: true,
+      openedAt: index,
+    }));
+    const state = {
+      version: 1 as const,
+      entries: [{ ...entries[0]!, threadId: "thr_new" }],
+      favorites: entries,
+    };
+    expect(() => setTabFavorite(state, "thr_new", true)).toThrow("100 chats");
+    expect(() => setTabFavorite(state, "thr_missing", true)).toThrow("Open the chat");
+    expect(state.favorites).toHaveLength(MAX_TAB_ENTRIES);
+  });
+
   it("handles behavior 1", () => {
     const state = normalizeTabsState({
       version: 1,
@@ -71,10 +113,7 @@ describe("Chat Tabs", () => {
       ],
     });
 
-    expect(state.entries.map((entry) => entry.threadId)).toEqual([
-      "thr_fixed",
-      "thr_new",
-    ]);
+    expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_fixed", "thr_new"]);
   });
 
   it("handles behavior 3", () => {
@@ -215,13 +254,9 @@ describe("Chat Tabs", () => {
       "thr_preview",
       "thr_b",
     ]);
+    expect(movePinnedTab(state, "thr_a", "thr_preview", "before")).toEqual(state);
     expect(
-      movePinnedTab(state, "thr_a", "thr_preview", "before"),
-    ).toEqual(state);
-    expect(
-      movePinnedTab(state, "thr_a", "thr_other", "after").entries.map(
-        (entry) => entry.threadId,
-      ),
+      movePinnedTab(state, "thr_a", "thr_other", "after").entries.map((entry) => entry.threadId),
     ).toEqual(["thr_other", "thr_a", "thr_b", "thr_preview", "thr_c"]);
   });
 

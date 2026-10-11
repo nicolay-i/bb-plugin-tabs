@@ -46,10 +46,14 @@ describe("Chat Tabs", () => {
       ],
     };
 
-    const visited = visitTabHistory(history, {
-      ...candidate("second"),
-      title: "Updated second",
-    }, 40);
+    const visited = visitTabHistory(
+      history,
+      {
+        ...candidate("second"),
+        title: "Updated second",
+      },
+      40,
+    );
 
     expect(visited.entries).toEqual([
       {
@@ -60,9 +64,7 @@ describe("Chat Tabs", () => {
       },
       { ...candidate("first"), visitedAt: 30 },
     ]);
-    expect(tabHistoriesEqual(visited, { ...visited, entries: [...visited.entries] })).toBe(
-      true,
-    );
+    expect(tabHistoriesEqual(visited, { ...visited, entries: [...visited.entries] })).toBe(true);
   });
 
   it("handles behavior 3", () => {
@@ -94,16 +96,11 @@ describe("Chat Tabs", () => {
       expect.not.objectContaining({ unavailableReason: expect.anything() }),
     ]);
 
-    const restored = setTabHistoryAvailability(
-      marked,
-      new Map([["thr_archive", null]]),
-    );
+    const restored = setTabHistoryAvailability(marked, new Map([["thr_archive", null]]));
     expect(restored.entries[0]).toEqual(
       expect.not.objectContaining({ unavailableReason: expect.anything() }),
     );
-    expect(
-      visitTabHistory(marked, candidate("delete"), 40).entries[0],
-    ).toEqual(
+    expect(visitTabHistory(marked, candidate("delete"), 40).entries[0]).toEqual(
       expect.not.objectContaining({ unavailableReason: expect.anything() }),
     );
   });

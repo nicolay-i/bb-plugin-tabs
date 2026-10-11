@@ -1,45 +1,20 @@
 :root {
-
   --bb-chat-tabs-strip-height: 48px;
   --bb-chat-tabs-tab-height: 30px;
   --bb-chat-tabs-top-scrollbar-height: 0.625rem;
 
-  --bb-chat-tabs-active-background: color-mix(
-    in oklch,
-    var(--foreground) 20%,
-    var(--background)
-  );
-  --bb-chat-tabs-active-border: color-mix(
-    in oklch,
-    var(--foreground) 30%,
-    var(--background)
-  );
+  --bb-chat-tabs-active-background: color-mix(in oklch, var(--foreground) 20%, var(--background));
+  --bb-chat-tabs-active-border: color-mix(in oklch, var(--foreground) 30%, var(--background));
   --bb-chat-tabs-active-foreground: var(--foreground);
 
   --bb-chat-tabs-status-working: var(--foreground);
-  --bb-chat-tabs-status-working-dot: color-mix(
-    in oklch,
-    var(--primary) 45%,
-    var(--foreground)
-  );
-  --bb-chat-tabs-status-working-halo: color-mix(
-    in oklch,
-    var(--primary) 20%,
-    transparent
-  );
+  --bb-chat-tabs-status-working-dot: color-mix(in oklch, var(--primary) 45%, var(--foreground));
+  --bb-chat-tabs-status-working-halo: color-mix(in oklch, var(--primary) 20%, transparent);
   --bb-chat-tabs-status-unread: var(--foreground);
   --bb-chat-tabs-status-waiting: color-mix(in oklch, var(--primary) 42%, var(--foreground));
   --bb-chat-tabs-status-waiting-bg: color-mix(in oklch, var(--primary) 20%, var(--background));
-  --bb-chat-tabs-scrollbar-track: color-mix(
-    in oklch,
-    var(--muted) 86%,
-    var(--background)
-  );
-  --bb-chat-tabs-scrollbar-thumb: color-mix(
-    in oklch,
-    var(--muted-foreground) 52%,
-    var(--muted)
-  );
+  --bb-chat-tabs-scrollbar-track: color-mix(in oklch, var(--muted) 86%, var(--background));
+  --bb-chat-tabs-scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 52%, var(--muted));
   --bb-chat-tabs-scrollbar-thumb-hover: color-mix(
     in oklch,
     var(--foreground) 54%,
@@ -47,32 +22,20 @@
   );
 }
 
-
 .dark {
-  --bb-chat-tabs-active-background: color-mix(
-    in oklch,
-    var(--foreground) 12%,
-    var(--background)
-  );
-  --bb-chat-tabs-active-border: color-mix(
-    in oklch,
-    var(--foreground) 22%,
-    var(--background)
-  );
+  --bb-chat-tabs-active-background: color-mix(in oklch, var(--foreground) 12%, var(--background));
+  --bb-chat-tabs-active-border: color-mix(in oklch, var(--foreground) 22%, var(--background));
 }
-
 
 #bb-chat-tabs-overlay[data-row-count="1"],
 body:has(#bb-chat-tabs-overlay[data-row-count="1"]) {
   --bb-chat-tabs-strip-height: 48px;
 }
 
-
 #bb-chat-tabs-overlay[data-scrollable="false"],
 body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   --bb-chat-tabs-strip-height: 38px;
 }
-
 
 #bb-chat-tabs-overlay {
   position: fixed;
@@ -87,7 +50,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 #bb-chat-tabs-overlay[data-docked="false"] {
   display: none;
 }
-
 
 @supports (left: anchor(left)) {
   [data-sidebar="inset"] {
@@ -105,8 +67,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
     anchor-name: --bb-chat-tabs-thread-window;
   }
 
-  body:has([data-thread-window]:not(aside [data-thread-window]))
-    #bb-chat-tabs-overlay {
+  body:has([data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay {
     position-anchor: --bb-chat-tabs-thread-window;
   }
 }
@@ -121,7 +82,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   background: color-mix(in oklch, var(--background) 94%, var(--muted));
 }
 
-
 .bb-chat-tabs-top-scrollbar {
   box-sizing: border-box;
   width: 100%;
@@ -131,8 +91,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   overflow-y: hidden;
   pointer-events: auto;
   overscroll-behavior-x: contain;
-  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb)
-    var(--bb-chat-tabs-scrollbar-track);
+  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb) var(--bb-chat-tabs-scrollbar-track);
   scrollbar-width: thin;
 }
 
@@ -146,14 +105,12 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   height: 1px;
 }
 
-
 .bb-chat-tabs-content-row {
   display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
 }
-
 
 .bb-chat-tabs-list-switcher {
   display: flex;
@@ -162,7 +119,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   align-items: center;
   padding: 0.25rem 0 0.25rem 0.5rem;
 }
-
 
 .bb-chat-tabs-list-switcher[data-position="right"] {
   padding: 0.25rem 0.5rem 0.25rem 0;
@@ -327,7 +283,10 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 
 .bb-chat-tabs-list-menu,
 .bb-chat-tabs-new-menu {
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin, var(--radix-popover-content-transform-origin, top center));
+  transform-origin: var(
+    --radix-dropdown-menu-content-transform-origin,
+    var(--radix-popover-content-transform-origin, top center)
+  );
 }
 
 .bb-chat-tabs-list-menu[data-state="open"],
@@ -341,13 +300,25 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 }
 
 @keyframes bb-chat-tabs-menu-in {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes bb-chat-tabs-menu-out {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(-3px) scale(0.98); }
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -361,13 +332,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   z-index: 100;
   width: min(20rem, calc(100vw - 1rem));
 
-  max-height: min(
-    44rem,
-    var(
-      --radix-dropdown-menu-content-available-height,
-      calc(100dvh - 1rem)
-    )
-  );
+  max-height: min(44rem, var(--radix-dropdown-menu-content-available-height, calc(100dvh - 1rem)));
   overflow-x: hidden;
   overflow-y: auto;
   padding: 0.25rem;
@@ -379,8 +344,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
     0 0.5rem 1rem -0.375rem color-mix(in oklch, var(--foreground) 24%, transparent),
     0 0.125rem 0.25rem -0.125rem color-mix(in oklch, var(--foreground) 12%, transparent);
   outline: none;
-  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb)
-    var(--bb-chat-tabs-scrollbar-track);
+  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb) var(--bb-chat-tabs-scrollbar-track);
   scrollbar-width: thin;
 }
 
@@ -444,7 +408,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   line-height: 0.875rem;
 }
 
-
 .bb-chat-tabs-list-menu-history-page-separator {
   height: 1px;
   margin: 0.375rem 0.5rem;
@@ -471,7 +434,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   background: var(--muted);
 }
 
-
 .bb-chat-tabs-list-menu-item[data-disabled] {
   color: var(--muted-foreground);
   background: transparent;
@@ -483,13 +445,28 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   background: transparent;
 }
 
+.bb-chat-tabs-subthread-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.1875rem;
+  color: var(--muted-foreground);
+  font-size: 0.625rem;
+  line-height: 0.875rem;
+  white-space: nowrap;
+}
+
+.bb-chat-tabs-subthread-badge svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
 .bb-chat-tabs-list-menu-copy {
   display: grid;
   min-width: 0;
   flex: 1 1 auto;
   gap: 0.125rem;
 }
-
 
 .bb-chat-tabs-list-menu-meta {
   display: flex;
@@ -557,8 +534,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   color: var(--bb-chat-tabs-status-working);
 }
 
-.bb-chat-tabs-list-menu-status[data-status="working"]
-  .bb-chat-tabs-list-menu-status-dot {
+.bb-chat-tabs-list-menu-status[data-status="working"] .bb-chat-tabs-list-menu-status-dot {
   background: var(--bb-chat-tabs-status-working-dot);
   box-shadow: 0 0 0 2px var(--bb-chat-tabs-status-working-halo);
 }
@@ -567,8 +543,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   color: var(--bb-chat-tabs-status-waiting);
 }
 
-.bb-chat-tabs-list-menu-status[data-status="waiting"]
-  .bb-chat-tabs-list-menu-status-dot {
+.bb-chat-tabs-list-menu-status[data-status="waiting"] .bb-chat-tabs-list-menu-status-dot {
   background: var(--bb-chat-tabs-status-waiting);
 }
 
@@ -576,8 +551,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   color: var(--bb-chat-tabs-status-unread);
 }
 
-.bb-chat-tabs-list-menu-status[data-status="unread"]
-  .bb-chat-tabs-list-menu-status-dot {
+.bb-chat-tabs-list-menu-status[data-status="unread"] .bb-chat-tabs-list-menu-status-dot {
   background: var(--bb-chat-tabs-status-unread);
 }
 
@@ -586,7 +560,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   height: 1rem;
   flex: 0 0 auto;
 }
-
 
 .bb-chat-tabs-list-menu-more {
   position: relative;
@@ -685,7 +658,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   display: none;
 }
 
-
 .bb-chat-tab {
   position: relative;
   display: flex;
@@ -703,11 +675,9 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   border-radius: 0.375rem;
 }
 
-
 .bb-chat-tab[data-dragging="true"] {
   opacity: 0.52;
 }
-
 
 .bb-chat-tab-drop-slot {
   position: relative;
@@ -719,7 +689,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 }
 
 .bb-chat-tabs-strip[data-dragging="true"] .bb-chat-tab-drop-slot {
-
   display: block;
   width: 0;
   flex: 0 0 0;
@@ -746,7 +715,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   content: "";
   pointer-events: none;
 }
-
 
 .bb-chat-tab[data-active="true"] {
   color: var(--bb-chat-tabs-active-foreground);
@@ -807,7 +775,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   font-style: italic;
 }
 
-
 .bb-chat-tab-title {
   cursor: pointer;
 }
@@ -831,11 +798,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 
 .bb-chat-tab[data-active="true"] .bb-chat-tab-inline-rename {
   color: var(--bb-chat-tabs-active-foreground);
-  background: color-mix(
-    in oklch,
-    var(--bb-chat-tabs-active-background) 72%,
-    var(--background)
-  );
+  background: color-mix(in oklch, var(--bb-chat-tabs-active-background) 72%, var(--background));
 }
 
 .bb-chat-tab-inline-rename:focus-visible {
@@ -872,18 +835,13 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 24%, transparent);
 }
 
-
 .bb-chat-tab-unread {
   width: 0.375rem;
   height: 0.375rem;
   flex: 0 0 auto;
   border-radius: 999px;
   background: var(--bb-chat-tabs-status-unread);
-  box-shadow: 0 0 0 2px color-mix(
-    in oklch,
-    var(--bb-chat-tabs-status-unread) 16%,
-    transparent
-  );
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--bb-chat-tabs-status-unread) 16%, transparent);
 }
 
 .bb-chat-tab[data-active="true"] .bb-chat-tab-unread {
@@ -910,20 +868,12 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 }
 
 .bb-chat-tab[data-active="true"] .bb-chat-tab-action {
-  color: color-mix(
-    in oklch,
-    var(--bb-chat-tabs-active-foreground) 72%,
-    transparent
-  );
+  color: color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 72%, transparent);
 }
 
 .bb-chat-tab[data-active="true"] .bb-chat-tab-action:hover {
   color: var(--bb-chat-tabs-active-foreground);
-  background: color-mix(
-    in oklch,
-    var(--bb-chat-tabs-active-foreground) 16%,
-    transparent
-  );
+  background: color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 16%, transparent);
 }
 
 .bb-chat-tabs-error {
@@ -933,7 +883,6 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   font-size: 0.75rem;
   white-space: nowrap;
 }
-
 
 section:has(
   > [data-bb-plugin-root][data-bb-plugin="tabs"]
@@ -953,8 +902,8 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
 }
 
 .bb-chat-tabs-homepage-pinned-heading {
-  margin: 0 0 0.5rem;
-  font-size: 0.875rem;
+  margin: 0 0 0.375rem;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
@@ -965,36 +914,99 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   line-height: 1.25rem;
 }
 
-
 .bb-chat-tabs-homepage-pinned-items {
   display: grid;
   max-height: 18rem;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 0.5rem;
   margin: 0;
   padding: 0 0.125rem 0.125rem 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb)
-    var(--bb-chat-tabs-scrollbar-track);
+  scrollbar-color: var(--bb-chat-tabs-scrollbar-thumb) var(--bb-chat-tabs-scrollbar-track);
   scrollbar-width: thin;
   list-style: none;
 }
 
 .bb-chat-tabs-homepage-pinned-item {
+  position: relative;
   min-width: 0;
+}
+
+.bb-chat-tabs-homepage-pinned-item:has(> .bb-chat-tabs-homepage-remove)
+  > .bb-chat-tabs-homepage-pinned-button {
+  padding-inline-end: 2.25rem;
+}
+
+.bb-chat-tabs-homepage-remove {
+  position: absolute;
+  inset-block-start: 0.25rem;
+  inset-inline-end: 0.25rem;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-homepage-remove svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+@media (pointer: coarse) {
+  .bb-chat-tabs-homepage-remove {
+    width: 2.75rem;
+    height: 2.75rem;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+  }
+
+  .bb-chat-tabs-homepage-pinned-item:has(> .bb-chat-tabs-homepage-remove)
+    > .bb-chat-tabs-homepage-pinned-button {
+    min-height: 2.75rem;
+    padding-inline-end: 3rem;
+  }
+}
+
+.bb-chat-tabs-homepage-remove:hover:not(:disabled) {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.bb-chat-tabs-homepage-remove:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -2px;
+}
+
+.bb-chat-tabs-homepage-remove[data-removed="true"] {
+  opacity: 0.5;
+}
+
+.bb-chat-tabs-homepage-remove[data-removed="true"]:hover {
+  opacity: 1;
+}
+
+.bb-chat-tabs-homepage-remove:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .bb-chat-tabs-homepage-pinned-button {
   display: grid;
   width: 100%;
   min-width: 0;
-  gap: 0.375rem;
-  padding: 0.625rem 0.75rem;
+  gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
   color: var(--foreground);
   background: color-mix(in oklch, var(--background) 96%, var(--muted));
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 0.375rem;
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -1016,7 +1028,6 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   gap: 0.125rem;
 }
 
-
 .bb-chat-tabs-homepage-pinned-meta {
   display: flex;
   min-width: 0;
@@ -1034,7 +1045,7 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
 
 .bb-chat-tabs-homepage-pinned-title {
   color: var(--foreground);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 500;
   line-height: 1rem;
 }
@@ -1095,7 +1106,6 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   background: var(--bb-chat-tabs-status-unread);
 }
 
-
 .bb-chat-tab-context-menu {
   z-index: 100;
   min-width: 7rem;
@@ -1106,10 +1116,8 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   box-shadow:
-    0 0.25rem 0.375rem -0.0625rem
-      color-mix(in oklch, var(--foreground) 10%, transparent),
-    0 0.125rem 0.25rem -0.125rem
-      color-mix(in oklch, var(--foreground) 10%, transparent);
+    0 0.25rem 0.375rem -0.0625rem color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 0.125rem 0.25rem -0.125rem color-mix(in oklch, var(--foreground) 10%, transparent);
   outline: none;
 }
 
@@ -1245,7 +1253,6 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   opacity: 0.6;
 }
 
-
 @media (min-width: 768px) and (pointer: fine) {
   body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary]))
     [data-testid="app-layout-content-shell"]
@@ -1255,14 +1262,12 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   }
 }
 
-
 @media (max-width: 767px), (pointer: coarse) {
   #bb-chat-tabs-overlay[data-docked="true"],
   body:has(#bb-chat-tabs-overlay[data-docked="true"]) {
     --bb-chat-tabs-strip-height: 3.5rem;
     --bb-chat-tabs-tab-height: 2.75rem;
   }
-
 
   #bb-chat-tabs-overlay[data-docked="true"] {
     z-index: 31;
@@ -1329,7 +1334,6 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
     margin-inline-end: 0.125rem;
   }
 
-
   .bb-chat-tab-drop-slot {
     display: none !important;
   }
@@ -1341,7 +1345,6 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
     padding-block-start: var(--bb-chat-tabs-strip-height);
   }
 
-
   body:has([data-sidebar-shelf="open"]) #bb-chat-tabs-overlay,
   body:has([data-panel-shelf="shelf"]) #bb-chat-tabs-overlay,
   body:has([data-panel-shelf="full"]) #bb-chat-tabs-overlay,
@@ -1352,9 +1355,7 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   }
 }
 
-
-body:has([inert] [data-thread-window]:not(aside [data-thread-window]))
-  #bb-chat-tabs-overlay {
+body:has([inert] [data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay {
   display: none;
 }
 

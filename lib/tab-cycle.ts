@@ -14,9 +14,7 @@ export function cycleTab<T extends CycleTab>(
   direction: TabCycleDirection,
 ): T | null {
   if (currentThreadId === null || tabs.length < 2) return null;
-  const currentIndex = tabs.findIndex(
-    (tab) => tab.threadId === currentThreadId,
-  );
+  const currentIndex = tabs.findIndex((tab) => tab.threadId === currentThreadId);
   if (currentIndex === -1) return null;
 
   const offset = direction === "next" ? 1 : -1;

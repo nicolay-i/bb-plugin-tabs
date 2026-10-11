@@ -37,13 +37,19 @@ describe("New chat switcher", () => {
     render(<NewChatSwitcher projects={projects} openNewThread={openNewThread} />);
     const trigger = screen.getByRole("button", { name: "New chat" });
     fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
-    await act(async () => { vi.advanceTimersByTime(299); });
+    await act(async () => {
+      vi.advanceTimersByTime(299);
+    });
     expect(screen.queryByRole("menu", { name: "Recent projects" })).toBeNull();
     fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
     expect(screen.queryByRole("menu", { name: "Recent projects" })).toBeNull();
     fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
     expect(screen.getByRole("menu", { name: "Recent projects" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Second project" }));
     expect(openNewThread).toHaveBeenCalledWith({ projectId: "p2", focusPrompt: true });
@@ -52,22 +58,32 @@ describe("New chat switcher", () => {
   it("shows fifteen projects and reveals the next page after 300ms or click", async () => {
     vi.useFakeTimers();
     const manyProjects = Array.from({ length: 33 }, (_, index) => ({
-      id: `project-${index}`, name: `Project ${index}`, isPersonal: false,
+      id: `project-${index}`,
+      name: `Project ${index}`,
+      isPersonal: false,
     }));
     render(<NewChatSwitcher projects={manyProjects} openNewThread={vi.fn()} />);
     const trigger = screen.getByRole("button", { name: "New chat" });
     fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
     expect(screen.getAllByRole("menuitem")).toHaveLength(16);
     const more = screen.getByRole("menuitem", { name: "Show 15 more projects" });
     fireEvent.pointerEnter(more, { pointerType: "mouse" });
-    await act(async () => { vi.advanceTimersByTime(299); });
+    await act(async () => {
+      vi.advanceTimersByTime(299);
+    });
     expect(screen.getAllByRole("menuitem")).toHaveLength(16);
     fireEvent.pointerLeave(more, { pointerType: "mouse", relatedTarget: screen.getByRole("menu") });
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
     expect(screen.getAllByRole("menuitem")).toHaveLength(16);
     fireEvent.pointerEnter(more, { pointerType: "mouse" });
-    await act(async () => { vi.advanceTimersByTime(300); });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
     expect(screen.getAllByRole("menuitem")).toHaveLength(31);
     fireEvent.click(screen.getByRole("menuitem", { name: "Show 3 more projects" }));
     expect(screen.getAllByRole("menuitem")).toHaveLength(33);
@@ -78,7 +94,9 @@ describe("New chat switcher", () => {
     render(<NewChatSwitcher projects={projects} openNewThread={vi.fn()} />);
     const trigger = screen.getByRole("button", { name: "New chat" });
     fireEvent.pointerEnter(trigger, { pointerType: "touch" });
-    await act(async () => { vi.advanceTimersByTime(400); });
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+    });
     expect(screen.queryByRole("menu", { name: "Recent projects" })).toBeNull();
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     expect(screen.getByRole("menu", { name: "Recent projects" })).toBeTruthy();
