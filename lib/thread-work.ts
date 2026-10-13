@@ -1,4 +1,15 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { z } from "zod";
+
+export const SIDECHAT_ACTIVITY_CHANGED_CHANNEL = "tabs-sidechat-activity-changed";
+export const sidechatActivitySchema = z
+  .object({
+    generation: z.number().int().nonnegative().safe().optional(),
+    revision: z.number().int().nonnegative().safe(),
+    sourceThreadIds: z.array(z.string().trim().min(1).max(200)).max(10_000),
+  })
+  .strict();
+export type SidechatActivity = z.infer<typeof sidechatActivitySchema>;
 
 const ACTIVE_INDICATORS = new Set([
   "workflow",
@@ -7,6 +18,7 @@ const ACTIVE_INDICATORS = new Set([
   "plan-mode",
   "goal",
   "runtime",
+  "working-draft",
 ]);
 
 export interface ThreadWorkIndex {
@@ -39,10 +51,12 @@ export function buildThreadWorkIndex(
   threads: readonly PluginSidebarThread[],
   /** Durable runs from the built-in workflows plugin can precede the sidebar. */
   workflowActiveThreadIds: ReadonlySet<string> = new Set<string>(),
+  /** Hidden sidechats are forks linked by sourceThreadId, not parentThreadId. */
+  sidechatSourceThreadIds: ReadonlySet<string> = new Set<string>(),
 ): ThreadWorkIndex {
   const threadsById = new Map(threads.map((thread) => [thread.id, thread]));
   const directlyWorkingThreadIds = new Set<string>();
-  const nestedWorkingAncestorIds = new Set<string>();
+  const nestedWorkingAncestorIds = new Set(sidechatSourceThreadIds);
   const directlyWaitingThreadIds = new Set<string>();
   const nestedWaitingAncestorIds = new Set<string>();
 
@@ -57,6 +71,11 @@ export function buildThreadWorkIndex(
       parentThreadId = parent.parentThreadId;
     }
   };
+
+  for (const id of sidechatSourceThreadIds) {
+    const source = threadsById.get(id);
+    if (source !== undefined) markAncestors(source, nestedWorkingAncestorIds);
+  }
 
   for (const thread of threads) {
     if (thread.hasPendingInteraction || thread.indicator === "waiting-for-input") {

@@ -18,6 +18,7 @@ synthetic demonstration data.
 
 ## Highlights
 
+- **Independent workspaces.** Switch between Work, Home, Other, or your own sets. Each has its own pinned tabs, order, preview, and favorites. Selection belongs to the current window; matching workspaces synchronize across windows. Switching restores that window’s last active tab in the set, or its first tab; an empty set opens New chat. The previously viewed chat is never inserted into the new set.
 - **15 interface languages.** Follow the BB page or browser language, or select
   a language explicitly. User-authored chat titles and project names stay unchanged.
 
@@ -26,7 +27,7 @@ synthetic demonstration data.
   have not pinned. Opening another unpinned chat replaces it; background work
   never opens a preview. Closing it stays closed across reloads and other windows
   until you explicitly open that chat again. Its italic title makes the temporary state clear.
-- **Pinned chats with a global manual order.** Double-click a preview tab to
+- **Pinned chats with a manual order per workspace.** Double-click a preview tab to
   pin it. Drag pinned tabs between projects in one shared horizontal sequence;
   the preview always remains last and is never draggable. Double-click a pinned
   tab title to rename it inline.
@@ -35,7 +36,9 @@ synthetic demonstration data.
   marker replaces the working dot. Its tooltip explains the pending input;
   chat lists and pinned cards show the full **Needs input** status. This also works for nested chats.
   Active workflows, background agents and commands, plan mode, goals, and
-  runtime activity have their own working indicator; calm chats have no dot.
+  runtime activity have their own working indicator. An idle main chat shows a
+  subdued grey dot while its sidechat is working; the main chat's own work keeps
+  the regular indicator. Calm chats have no dot.
 - **Explore subthreads from a tab.** A compact counter shows distinct descendants
   that are working, waiting for input, or unread. Hover or click it to see all
   available direct children; nested side menus reveal deeper descendants. Select
@@ -62,17 +65,64 @@ synthetic demonstration data.
   chat from tabs, pins, and the home list. A disabled history tombstone remains
   with an Archived or Deleted label. Unarchiving makes that history item
   clickable again but intentionally does not restore its old pin or preview.
+- **Reopen closed tabs.** `Ctrl+Shift+T` / `⌘⇧T` restores the last explicitly closed tab in the current workspace, including from New chat. Repeated presses undo older closes in that window; up to 100 records survive reload in session storage. Original order/pin is retained; a restored preview is pinned if another preview is already open, so no chat is displaced. Archived/deleted and already reopened chats are skipped; failed writes remain retryable. Browser-reserved shortcuts can only work when the browser forwards the key event to BB.
 - **Desktop and touch behavior.** Desktop supports drag and drop, horizontal
   mouse-wheel scrolling, a conditional top scrollbar, middle-click close,
   `Ctrl+Tab` / `Ctrl+Shift+Tab`, and `Ctrl+W` / `⌘W` in BB Desktop. Touch
   layouts keep a 44×44 target, native horizontal swipe, and explicit Close
   buttons instead of HTML drag and drop.
 - **Native-feeling actions.** The tab context menu offers Copy link, Mark as
-  unread, Pin/Unpin, Rename, and Archive. Links are absolute and retain a
+  unread, Pin/Unpin, Show in workspaces, Rename, and Archive. The workspace
+  submenu lets you check multiple sets independently: adding pins the chat in
+  that set, removing closes only that tab and preserves favorites. Neither action
+  navigates or switches your current workspace. Links are absolute and retain a
   textarea fallback when the Clipboard API is unavailable.
 - **Theme-aware presentation.** The stylesheet uses BB semantic theme tokens
   and `color-mix(in oklch)` rather than hard-coded UI colors. It follows light,
   dark, and custom BB themes.
+
+## Workspaces
+
+Workspaces are enabled by default. Turn **Enable workspaces** off in settings to
+use one shared set: Work, or the first remaining set if Work was deleted. The
+selector and membership submenu are hidden, but all sets, favorites and undo
+records are retained. Re-enabling restores this window’s previous selection,
+including after reload, without navigating or inserting the current chat into
+another set.
+
+Use the compact workspace selector in the strip or on **New chat**. With the list
+button on the left, the chat-list icon is closest to the edge, followed by the
+workspace selector. It displays
+only the first character of the selected name, with full names in the tooltip and
+dropdown (including complete emoji or combined characters). The theme-aware popover
+uses initial badges, a checkmark for the selected set, keyboard navigation, and
+44px touch rows instead of the browser’s native select list. Its last option,
+**Manage workspaces…**, opens the dialog to create, rename, or delete sets without
+an extra toolbar button or changing the current selection. Creating a set selects it in this window
+only. Deletion requires confirmation, removes only that set, and never archives
+or deletes chats. At least one workspace must remain; the maximum is 20.
+Names contain 1–80 Unicode characters after trimming and cannot duplicate an
+existing name, including translated default labels. Default names follow the
+current plugin language, not the language used when they were created. Renaming a
+workspace makes its name custom, so it no longer changes with the interface language.
+Custom names are never translated.
+
+Work, Home, and Other are created initially. Existing tabs, manual order, preview,
+favorites, and closed-chat protection move into Work exactly once; Home and Other
+start empty. Shared history, search, language, and display settings remain global.
+Archive/delete reconciliation covers inactive sets too. Unarchiving restores
+history navigation, not old memberships.
+
+Selection and the last active tab per set use `sessionStorage`, with a memory-only
+fallback when unavailable. Switching opens the remembered tab if it still belongs
+to the set, otherwise its first tab; empty sets open **New chat** without creating
+a chat. Each window remembers independently. A delayed response cannot navigate
+after another switch or an explicit route change.
+Reload restores a valid ID; a missing/deleted ID falls back to the first remaining
+set. Other windows retain their own selection. Undo cards, pending actions, and
+errors from a previous workspace visit never carry over after switching. A small
+window-local parked-route marker also prevents reload from inserting the chat left
+open during a switch into an otherwise empty set; explicit navigation clears it.
 
 ## Settings
 
@@ -85,6 +135,7 @@ stored.
 | ----------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `language`              | `Auto`  | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
 | `searchArchivedChats`   | `false` | Include archived chats in title search. Results remain disabled with a struck-through title and Archived status; deleted chats stay excluded.                                                                                                                                    |
+| `enableWorkspaces`      | `true`  | Enable separate workspaces. Off uses Work (or the first remaining set); other sets and window preferences are retained.                                                                                                                                                          |
 | `showPinnedTabsList`    | `true`  | Show the Tabs list below the composer on the New chat screen. It contains pinned tabs in their manual order.                                                                                                                                                                     |
 | `showTabsOnDesktop`     | `true`  | Top tab strip in the desktop layout.                                                                                                                                                                                                                                             |
 | `showTabsOnMobile`      | `true`  | Top tab strip in the compact/mobile layout (`≤767px` or a coarse pointer).                                                                                                                                                                                                       |
@@ -104,9 +155,17 @@ panel cannot mount.
 
 ## Design boundaries
 
-Tabs and history live in plugin-owned `bb.storage.kv` state and synchronize
-across windows through plugin realtime channels. They are not derived from the
-BB sidebar and never replace it.
+Workspace sets live in a single versioned JSON envelope in plugin-owned SQLite,
+created through `bb.storage.migrate`; shared history stays in `bb.storage.kv`.
+This avoids KV's 256 KB-per-value limit for the full 20-workspace collection.
+Legacy `tabs.state.v1` and `tabs.closedThreads.v1` remain untouched as migration
+sources. Failed writes are retryable; damaged new storage is reported rather
+than overwritten with legacy data. Reload the BB window after restoring a backup.
+
+Every set operation explicitly addresses a workspace ID. Scoped realtime events
+carry the ID and a monotonic snapshot revision; catalog events never propagate a
+window's selection. Late RPCs and older notifications cannot replace a new visit's
+state. Sets are not derived from the BB sidebar and never replace it.
 
 The implementation uses the public `homepageSection` API, the experimental
 `experimental_appOverlay` and `settingsSection` APIs, and declarative

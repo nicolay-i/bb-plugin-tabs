@@ -110,6 +110,227 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
+  padding-inline-start: 0.5rem;
+}
+
+.bb-chat-tabs-workspace-switcher {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: center;
+}
+
+.bb-chat-tabs-workspace-trigger {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 1.75rem;
+  min-width: 0;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-workspace-trigger:hover,
+.bb-chat-tabs-workspace-trigger[data-state="open"] {
+  background: var(--muted);
+}
+
+.bb-chat-tabs-workspace-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bb-chat-tabs-workspace-menu {
+  box-sizing: border-box;
+  z-index: 100;
+  width: 16rem;
+  max-width: calc(100vw - 1rem);
+  padding: 0.375rem;
+  color: var(--popover-foreground, var(--foreground));
+  background: var(--popover, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  box-shadow: 0 0.5rem 1.5rem color-mix(in oklch, var(--foreground) 12%, transparent);
+  outline: none;
+}
+
+.bb-chat-tabs-workspace-menu-label {
+  padding: 0.375rem 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.bb-chat-tabs-workspace-menu-list {
+  max-height: min(20rem, calc(var(--radix-dropdown-menu-content-available-height, 100dvh) - 6rem));
+  overflow-y: auto;
+}
+
+.bb-chat-tabs-workspace-menu-item {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.bb-chat-tabs-workspace-menu-item[data-state="checked"],
+.bb-chat-tabs-workspace-menu-item:not([data-disabled]):hover,
+.bb-chat-tabs-workspace-menu-item[data-highlighted] {
+  background: var(--muted);
+}
+
+.bb-chat-tabs-workspace-menu-badge {
+  display: flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.bb-chat-tabs-workspace-menu-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bb-chat-tabs-workspace-menu-check svg,
+.bb-chat-tabs-workspace-menu-settings {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.bb-chat-tabs-workspace-menu-separator {
+  height: 1px;
+  margin: 0.375rem;
+  background: var(--border);
+}
+
+.bb-chat-tabs-workspace-action {
+  display: inline-flex;
+  width: 1.75rem;
+  min-height: 1.75rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-workspace-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bb-chat-tabs-workspace-action:hover:not(:disabled) {
+  background: var(--muted);
+}
+.bb-chat-tabs-workspace-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.bb-chat-tabs-workspace-trigger:focus-visible,
+.bb-chat-tabs-workspace-action:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+
+.bb-chat-tabs-homepage-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  margin-bottom: 0.375rem;
+}
+.bb-chat-tabs-homepage-header .bb-chat-tabs-homepage-pinned-heading {
+  margin: 0;
+}
+.bb-chat-tabs-homepage-header .bb-chat-tabs-workspace-switcher {
+  padding: 0;
+}
+
+.bb-chat-tabs-workspace-dialog {
+  box-sizing: border-box;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+.bb-chat-tabs-workspace-dialog h3 {
+  margin: 0.75rem 0 0.375rem;
+  font-size: 0.8125rem;
+}
+.bb-chat-tabs-workspace-dialog label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+}
+.bb-chat-tabs-workspace-list {
+  max-height: 35dvh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bb-chat-tabs-workspace-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-block: 0.25rem;
+}
+.bb-chat-tabs-workspace-list li > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+.bb-chat-tabs-workspace-delete {
+  color: var(--destructive);
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .bb-chat-tabs-workspace-trigger {
+    height: 44px;
+    width: 44px;
+  }
+  .bb-chat-tabs-workspace-action,
+  .bb-chat-tabs-workspace-trigger,
+  .bb-chat-tabs-workspace-menu-item,
+  .bb-chat-tabs-workspace-dialog .bb-chat-tab-dialog-button {
+    min-height: 44px;
+  }
+  .bb-chat-tabs-workspace-action {
+    min-width: 44px;
+  }
 }
 
 .bb-chat-tabs-list-switcher {
@@ -117,7 +338,11 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   min-width: 0;
   flex: 0 0 auto;
   align-items: center;
-  padding: 0.25rem 0 0.25rem 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.bb-chat-tabs-list-switcher + .bb-chat-tabs-workspace-switcher {
+  margin-inline-start: 0.5rem;
 }
 
 .bb-chat-tabs-list-switcher[data-position="right"] {
@@ -282,7 +507,8 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 }
 
 .bb-chat-tabs-list-menu,
-.bb-chat-tabs-new-menu {
+.bb-chat-tabs-new-menu,
+.bb-chat-tabs-workspace-menu {
   transform-origin: var(
     --radix-dropdown-menu-content-transform-origin,
     var(--radix-popover-content-transform-origin, top center)
@@ -290,7 +516,8 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 }
 
 .bb-chat-tabs-list-menu[data-state="open"],
-.bb-chat-tabs-new-menu[data-state="open"] {
+.bb-chat-tabs-new-menu[data-state="open"],
+.bb-chat-tabs-workspace-menu[data-state="open"] {
   animation: bb-chat-tabs-menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -323,7 +550,8 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 
 @media (prefers-reduced-motion: reduce) {
   .bb-chat-tabs-list-menu[data-state],
-  .bb-chat-tabs-new-menu[data-state] {
+  .bb-chat-tabs-new-menu[data-state],
+  .bb-chat-tabs-workspace-menu[data-state] {
     animation: none;
   }
 }
@@ -835,6 +1063,11 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--bb-chat-tabs-active-foreground) 24%, transparent);
 }
 
+.bb-chat-tab .bb-chat-tab-working[data-nested-only="true"] {
+  background: color-mix(in oklch, var(--muted-foreground) 80%, var(--background));
+  box-shadow: none;
+}
+
 .bb-chat-tab-unread {
   width: 0.375rem;
   height: 0.375rem;
@@ -1147,6 +1380,53 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   color: var(--foreground);
 }
 
+.bb-chat-tab-context-menu-item[data-disabled] {
+  opacity: 0.5;
+}
+
+.bb-chat-tab-context-menu-item > .bb-chat-tabs-membership-chevron {
+  margin-inline-start: auto;
+}
+
+[dir="rtl"] .bb-chat-tabs-membership-chevron {
+  transform: rotate(180deg);
+}
+
+.bb-chat-tabs-membership-menu {
+  max-width: min(20rem, calc(100vw - 1rem));
+  max-height: 70dvh;
+  overflow-y: auto;
+}
+
+.bb-chat-tabs-membership-check,
+.bb-chat-tabs-membership-check svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.bb-chat-tabs-membership-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bb-chat-tabs-membership-error {
+  max-width: 18rem;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .bb-chat-tabs-membership-trigger,
+  .bb-chat-tabs-membership-menu .bb-chat-tab-context-menu-item {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+}
+
 .bb-chat-tab-context-menu-separator {
   height: 1px;
   margin: 0.25rem -0.25rem;
@@ -1281,6 +1561,14 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
   .bb-chat-tabs-content-row {
     gap: 0.375rem;
     padding: 0.375rem 0.5rem;
+  }
+
+  .bb-chat-tabs-workspace-switcher {
+    padding: 0;
+  }
+
+  .bb-chat-tabs-list-switcher + .bb-chat-tabs-workspace-switcher {
+    margin-inline-start: 0;
   }
 
   .bb-chat-tabs-list-switcher {

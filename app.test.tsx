@@ -16,6 +16,7 @@ import {
   type TabsState,
 } from "./lib/tabs-model";
 import { visitTabHistory, type TabHistoryState } from "./lib/tab-history";
+import { workspaceSelectionStore } from "./lib/workspace-selection";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -293,6 +294,7 @@ describe("Chat Tabs", () => {
     fireEvent.click(await slot.findByRole("menuitem", { name: /Grandchild/ }));
     await waitFor(() =>
       expect(sync).toHaveBeenCalledWith({
+        workspaceId: "work",
         threads: [{ threadId: "thr_grandchild", projectId: "proj_api", title: "Grandchild" }],
         reopen: true,
       }),
@@ -360,6 +362,7 @@ describe("Chat Tabs", () => {
       );
       expect(state.entries).toEqual([]);
       expect(slot.queryByRole("button", { name: "Last chat" })).toBeNull();
+      expect(workspaceSelectionStore().lastClosed("work")?.entry.threadId).toBe("thr_last");
     },
   );
 
@@ -941,9 +944,11 @@ describe("Chat Tabs", () => {
     expect(topScrollbar.getAttribute("aria-hidden")).toBe("true");
     expect(topScrollbar.tabIndex).toBe(-1);
 
+    const readClientWidth = vi.fn(() => 100);
+    const readScrollWidth = vi.fn(() => 400);
     Object.defineProperties(strip, {
-      clientWidth: { configurable: true, value: 100 },
-      scrollWidth: { configurable: true, value: 400 },
+      clientWidth: { configurable: true, get: readClientWidth },
+      scrollWidth: { configurable: true, get: readScrollWidth },
     });
     fireEvent.resize(window);
     await waitFor(() => {
@@ -951,6 +956,21 @@ describe("Chat Tabs", () => {
     });
     expect(topScrollbar.getAttribute("aria-hidden")).toBe("false");
     expect(topScrollbar.tabIndex).toBe(0);
+    const spacer = slot.container.querySelector(".bb-chat-tabs-top-scrollbar-spacer");
+    if (!(spacer instanceof HTMLDivElement)) throw new Error("Scrollbar spacer was not found");
+    const writeWidth = vi.spyOn(spacer.style, "width", "set");
+    readClientWidth.mockClear();
+    readScrollWidth.mockClear();
+    for (let i = 0; i < 10; i++) fireEvent.resize(window);
+    expect(readScrollWidth).not.toHaveBeenCalled();
+    await waitFor(() => expect(readScrollWidth).toHaveBeenCalledTimes(1));
+    expect(readClientWidth).toHaveBeenCalledTimes(1);
+    expect(writeWidth).not.toHaveBeenCalled();
+    readScrollWidth.mockReturnValue(500);
+    fireEvent.resize(window);
+    await waitFor(() => expect(spacer.style.width).toBe("500px"));
+    expect(writeWidth).toHaveBeenCalledTimes(1);
+    writeWidth.mockRestore();
 
     expect(buildTab.getAttribute("aria-current")).toBe("page");
     strip.scrollLeft = 0;
@@ -1221,7 +1241,10 @@ describe("Chat Tabs", () => {
     });
     expect(trigger.querySelector('[data-icon="ListView"]')).not.toBeNull();
     expect(slot.queryByRole("combobox", { name: "Go to chat" })).toBeNull();
-    expect(slot.container.querySelector("select")).toBeNull();
+    expect(slot.container.querySelectorAll("select")).toHaveLength(0);
+    expect(slot.getByRole("button", { name: "Workspace" }).getAttribute("aria-haspopup")).toBe(
+      "menu",
+    );
 
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     const menu = await waitFor(() => {
@@ -2088,6 +2111,7 @@ describe("Chat Tabs", () => {
       "Mark as unread",
       "Unpin",
       "Add to favorites",
+      "Show in workspaces",
       "Rename",
       "Archive",
     ]);
@@ -2344,7 +2368,7 @@ describe("Chat Tabs", () => {
     );
     await slot.findByRole("button", { name: "Current chat" });
     state = { version: 1, entries: [] };
-    await slot.emitRealtime("tabs-changed", state);
+    await slot.emitRealtime("tabs-changed:work", { workspaceId: "work", stateRevision: 1, state });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
@@ -2921,62 +2945,170 @@ describe("Chat Tabs", () => {
     expect(listCalls).toBe(0);
   });
 
-  it("handles behavior 16", async () => {
-    const state: TabsState = {
-      version: 1,
-      entries: [
+  it.each([true, false])(
+    "shows sidechat-only work for a parent present in the sidebar (%s) and ignores stale activity",
+    async (present) => {
+      const state: TabsState = {
+        version: 1,
+        entries: [
+          {
+            threadId: "thr_parent",
+            projectId: "proj_api",
+            title: "Parent chat",
+            pinned: true,
+            openedAt: 1,
+          },
+        ],
+      };
+      type Response = {
+        state: TabsState;
+        sidechatActivity: { revision: number; sourceThreadIds: string[] };
+      };
+      let resolveResponse: ((result: Response) => void) | undefined;
+      const response = new Promise<Response>((resolve) => {
+        resolveResponse = resolve;
+      });
+      const list = vi.fn(() => response);
+      const overlay = app.appOverlays[0];
+      if (overlay === undefined) throw new Error("App overlay is not registered");
+      const slot = renderSlot<{}, typeof rpcContract>(
+        overlay,
+        {},
         {
-          threadId: "thr_parent",
-          projectId: "proj_api",
-          title: "Parent chat",
-          pinned: true,
-          openedAt: 1,
+          context: { projectId: "proj_api", threadId: "thr_parent" },
+          sidebarThreads: {
+            threads: present ? [sidebarThread("thr_parent", "proj_api", "Parent chat")] : [],
+            projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+          },
+          rpc: {
+            tabs_list: list,
+            tabs_sync_activity: () => ({ state }),
+            tabs_open: () => ({ state }),
+            tabs_set_pinned: () => ({ state }),
+            tabs_close: () => ({ state, removed: false }),
+          },
         },
-      ],
-    };
-    const overlay = app.appOverlays[0];
-    if (overlay === undefined) throw new Error("App overlay is not registered");
+      );
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        revision: 3,
+        sourceThreadIds: ["thr_parent"],
+      });
+      resolveResponse?.({ state, sidechatActivity: { revision: 1, sourceThreadIds: [] } });
+      const parent = await slot.findByRole("button", {
+        name: "Parent chat, nested work is running",
+      });
+      expect(parent.querySelector('.bb-chat-tab-working[data-nested-only="true"]')).not.toBeNull();
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        revision: 2,
+        sourceThreadIds: [],
+      });
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        revision: "bad",
+        sourceThreadIds: [],
+      });
+      expect(parent.querySelector(".bb-chat-tab-working")).not.toBeNull();
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        revision: 4,
+        sourceThreadIds: [],
+      });
+      expect(parent.querySelector(".bb-chat-tab-working")).toBeNull();
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        generation: 1,
+        revision: 0,
+        sourceThreadIds: ["thr_parent"],
+      });
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        generation: 0,
+        revision: 9000,
+        sourceThreadIds: [],
+      });
+      expect(parent.querySelector(".bb-chat-tab-working")).not.toBeNull();
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        generation: 2,
+        revision: 0,
+        sourceThreadIds: [],
+      });
+      await slot.emitRealtime("tabs-sidechat-activity-changed", {
+        generation: 1,
+        revision: 9001,
+        sourceThreadIds: ["thr_parent"],
+      });
+      expect(parent.querySelector(".bb-chat-tab-working")).toBeNull();
+    },
+  );
 
-    const slot = renderSlot<{}, typeof rpcContract>(
-      overlay,
-      {},
-      {
-        context: { projectId: "proj_api", threadId: "thr_parent" },
-        sidebarThreads: {
-          threads: [
-            sidebarThread("thr_parent", "proj_api", "Parent chat"),
-            sidebarThread("thr_workflow", "proj_api", "Nested workflow", {
-              parentThreadId: "thr_parent",
-              activity: {
-                workflows: 1,
-                backgroundAgents: 0,
-                backgroundCommands: 0,
-                planMode: 0,
-                goals: 0,
-              },
-              indicator: "workflow",
-              updatedAt: 8,
-            }),
-          ],
-          projects: [{ id: "proj_api", name: "API", isPersonal: false }],
-        },
-        rpc: {
-          tabs_list: () => ({ state }),
-          tabs_sync_activity: () => ({ state }),
-          tabs_open: () => ({ state }),
-          tabs_set_pinned: () => ({ state }),
-          tabs_close: () => ({ state, removed: false }),
-        },
-      },
-    );
+  it.each([
+    ["workflow", false],
+    ["runtime", false],
+    ["working-draft", false],
+    ["runtime", true],
+  ] as const)(
+    "distinguishes nested %s activity from direct parent work (%s)",
+    async (childIndicator, parentWorking) => {
+      const state: TabsState = {
+        version: 1,
+        entries: [
+          {
+            threadId: "thr_parent",
+            projectId: "proj_api",
+            title: "Parent chat",
+            pinned: true,
+            openedAt: 1,
+          },
+        ],
+      };
+      const overlay = app.appOverlays[0];
+      if (overlay === undefined) throw new Error("App overlay is not registered");
 
-    const parentTab = await slot.findByRole("button", {
-      name: "Parent chat, nested work is running",
-    });
-    expect(parentTab.querySelector(".bb-chat-tab-working")).not.toBeNull();
-    expect(parentTab.closest(".bb-chat-tab")?.getAttribute("data-nested-work")).toBe("true");
-    expect(parentTab.getAttribute("title")).toContain("Nested work is running.");
-  });
+      const slot = renderSlot<{}, typeof rpcContract>(
+        overlay,
+        {},
+        {
+          context: { projectId: "proj_api", threadId: "thr_parent" },
+          sidebarThreads: {
+            threads: [
+              sidebarThread("thr_parent", "proj_api", "Parent chat", {
+                indicator: parentWorking ? "runtime" : "none",
+              }),
+              sidebarThread("thr_workflow", "proj_api", "Nested workflow", {
+                originPluginId: "side-chat",
+                parentThreadId: "thr_parent",
+                activity: {
+                  workflows: childIndicator === "workflow" ? 1 : 0,
+                  backgroundAgents: 0,
+                  backgroundCommands: 0,
+                  planMode: 0,
+                  goals: 0,
+                },
+                indicator: childIndicator,
+                updatedAt: 8,
+              }),
+            ],
+            projects: [{ id: "proj_api", name: "API", isPersonal: false }],
+          },
+          rpc: {
+            tabs_list: () => ({ state }),
+            tabs_sync_activity: () => ({ state }),
+            tabs_open: () => ({ state }),
+            tabs_set_pinned: () => ({ state }),
+            tabs_close: () => ({ state, removed: false }),
+          },
+        },
+      );
+
+      const parentTab = await slot.findByRole("button", {
+        name: parentWorking
+          ? "Parent chat, work is running"
+          : "Parent chat, nested work is running",
+      });
+      expect(
+        parentTab.querySelector(".bb-chat-tab-working")?.getAttribute("data-nested-only"),
+      ).toBe(parentWorking ? "false" : "true");
+      expect(parentTab.closest(".bb-chat-tab")?.getAttribute("data-nested-work")).toBe("true");
+      expect(parentTab.getAttribute("title")).toContain("Nested work is running.");
+    },
+  );
 
   it("handles behavior 17", async () => {
     const state: TabsState = {
@@ -3454,6 +3586,17 @@ describe("Chat Tabs", () => {
 
     await slot.findByRole("button", { name: "Current" });
     expect(desktop.listenerCount()).toBe(1);
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const input = document.createElement("input");
+    dialog.append(input);
+    document.body.append(dialog);
+    input.focus();
+    expect(desktop.dispatch()).toBe(true);
+    await act(async () => Promise.resolve());
+    expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_current", "thr_next"]);
+    expect(slot.inspection.rpcCalls.filter((call) => call.method === "tabs_close")).toEqual([]);
+    dialog.remove();
     expect(desktop.dispatch()).toBe(true);
     await waitFor(() => {
       expect(state.entries.map((entry) => entry.threadId)).toEqual(["thr_next"]);
@@ -3515,6 +3658,12 @@ describe("Chat Tabs", () => {
 
     await slot.findByRole("button", { name: "Current" });
     expect(desktop.browserFocusListenerCount()).toBe(1);
+    const staleDialog = document.createElement("div");
+    staleDialog.setAttribute("role", "dialog");
+    const staleInput = document.createElement("input");
+    staleDialog.append(staleInput);
+    document.body.append(staleDialog);
+    staleInput.focus();
     desktop.dispatchBrowserViewFocus("browser-current");
 
     const nativeBrowserKeydown = new KeyboardEvent("keydown", {
@@ -3529,6 +3678,7 @@ describe("Chat Tabs", () => {
 
     expect(desktop.dispatch()).toBe(false);
     expect(closeCalls).toBe(0);
+    staleDialog.remove();
 
     const chatControl = document.createElement("button");
     document.body.append(chatControl);

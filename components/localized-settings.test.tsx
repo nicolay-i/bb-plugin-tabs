@@ -85,6 +85,30 @@ describe("Localized settings", () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({ tabListButtonPosition: "Right" }));
   });
 
+  it("enables workspaces by default and saves disabling/enabling through typed patches", async () => {
+    let values: Record<string, string | boolean> = { language: "Русский" };
+    const update = vi.fn((patch: Record<string, string | boolean>) => {
+      values = { ...values, ...patch };
+      return { values };
+    });
+    const slot = renderSlot<{}, Pick<typeof rpcContract, "tabs_settings_update">>(
+      slotDefinition!,
+      {},
+      { settings: values, rpc: { tabs_settings_update: update } },
+    );
+    const toggle = slot.getByRole("switch", {
+      name: "Включить рабочие пространства",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ enableWorkspaces: false }));
+    await waitFor(() => expect(toggle.disabled).toBe(false));
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ enableWorkspaces: true }));
+    expect(toggle.checked).toBe(true);
+  });
+
   it("rolls back optimistic language changes and reports a translated error on save failure", async () => {
     const slot = renderSlot<{}, Pick<typeof rpcContract, "tabs_settings_update">>(
       slotDefinition!,

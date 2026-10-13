@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Icon } from "./ui/icon";
 import { SubthreadBadge } from "./subthread-badge";
 import { chatStatusFor } from "../lib/chat-status";
@@ -24,6 +25,7 @@ interface PinnedTabsListProps {
   visible: boolean;
   loading?: boolean;
   heading?: TranslationKey;
+  headerActions?: ReactNode;
   emptyMessage?: TranslationKey;
 }
 
@@ -42,6 +44,7 @@ export function PinnedTabsList({
   loading = false,
   locale = "en",
   heading = "Tabs",
+  headerActions,
   emptyMessage = "No tabs yet. Open a chat and choose “Pin”.",
 }: PinnedTabsListProps) {
   const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
@@ -59,6 +62,12 @@ export function PinnedTabsList({
     );
   }
 
+  const header = (
+    <div className="bb-chat-tabs-homepage-header">
+      <h2 className="bb-chat-tabs-homepage-pinned-heading">{t(heading)}</h2>
+      {headerActions}
+    </div>
+  );
   if (loading || tabs.length === 0) {
     return (
       <div
@@ -67,7 +76,7 @@ export function PinnedTabsList({
         data-testid="bb-chat-tabs-homepage-pinned-list"
         data-visible="true"
       >
-        <h2 className="bb-chat-tabs-homepage-pinned-heading">{t(heading)}</h2>
+        {header}
         <p className="bb-chat-tabs-homepage-pinned-empty" role={loading ? "status" : undefined}>
           {loading ? t("Loading tabs…") : t(emptyMessage)}
         </p>
@@ -82,7 +91,7 @@ export function PinnedTabsList({
       data-testid="bb-chat-tabs-homepage-pinned-list"
       data-visible="true"
     >
-      <h2 className="bb-chat-tabs-homepage-pinned-heading">{t(heading)}</h2>
+      {header}
       <ul className="bb-chat-tabs-homepage-pinned-items" aria-label={t(heading)}>
         {tabs.map((tab) => {
           const status = chatStatusFor(tab, locale);

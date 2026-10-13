@@ -2,6 +2,34 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## Unreleased
+
+## 0.1.12
+
+### Added
+
+- Idle main-chat tabs show a subdued grey activity dot when a sidechat is working, including hidden sidechat forks linked by `sourceThreadId`. Main-chat work retains its regular indicator; lifecycle updates and revision guards keep parallel sidechats and delayed snapshots correct.
+- Workspaces can be disabled in settings (enabled by default), temporarily using Work or the first remaining set without deleting other sets or the window’s saved selection.
+- Reopen explicitly closed tabs with `Ctrl+Shift+T` / `⌘⇧T`, including from New chat: window-local workspace-scoped LIFO undo, session reload persistence, original position/pin restoration and safe availability/capacity/write-failure handling.
+- Configurable Work / Home / Other workspaces with independent pins, manual order, preview, favorites, and closed-tab protection. Create, rename, or confirm deletion of 1–20 sets without deleting chats or shared history. System labels and management controls support all 15 languages; custom names remain unchanged.
+- Window-local selection shared by the strip and New chat, restored with session storage and backed by an in-memory fallback. Matching sets synchronize across windows; switching restores the window’s last active tab, falling back to the first tab or New chat for an empty set, without inserting the previous chat into the new preview. Last-active IDs survive reload with a memory fallback; stale switch/route responses cannot navigate.
+- Tab context menu **Show in workspaces**: independent checkboxes add the same chat as a pinned tab to several sets or remove it from selected ones without navigation, switching workspace, or removing favorites. Open menus synchronize across windows and preserve pending/error handling.
+- Atomic SQLite envelope storage with one-time migration into Work, preserving legacy KV keys. Failed writes and damaged storage do not overwrite the source; the full 20 × (100 tabs + 100 favorites) capacity avoids KV limits.
+
+### Changed
+
+- Coalesce scrollbar measurements into one animation frame, skip search computation while its menu is closed, and avoid redundant navigation to a chat already on screen.
+
+### Fixed
+
+- Lifecycle events take precedence over delayed availability lookups and queued reconciliation, so stale snapshots cannot restore archived tabs or clear newer history tombstones.
+- Delayed workspace creation/deletion does not override a newer route, explicit workspace selection, or settings change; deletion still restores its own catalog fallback.
+- Tab shortcuts, native desktop close requests, and double-Shift search no longer act behind modal dialogs.
+- The left chat-list button now precedes the workspace selector, closer to the strip edge, while retaining the right-position option.
+- Workspace trigger has an inset from the strip edge and mouse-hover opening, preserving keyboard/touch operation and chat focus, with gap-safe dismissal and click latching.
+- Workspace-addressed request queues, selection generations, tagged realtime events, and persistent snapshot revisions reject delayed or out-of-order responses. Homepage undo cards, pending actions, errors, and delayed navigation stay within their original visit.
+- Lifecycle and startup reconciliation inspect inactive sets, deduplicate thread lookups, preserve transient failures, and prevent unarchiving from automatically recreating old preview memberships.
+
 ## 0.1.11
 
 ### Added

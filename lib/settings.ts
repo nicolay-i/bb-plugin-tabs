@@ -17,6 +17,13 @@ export const SETTINGS = {
       "Adds archived chats to title search results. They have struck-through titles and cannot be opened here. Deleted chats are excluded.",
     default: false,
   },
+  enableWorkspaces: {
+    type: "boolean",
+    label: "Enable workspaces",
+    description:
+      "Use separate tabs and favorites for each workspace. Turning this off uses Work (or the first remaining workspace) without deleting other sets.",
+    default: true,
+  },
   showPinnedTabsList: {
     type: "boolean",
     label: "Show tabs on New chat",

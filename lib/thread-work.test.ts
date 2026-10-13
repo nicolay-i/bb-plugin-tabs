@@ -64,6 +64,37 @@ describe("Chat Tabs", () => {
     expect(hasThreadTreePendingInteraction(root.id, resolved)).toBe(false);
   });
 
+  it("recognizes a working sidechat draft without activity counters and propagates it to an idle parent", () => {
+    const root = thread("parent");
+    const child = thread("sidechat", root.id, {
+      originPluginId: "side-chat",
+      indicator: "working-draft",
+    });
+    const index = buildThreadWorkIndex([root, child]);
+    expect(index.directlyWorkingThreadIds.has(root.id)).toBe(false);
+    expect(index.directlyWorkingThreadIds.has(child.id)).toBe(true);
+    expect(hasNestedThreadWork(root.id, index)).toBe(true);
+    const idle = buildThreadWorkIndex([
+      root,
+      thread(child.id, root.id, { originPluginId: "side-chat", indicator: "draft" }),
+    ]);
+    expect(hasThreadTreeWork(root.id, idle)).toBe(false);
+  });
+
+  it("folds hidden sidechat sources into ancestors without marking the main chat as directly working", () => {
+    const root = thread("root");
+    const child = thread("source", root.id);
+    const index = buildThreadWorkIndex(
+      [root, child],
+      new Set(),
+      new Set([child.id, "not-in-sidebar"]),
+    );
+    expect(index.directlyWorkingThreadIds.size).toBe(0);
+    expect(hasNestedThreadWork(root.id, index)).toBe(true);
+    expect(hasThreadTreeWork("not-in-sidebar", index)).toBe(true);
+    expect(hasThreadTreeWork(root.id, buildThreadWorkIndex([root, child]))).toBe(false);
+  });
+
   it("handles behavior 1", () => {
     const root = thread("thr_root");
     const middle = thread("thr_middle", root.id);

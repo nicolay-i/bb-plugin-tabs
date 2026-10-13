@@ -23,7 +23,20 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import type { PluginHomepageSectionProps, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
+import type { PluginRpcResult } from "@get-bb/plugin-sdk";
 import { chatStatusFor } from "./lib/chat-status";
+import {
+  DEFAULT_WORKSPACE_ID,
+  WORKSPACES_CHANGED_CHANNEL,
+  workspaceStateChannel,
+  workspaceCatalogEventSchema,
+  workspaceStateEventSchema,
+} from "./lib/workspaces";
+import {
+  useWorkspaceSelection,
+  workspaceSelectionStore,
+  type WorkspaceSelection,
+} from "./lib/workspace-selection";
 import {
   createEmptyTabHistory,
   normalizeTabHistory,
@@ -35,7 +48,6 @@ import {
 import {
   normalizeTabsState,
   tabsStatesEqual,
-  TABS_CHANGED_CHANNEL,
   type TabCandidate,
   type TabEntry,
   type TabMovePosition,
@@ -56,6 +68,9 @@ import {
   hasThreadTreePendingInteraction,
   hasThreadTreeWork,
   rootThreadFor,
+  sidechatActivitySchema,
+  SIDECHAT_ACTIVITY_CHANGED_CHANNEL,
+  type SidechatActivity,
   type ThreadWorkIndex,
 } from "./lib/thread-work";
 import {
@@ -74,6 +89,7 @@ import { recentProjects } from "./lib/recent-projects";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
 import { SubthreadBadge } from "./components/subthread-badge";
+import { WorkspaceSwitcher, workspaceErrorMessage } from "./components/workspace-switcher";
 import {
   translate,
   usePluginLocale,
@@ -120,8 +136,26 @@ function isCloseCurrentTabShortcut(event: KeyboardEvent): boolean {
   );
 }
 
+function isReopenClosedTabShortcut(event: KeyboardEvent): boolean {
+  return (
+    event.ctrlKey !== event.metaKey &&
+    event.shiftKey &&
+    !event.altKey &&
+    !event.repeat &&
+    !event.isComposing &&
+    (event.code === "KeyT" || event.key.toLowerCase() === "t")
+  );
+}
+
 function isCyclePluginTabsShortcut(event: KeyboardEvent): boolean {
   return event.ctrlKey && !event.altKey && !event.metaKey && !event.repeat && event.key === "Tab";
+}
+
+function isDialogKeyboardTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest('[role="dialog"], [role="alertdialog"]') !== null
+  );
 }
 
 function isBrowserChromeKeyboardTarget(target: EventTarget | null): boolean {
@@ -158,18 +192,21 @@ const MENU_HOVER_DELAY_MS = 300;
 const MENU_LEAVE_DELAY_MS = 120;
 // A newly created chat can be the first route seen by a freshly mounted overlay.
 
-interface TabsListRequest {
+type WorkspaceScope = Pick<WorkspaceSelection, "workspaceId" | "generation">;
+
+interface TabsListRequest extends WorkspaceScope {
+  catalogRevision: number;
   key: string;
   workflowThreadIds: string[];
 }
 
-interface ActivitySyncRequest {
+interface ActivitySyncRequest extends WorkspaceScope {
   key: string;
   threads: TabCandidate[];
   reopen: boolean;
 }
 
-interface HistoryVisitRequest {
+interface HistoryVisitRequest extends WorkspaceScope {
   candidate: TabCandidate;
   key: string;
 }
@@ -226,6 +263,18 @@ function useDocumentVisibility(): boolean {
 }
 
 function useTabsState(enabled = true) {
+  const settings = useSettings();
+  const selection = useWorkspaceSelection(settings.values?.enableWorkspaces !== false);
+  const selectionStore = workspaceSelectionStore();
+  const isCurrentVisit = useCallback(
+    (request: WorkspaceScope) => {
+      const current = selectionStore.getSnapshot();
+      return (
+        request.workspaceId === current.workspaceId && request.generation === current.generation
+      );
+    },
+    [selectionStore],
+  );
   const visible = useDocumentVisibility();
   const connectionState = useRealtimeConnectionState();
   const [initialLoadFailures, setInitialLoadFailures] = useState(0);
@@ -234,16 +283,55 @@ function useTabsState(enabled = true) {
   const enabledRef = useRef(enabled);
   rpcRef.current = rpc;
   enabledRef.current = enabled;
-  const [state, setState] = useState<TabsState | null>(null);
+  const [stateSnapshot, setStateSnapshot] = useState<{
+    generation: number;
+    value: TabsState;
+  } | null>(null);
+  const state = stateSnapshot?.generation === selection.generation ? stateSnapshot.value : null;
   const stateRef = useRef<TabsState | null>(state);
   stateRef.current = state;
   const [history, setHistory] = useState<TabHistoryState>(createEmptyTabHistory);
   const historyRef = useRef(history);
   historyRef.current = history;
-  const [activeWorkflowThreadIds, setActiveWorkflowThreadIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  const [workflowSnapshot, setWorkflowSnapshot] = useState<{
+    generation: number;
+    value: ReadonlySet<string>;
+  } | null>(null);
+  const activeWorkflowThreadIds = useMemo(
+    () =>
+      workflowSnapshot?.generation === selection.generation
+        ? workflowSnapshot.value
+        : new Set<string>(),
+    [selection.generation, workflowSnapshot],
   );
-  const [error, setError] = useState<string | null>(null);
+  const [sidechatSnapshot, setSidechatSnapshot] = useState<SidechatActivity | null>(null);
+  const activeSidechatSourceThreadIds = useMemo(
+    () => new Set(sidechatSnapshot?.sourceThreadIds ?? []),
+    [sidechatSnapshot],
+  );
+  const acceptSidechatActivity = useCallback((next: SidechatActivity | undefined) => {
+    if (next === undefined) return;
+    setSidechatSnapshot((previous) => {
+      const generation = next.generation ?? 0;
+      const previousGeneration = previous?.generation ?? 0;
+      return previous !== null &&
+        (previousGeneration > generation ||
+          (previousGeneration === generation && previous.revision >= next.revision))
+        ? previous
+        : next;
+    });
+  }, []);
+  const [errorSnapshot, setErrorSnapshot] = useState<{
+    generation: number;
+    value: string | null;
+  } | null>(null);
+  const error = errorSnapshot?.generation === selection.generation ? errorSnapshot.value : null;
+  const setError = useCallback(
+    (value: string | null, request: WorkspaceScope) => {
+      if (isCurrentVisit(request)) setErrorSnapshot({ generation: request.generation, value });
+    },
+    [isCurrentVisit],
+  );
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshInFlightKeyRef = useRef<string | null>(null);
   const queuedRefreshRef = useRef<TabsListRequest | null>(null);
@@ -255,15 +343,39 @@ function useTabsState(enabled = true) {
   const historyVisitInFlightKeyRef = useRef<string | null>(null);
   const queuedHistoryVisitRef = useRef<HistoryVisitRequest | null>(null);
 
-  const acceptState = useCallback((next: TabsState) => {
-    const normalized = normalizeTabsState(next);
-    stateRef.current = normalized;
-    setState((previous) =>
-      previous !== null && tabsStatesEqual(previous, normalized) ? previous : normalized,
-    );
-    setError(null);
+  useLayoutEffect(() => {
+    // Old requests may finish, but cannot hold the next visit's queues or consume its work.
+    refreshInFlightRef.current = null;
+    refreshInFlightKeyRef.current = null;
+    queuedRefreshRef.current = null;
+    activitySyncInFlightRef.current = null;
+    activitySyncInFlightKeyRef.current = null;
+    queuedActivitySyncRef.current = null;
+    lastWorkflowThreadIdsRef.current = [];
     setInitialLoadFailures(0);
-  }, []);
+  }, [selection.generation]);
+
+  const acceptState = useCallback(
+    (next: TabsState, request: WorkspaceScope, stateRevision?: number) => {
+      if (
+        !isCurrentVisit(request) ||
+        request.workspaceId === null ||
+        !selectionStore.acceptStateRevision(request.workspaceId, stateRevision)
+      )
+        return false;
+      const normalized = normalizeTabsState(next);
+      stateRef.current = normalized;
+      setStateSnapshot((previous) =>
+        previous?.generation === request.generation && tabsStatesEqual(previous.value, normalized)
+          ? previous
+          : { generation: request.generation, value: normalized },
+      );
+      setError(null, request);
+      setInitialLoadFailures(0);
+      return true;
+    },
+    [isCurrentVisit, selectionStore, setError],
+  );
 
   const acceptHistory = useCallback((next: TabHistoryState) => {
     const normalized = normalizeTabHistory(next);
@@ -271,23 +383,36 @@ function useTabsState(enabled = true) {
     setHistory((previous) => (tabHistoriesEqual(previous, normalized) ? previous : normalized));
   }, []);
 
-  const acceptWorkflowActivity = useCallback((threadIds: readonly string[] | undefined) => {
-    const next = new Set(threadIds ?? []);
-    setActiveWorkflowThreadIds((previous) => {
-      if (previous.size === next.size && [...previous].every((threadId) => next.has(threadId))) {
-        return previous;
-      }
-      return next;
-    });
-  }, []);
+  const acceptWorkflowActivity = useCallback(
+    (threadIds: readonly string[] | undefined, request: WorkspaceScope) => {
+      if (!isCurrentVisit(request)) return;
+      const value = new Set(threadIds ?? []);
+      setWorkflowSnapshot((previous) =>
+        previous?.generation === request.generation &&
+        previous.value.size === value.size &&
+        [...previous.value].every((id) => value.has(id))
+          ? previous
+          : { generation: request.generation, value },
+      );
+    },
+    [isCurrentVisit],
+  );
 
   const refresh = useCallback(
     (workflowThreadIds: readonly string[] = []): Promise<void> => {
       if (!enabledRef.current) return Promise.resolve();
       const canonicalIds = canonicalThreadIds(workflowThreadIds);
       lastWorkflowThreadIdsRef.current = canonicalIds;
+      const current = selectionStore.getSnapshot();
       const request: TabsListRequest = {
-        key: workflowRequestKey(canonicalIds),
+        workspaceId: current.workspaceId,
+        generation: current.generation,
+        catalogRevision: current.revision,
+        key: JSON.stringify([
+          current.workspaceId,
+          current.generation,
+          workflowRequestKey(canonicalIds),
+        ]),
         workflowThreadIds: canonicalIds,
       };
       const inFlight = refreshInFlightRef.current;
@@ -305,26 +430,62 @@ function useTabsState(enabled = true) {
       const drain = async () => {
         let next: TabsListRequest | null = request;
         while (next !== null) {
-          if (!enabledRef.current) {
-            queuedRefreshRef.current = null;
-            break;
-          }
+          if (!enabledRef.current || !isCurrentVisit(next)) return;
           refreshInFlightKeyRef.current = next.key;
           try {
-            const result = await rpcRef.current.call(
-              "tabs_list",
-              next.workflowThreadIds.length === 0
-                ? null
-                : { workflowThreadIds: next.workflowThreadIds },
+            const result: PluginRpcResult<(typeof rpcContract)["tabs_list"]> =
+              await rpcRef.current.call("tabs_list", {
+                workspaceId: next.workspaceId,
+                workflowThreadIds: next.workflowThreadIds,
+              });
+            if (!isCurrentVisit(next)) return;
+            selectionStore.acceptCatalog(
+              result.workspaces ??
+                (selectionStore.getSnapshot().workspaces.length > 0
+                  ? selectionStore.getSnapshot().workspaces
+                  : [{ id: DEFAULT_WORKSPACE_ID, name: "Work", defaultName: "Work" }]),
+              next.catalogRevision,
+              result.stateRevision,
             );
-            acceptState(result.state);
-            acceptWorkflowActivity(result.activeWorkflowThreadIds);
-            if (result.history !== undefined) acceptHistory(result.history);
+            const currentSelection = selectionStore.getSnapshot();
+            if (
+              next.workspaceId === null &&
+              currentSelection.workspaceId === (result.workspaceId ?? DEFAULT_WORKSPACE_ID)
+            ) {
+              next = {
+                ...next,
+                workspaceId: currentSelection.workspaceId,
+                generation: currentSelection.generation,
+              };
+            }
+            acceptSidechatActivity(result.sidechatActivity);
+            if (acceptState(result.state, next, result.stateRevision)) {
+              acceptWorkflowActivity(result.activeWorkflowThreadIds, next);
+              if (result.history !== undefined) acceptHistory(result.history);
+            } else if (isCurrentVisit(next) && stateRef.current === null) {
+              // Another surface already knows a newer snapshot; use the existing cold retry.
+              setInitialLoadFailures((count) => count + 1);
+            }
           } catch (cause) {
-            setError(errorMessage(cause));
-            if (stateRef.current === null) setInitialLoadFailures((count) => count + 1);
+            if (!isCurrentVisit(next)) return;
+            if (errorMessage(cause).includes("Workspace no longer exists")) {
+              try {
+                const catalog = await rpcRef.current.call("tabs_workspaces_list", null);
+                if (!isCurrentVisit(next)) return;
+                selectionStore.acceptCatalog(
+                  catalog.workspaces,
+                  next.catalogRevision,
+                  catalog.stateRevision,
+                );
+              } catch {
+                /* Preserve the original actionable failure below. */
+              }
+            }
+            setError(errorMessage(cause), next);
+            if (isCurrentVisit(next) && stateRef.current === null)
+              setInitialLoadFailures((count) => count + 1);
           }
-
+          if (!isCurrentVisit(next)) return;
           const queued = queuedRefreshRef.current;
           queuedRefreshRef.current = null;
           next = queued !== null && queued.key !== next.key ? queued : null;
@@ -341,7 +502,15 @@ function useTabsState(enabled = true) {
       void operation.then(clear, clear);
       return operation;
     },
-    [acceptHistory, acceptState, acceptWorkflowActivity],
+    [
+      acceptHistory,
+      acceptState,
+      acceptWorkflowActivity,
+      acceptSidechatActivity,
+      isCurrentVisit,
+      selectionStore,
+      setError,
+    ],
   );
 
   useEffect(() => {
@@ -349,6 +518,11 @@ function useTabsState(enabled = true) {
     // Reuse the last probe key so visibility/workflow effects share one request.
     void refresh(lastWorkflowThreadIdsRef.current);
   }, [enabled, visible, connectionState, refresh]);
+
+  useEffect(() => {
+    if (enabled && visible && connectionState === "connected" && stateRef.current === null)
+      void refresh();
+  }, [selection.generation, enabled, visible, connectionState, refresh]);
 
   // Cold-start RPCs can fail while the host/plugin generation is becoming ready.
   // Retry only until the first snapshot arrives; never poll healthy empty lists.
@@ -366,9 +540,21 @@ function useTabsState(enabled = true) {
     return () => window.clearTimeout(timer);
   }, [enabled, visible, connectionState, state, initialLoadFailures, refresh]);
 
-  useRealtime(TABS_CHANGED_CHANNEL, (payload) => {
-    if (!enabled) return;
-    acceptState(normalizeTabsState(payload));
+  useRealtime(workspaceStateChannel(selection.workspaceId ?? "__pending"), (payload) => {
+    const parsed = workspaceStateEventSchema.safeParse(payload);
+    if (!enabled || !parsed.success || parsed.data.workspaceId !== selection.workspaceId) return;
+    acceptState(parsed.data.state, selection, parsed.data.stateRevision);
+  });
+
+  useRealtime(SIDECHAT_ACTIVITY_CHANGED_CHANNEL, (payload) => {
+    const parsed = sidechatActivitySchema.safeParse(payload);
+    if (parsed.success) acceptSidechatActivity(parsed.data);
+  });
+
+  useRealtime(WORKSPACES_CHANGED_CHANNEL, (payload) => {
+    const parsed = workspaceCatalogEventSchema.safeParse(payload);
+    if (parsed.success)
+      selectionStore.acceptCatalog(parsed.data.workspaces, undefined, parsed.data.stateRevision);
   });
 
   useRealtime(TABS_HISTORY_CHANGED_CHANNEL, (payload) => {
@@ -379,9 +565,21 @@ function useTabsState(enabled = true) {
   const syncActivity = useCallback(
     (threads: readonly TabCandidate[], reopen = false): Promise<void> => {
       const candidates = [...threads];
-      if (candidates.length === 0) return Promise.resolve();
+      if (
+        candidates.length === 0 ||
+        selection.workspaceId === null ||
+        !isCurrentVisit({ workspaceId: selection.workspaceId, generation: selection.generation })
+      )
+        return Promise.resolve();
       const request: ActivitySyncRequest = {
-        key: `${activityRequestKey(candidates)}\u0000${reopen}`,
+        workspaceId: selection.workspaceId,
+        generation: selection.generation,
+        key: JSON.stringify([
+          selection.workspaceId,
+          selection.generation,
+          activityRequestKey(candidates),
+          reopen,
+        ]),
         threads: candidates,
         reopen,
       };
@@ -408,20 +606,22 @@ function useTabsState(enabled = true) {
       const drain = async () => {
         let next: ActivitySyncRequest | null = request;
         while (next !== null) {
+          if (!isCurrentVisit(next)) return;
           activitySyncInFlightKeyRef.current = next.key;
           const latest = next.threads.at(-1);
           if (latest === undefined || !stateContainsCandidate(stateRef.current, latest)) {
             try {
               const result = await rpcRef.current.call("tabs_sync_activity", {
+                workspaceId: next.workspaceId ?? undefined,
                 threads: next.threads,
                 reopen: next.reopen,
               });
-              acceptState(result.state);
+              acceptState(result.state, next, result.stateRevision);
             } catch (cause) {
-              setError(errorMessage(cause));
+              setError(errorMessage(cause), next);
             }
           }
-
+          if (!isCurrentVisit(next)) return;
           const queued = queuedActivitySyncRef.current;
           queuedActivitySyncRef.current = null;
           next = queued !== null && queued.key !== next.key ? queued : null;
@@ -438,15 +638,18 @@ function useTabsState(enabled = true) {
       void operation.then(clear, clear);
       return operation;
     },
-    [acceptState],
+    [acceptState, isCurrentVisit, selection.workspaceId, selection.generation, setError],
   );
 
   const recordHistory = useCallback(
     (candidate: TabCandidate): Promise<void> => {
       if (!enabledRef.current) return Promise.resolve();
+      const current = selectionStore.getSnapshot();
       const request: HistoryVisitRequest = {
+        workspaceId: current.workspaceId,
+        generation: current.generation,
         candidate,
-        key: candidateKey(candidate),
+        key: JSON.stringify([current.workspaceId, current.generation, candidateKey(candidate)]),
       };
       const inFlight = historyVisitInFlightRef.current;
       if (inFlight !== null) {
@@ -475,9 +678,9 @@ function useTabsState(enabled = true) {
           if (!historyStartsWithCandidate(historyRef.current, next.candidate)) {
             try {
               const result = await rpcRef.current.call("tabs_history_visit", next.candidate);
-              acceptHistory(result.history);
+              if (isCurrentVisit(next)) acceptHistory(result.history);
             } catch (cause) {
-              setError(errorMessage(cause));
+              setError(errorMessage(cause), next);
             }
           }
 
@@ -497,79 +700,100 @@ function useTabsState(enabled = true) {
       void operation.then(clear, clear);
       return operation;
     },
-    [acceptHistory],
+    [acceptHistory, isCurrentVisit, selectionStore, setError],
+  );
+
+  const mutateState = useCallback(
+    async function mutateState<Result extends { state: TabsState; stateRevision?: number }>(
+      invoke: (workspaceId: string) => Promise<Result>,
+    ): Promise<Result | null> {
+      if (selection.workspaceId === null || !isCurrentVisit(selection)) return null;
+      try {
+        const result = await invoke(selection.workspaceId);
+        if (!isCurrentVisit(selection)) return null;
+        acceptState(result.state, selection, result.stateRevision);
+        return { ...result, state: stateRef.current ?? result.state };
+      } catch (cause) {
+        setError(errorMessage(cause), selection);
+        return null;
+      }
+    },
+    [acceptState, isCurrentVisit, selection, setError],
   );
 
   const setFavorite = useCallback(
     async (threadId: string, favorite: boolean, candidate?: TabCandidate) => {
-      try {
-        const result = await rpcRef.current.call("tabs_set_favorite", {
+      const result = await mutateState((workspaceId) =>
+        rpcRef.current.call("tabs_set_favorite", {
+          workspaceId,
           threadId,
           favorite,
           ...(candidate ? { candidate } : {}),
-        });
-        acceptState(result.state);
-        return result.state;
-      } catch (cause) {
-        setError(errorMessage(cause));
-        return null;
-      }
+        }),
+      );
+      return result?.state ?? null;
     },
-    [acceptState],
+    [mutateState],
   );
 
   const setPinned = useCallback(
     async (threadId: string, pinned: boolean, candidate?: TabCandidate) => {
-      try {
-        const result =
-          pinned && candidate !== undefined
-            ? await rpcRef.current.call("tabs_open", candidate)
-            : await rpcRef.current.call("tabs_set_pinned", { threadId, pinned });
-        acceptState(result.state);
-        return result.state;
-      } catch (cause) {
-        setError(errorMessage(cause));
-        return null;
-      }
+      const result = await mutateState((workspaceId) =>
+        pinned && candidate !== undefined
+          ? rpcRef.current.call("tabs_open", { ...candidate, workspaceId })
+          : rpcRef.current.call("tabs_set_pinned", { workspaceId, threadId, pinned }),
+      );
+      return result?.state ?? null;
     },
-    [acceptState],
+    [mutateState],
   );
 
   const close = useCallback(
-    async (threadId: string) => {
-      try {
-        const result = await rpcRef.current.call("tabs_close", { threadId });
-        acceptState(result.state);
+    (threadId: string, remember = true) => {
+      const index =
+        stateRef.current?.entries.findIndex((entry) => entry.threadId === threadId) ?? -1;
+      const entry = stateRef.current?.entries[index];
+      const sequence = selectionStore.nextCloseSequence();
+      return mutateState(async (workspaceId) => {
+        const result = await rpcRef.current.call("tabs_close", { workspaceId, threadId });
+        if (remember && result.removed && entry !== undefined)
+          selectionStore.rememberClosed(workspaceId, entry, index, sequence);
         return result;
-      } catch (cause) {
-        setError(errorMessage(cause));
-        return null;
-      }
+      });
     },
-    [acceptState],
+    [mutateState, selectionStore],
+  );
+
+  const restoreTab = useCallback(
+    (entry: TabEntry, index: number, sequence?: number) =>
+      mutateState(async (workspaceId) => {
+        const result = await rpcRef.current.call("tabs_restore", { workspaceId, entry, index });
+        selectionStore.forgetClosed(workspaceId, entry.threadId, sequence);
+        return result;
+      }),
+    [mutateState, selectionStore],
   );
 
   const move = useCallback(
     async (sourceThreadId: string, targetThreadId: string, position: TabMovePosition) => {
-      try {
-        const result = await rpcRef.current.call("tabs_move", {
-          sourceThreadId,
-          targetThreadId,
-          position,
-        });
-        acceptState(result.state);
-        return result.state;
-      } catch (cause) {
-        setError(errorMessage(cause));
-        return null;
-      }
+      const result = await mutateState((workspaceId) =>
+        rpcRef.current.call("tabs_move", { workspaceId, sourceThreadId, targetThreadId, position }),
+      );
+      return result?.state ?? null;
     },
-    [acceptState],
+    [mutateState],
+  );
+
+  const visitIsCurrent = useCallback(
+    () => isCurrentVisit({ workspaceId: selection.workspaceId, generation: selection.generation }),
+    [isCurrentVisit, selection.workspaceId, selection.generation],
   );
 
   return {
     activeWorkflowThreadIds,
+    activeSidechatSourceThreadIds,
     close,
+    restoreTab,
     error,
     history,
     move,
@@ -579,6 +803,9 @@ function useTabsState(enabled = true) {
     setFavorite,
     state,
     syncActivity,
+    workspaceId: selection.workspaceId,
+    workspaceGeneration: selection.generation,
+    isCurrentVisit: visitIsCurrent,
   };
 }
 
@@ -688,12 +915,11 @@ interface PresentedTab {
 
 function buildPresentedTabs(
   state: TabsState,
-  threads: readonly PluginSidebarThread[],
   projects: readonly { id: string; name: string; isPersonal: boolean }[],
   workIndex: ThreadWorkIndex,
   locale: PluginLocale = "en",
 ): PresentedTab[] {
-  const threadsById = new Map(threads.map((thread) => [thread.id, thread]));
+  const threadsById = workIndex.threadsById;
   const projectsById = new Map(projects.map((project) => [project.id, project]));
 
   return [...state.entries]
@@ -706,11 +932,11 @@ function buildPresentedTabs(
         isSubthread: Boolean(
           liveThread === undefined ? entry.parentThreadId : liveThread.parentThreadId,
         ),
-        hasNestedWork: liveThread !== undefined && hasNestedThreadWork(liveThread.id, workIndex),
+        hasNestedWork: hasNestedThreadWork(entry.threadId, workIndex),
         hasNestedWaiting:
           liveThread !== undefined && hasNestedThreadPendingInteraction(liveThread.id, workIndex),
         isUnread: liveThread?.isUnread ?? false,
-        isWorking: liveThread !== undefined && hasThreadTreeWork(liveThread.id, workIndex),
+        isWorking: hasThreadTreeWork(entry.threadId, workIndex),
         isWaiting:
           liveThread !== undefined && hasThreadTreePendingInteraction(liveThread.id, workIndex),
         projectName: liveProject?.isPersonal
@@ -727,7 +953,6 @@ function buildPresentedTabs(
 
 function buildPresentedHistoryTabs(
   history: TabHistoryState,
-  threads: readonly PluginSidebarThread[],
   projects: readonly { id: string; name: string; isPersonal: boolean }[],
   workIndex: ThreadWorkIndex,
   locale: PluginLocale = "en",
@@ -747,7 +972,6 @@ function buildPresentedHistoryTabs(
         openedAt: entry.visitedAt,
       })),
     },
-    threads,
     projects,
     workIndex,
     locale,
@@ -838,7 +1062,9 @@ function ChatTabsOverlay() {
       : "left";
   const {
     activeWorkflowThreadIds,
+    activeSidechatSourceThreadIds,
     close,
+    restoreTab,
     error,
     history,
     move,
@@ -848,6 +1074,9 @@ function ChatTabsOverlay() {
     setFavorite,
     state,
     syncActivity,
+    workspaceId,
+    workspaceGeneration,
+    isCurrentVisit,
   } = useTabsState(context.threadId !== null && showTabsOnCurrentLayout);
   const stripRef = useRef<HTMLDivElement | null>(null);
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
@@ -996,7 +1225,7 @@ function ChatTabsOverlay() {
     (entry: TabEntry) => {
       try {
         threadActions.archive(entry.threadId);
-        void close(entry.threadId);
+        void close(entry.threadId, false);
       } catch (cause) {
         toast.error(t("Could not archive the chat: {error}", { error: errorMessage(cause) }));
       }
@@ -1125,8 +1354,9 @@ function ChatTabsOverlay() {
 
   const sidebarWorkIndex = useMemo(() => buildThreadWorkIndex(sidebar.threads), [sidebar.threads]);
   const workIndex = useMemo(
-    () => buildThreadWorkIndex(sidebar.threads, activeWorkflowThreadIds),
-    [activeWorkflowThreadIds, sidebar.threads],
+    () =>
+      buildThreadWorkIndex(sidebar.threads, activeWorkflowThreadIds, activeSidechatSourceThreadIds),
+    [activeWorkflowThreadIds, activeSidechatSourceThreadIds, sidebar.threads],
   );
 
   const childrenByParent = useMemo(() => indexThreadChildren(sidebar.threads), [sidebar.threads]);
@@ -1228,10 +1458,40 @@ function ChatTabsOverlay() {
     })();
   }, [hasCurrentThread, recordHistory, showTabsOnCurrentLayout, workingHistory]);
 
+  useLayoutEffect(() => {
+    workspaceSelectionStore().observeRoute(context.threadId);
+  }, [context.threadId]);
+  useLayoutEffect(() => {
+    const store = workspaceSelectionStore();
+    if (
+      workspaceId !== null &&
+      context.threadId !== null &&
+      !store.isParkedRoute(context.threadId) &&
+      state?.entries.some((entry) => entry.threadId === context.threadId)
+    )
+      store.rememberActive(workspaceId, context.threadId);
+  }, [workspaceId, workspaceGeneration, context.threadId, state]);
+
   const lastRouteThreadId = useRef(context.threadId);
   const pendingOpenedThreadId = useRef<string | null>(null);
   const initialThreadId = useRef(context.threadId);
   const initialRouteHandled = useRef(false);
+  const previousWorkspace = useRef({ workspaceId, generation: workspaceGeneration });
+  useLayoutEffect(() => {
+    if (
+      previousWorkspace.current.workspaceId !== null &&
+      previousWorkspace.current.generation !== workspaceGeneration
+    ) {
+      // Park the previous route until restoration opens this set's own target.
+      initialRouteHandled.current = true;
+      pendingOpenedThreadId.current = null;
+      clearTabDrag();
+      setInlineRename(null);
+      setRenameDialogTarget(null);
+      setTabListMenuOpen(false);
+    }
+    previousWorkspace.current = { workspaceId, generation: workspaceGeneration };
+  }, [workspaceId, workspaceGeneration, clearTabDrag]);
   useEffect(() => {
     if (context.threadId !== lastRouteThreadId.current) {
       lastRouteThreadId.current = context.threadId;
@@ -1252,6 +1512,13 @@ function ChatTabsOverlay() {
       return;
     }
 
+    // A workspace switch parks the route; reload must not turn it into a new membership.
+    if (
+      workspaceSelectionStore().isParkedRoute(currentCandidate.threadId) &&
+      !state.entries.some((entry) => entry.threadId === currentCandidate.threadId)
+    )
+      return;
+
     // The overlay may mount directly on the viewed chat after provisioning or
     // reload. Client/server clocks and chat age cannot identify an explicit close:
     // only the persisted server closed-ID guard can, so keep reopen=false here.
@@ -1259,11 +1526,8 @@ function ChatTabsOverlay() {
   }, [context.threadId, currentCandidate, showTabsOnCurrentLayout, state, syncActivity]);
 
   const tabs = useMemo(
-    () =>
-      state === null
-        ? []
-        : buildPresentedTabs(state, sidebar.threads, sidebar.projects, workIndex, locale),
-    [sidebar.projects, sidebar.threads, state, workIndex, locale],
+    () => (state === null ? [] : buildPresentedTabs(state, sidebar.projects, workIndex, locale)),
+    [sidebar.projects, state, workIndex, locale],
   );
   const newChatProjects = useMemo(
     () => recentProjects(sidebar.projects, sidebar.threads),
@@ -1274,7 +1538,6 @@ function ChatTabsOverlay() {
     const pinnedIds = new Set(pinnedMenuTabs.map((tab) => tab.entry.threadId));
     const presented = buildPresentedHistoryTabs(
       history,
-      sidebar.threads,
       sidebar.projects,
       workIndex,
       locale,
@@ -1289,16 +1552,7 @@ function ChatTabsOverlay() {
       presented.unshift(preview);
     }
     return presented;
-  }, [
-    history,
-    pinnedMenuTabs,
-    showTabListPinned,
-    sidebar.projects,
-    sidebar.threads,
-    tabs,
-    workIndex,
-    locale,
-  ]);
+  }, [history, pinnedMenuTabs, showTabListPinned, sidebar.projects, tabs, workIndex, locale]);
   const menuPinnedTabs = useMemo(
     () => (showTabListPinned ? pinnedMenuTabs : []),
     [showTabListPinned, pinnedMenuTabs],
@@ -1345,6 +1599,7 @@ function ChatTabsOverlay() {
   const searchPending =
     searchActive && remoteSearch.query === tabSearch.trim().slice(0, 300) && remoteSearch.pending;
   const searchResults = useMemo(() => {
+    if (!tabListMenuOpen || !searchActive) return [];
     const excluded = new Set(
       history.entries
         .filter(
@@ -1391,7 +1646,6 @@ function ChatTabsOverlay() {
           openedAt: 0,
         })),
       },
-      sidebar.threads,
       sidebar.projects,
       workIndex,
       locale,
@@ -1425,6 +1679,8 @@ function ChatTabsOverlay() {
     );
   }, [
     searchableTabs,
+    tabListMenuOpen,
+    searchActive,
     tabSearch,
     remoteSearch,
     sidebar.threads,
@@ -1488,15 +1744,23 @@ function ChatTabsOverlay() {
     const spacer = topScrollbarSpacerRef.current;
     if (strip === null || topScrollbar === null || spacer === null) return;
 
+    let frame: number | null = null;
     const syncMetrics = () => {
-      const nextHasHorizontalOverflow = strip.scrollWidth > strip.clientWidth;
-      setHasHorizontalOverflow((previous) =>
-        previous === nextHasHorizontalOverflow ? previous : nextHasHorizontalOverflow,
-      );
-      spacer.style.width = `${Math.max(strip.scrollWidth, strip.clientWidth)}px`;
-      if (topScrollbar.scrollLeft !== strip.scrollLeft) {
-        topScrollbar.scrollLeft = strip.scrollLeft;
-      }
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        const scrollWidth = strip.scrollWidth;
+        const clientWidth = strip.clientWidth;
+        const scrollLeft = strip.scrollLeft;
+        const scrollbarLeft = topScrollbar.scrollLeft;
+        const nextHasHorizontalOverflow = scrollWidth > clientWidth;
+        const width = `${Math.max(scrollWidth, clientWidth)}px`;
+        setHasHorizontalOverflow((previous) =>
+          previous === nextHasHorizontalOverflow ? previous : nextHasHorizontalOverflow,
+        );
+        if (spacer.style.width !== width) spacer.style.width = width;
+        if (scrollbarLeft !== scrollLeft) topScrollbar.scrollLeft = scrollLeft;
+      });
     };
     const syncFromStrip = () => {
       if (topScrollbar.scrollLeft !== strip.scrollLeft) {
@@ -1526,10 +1790,14 @@ function ChatTabsOverlay() {
       topScrollbar.removeEventListener("scroll", syncFromTopScrollbar);
       window.removeEventListener("resize", syncMetrics);
       resizeObserver?.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [error, tabs]);
 
-  const shouldDock = showTabsOnCurrentLayout && context.threadId !== null && tabs.length > 0;
+  const shouldDock =
+    showTabsOnCurrentLayout &&
+    context.threadId !== null &&
+    (tabs.length > 0 || workspaceId !== null || error !== null);
   const overlayBoundsRef = useOverlayBounds(shouldDock);
   useEffect(() => {
     if (!shouldDock || !tabListMenuHasNavigation) {
@@ -1631,6 +1899,9 @@ function ChatTabsOverlay() {
   const currentEntryRef = useRef<TabEntry | null>(null);
   const closingCurrentTab = useRef(false);
   currentEntryRef.current = currentEntry;
+  useLayoutEffect(() => {
+    closingCurrentTab.current = false;
+  }, [workspaceGeneration]);
 
   const closeCurrentTab = useCallback(async () => {
     if (currentEntry === null || closingCurrentTab.current) return;
@@ -1638,9 +1909,9 @@ function ChatTabsOverlay() {
     try {
       await closeTab(currentEntry);
     } finally {
-      closingCurrentTab.current = false;
+      if (isCurrentVisit()) closingCurrentTab.current = false;
     }
-  }, [closeTab, currentEntry]);
+  }, [closeTab, currentEntry, isCurrentVisit]);
   const closeCurrentTabRef = useRef(closeCurrentTab);
   closeCurrentTabRef.current = closeCurrentTab;
 
@@ -1663,6 +1934,7 @@ function ChatTabsOverlay() {
   useEffect(() => {
     const unsubscribe = subscribeToDesktopCloseWindowRequest(() => {
       if (embeddedBrowserFocused.current) return false;
+      if (isDialogKeyboardTarget(document.activeElement)) return true;
       if (currentEntryRef.current === null) return false;
       void closeCurrentTabRef.current();
       return true;
@@ -1670,10 +1942,71 @@ function ChatTabsOverlay() {
     return unsubscribe ?? undefined;
   }, []);
 
+  const reopeningTab = useRef(false);
+  const reopenClosedTab = useCallback(async () => {
+    const store = workspaceSelectionStore();
+    const visit = store.getSnapshot();
+    if (visit.workspaceId === null || reopeningTab.current) return;
+    const routeRevision = store.getRouteRevision();
+    const routeUrl = window.location.href;
+    const current = () =>
+      isCurrentVisit() &&
+      store.getRouteRevision() === routeRevision &&
+      window.location.href === routeUrl;
+    reopeningTab.current = true;
+    try {
+      let closed = store.lastClosed(visit.workspaceId);
+      while (closed !== null && current()) {
+        const threadId = closed.entry.threadId;
+        const result = await restoreTab(closed.entry, closed.index, closed.sequence);
+        if (!current()) return;
+        if (result === null) {
+          toast.error(t("Could not update the chat."));
+          return;
+        }
+        if (result.status === "restored") {
+          if (result.state.entries.some((entry) => entry.threadId === threadId)) {
+            store.rememberActive(visit.workspaceId, threadId);
+            store.unparkRoute(threadId);
+            threadActions.open(threadId);
+          }
+          return;
+        }
+        closed = store.lastClosed(visit.workspaceId);
+      }
+    } catch (cause) {
+      if (current())
+        toast.error(t("Could not update the chat.") + " " + workspaceErrorMessage(locale, cause));
+    } finally {
+      reopeningTab.current = false;
+    }
+  }, [isCurrentVisit, locale, restoreTab, t, threadActions]);
+
   useLayoutEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Shift") lastShiftReleaseRef.current = null;
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || isDialogKeyboardTarget(event.target)) return;
+
+      if (isReopenClosedTabShortcut(event)) {
+        const store = workspaceSelectionStore();
+        const selected = store.getSnapshot().workspaceId;
+        if (
+          !showTabsOnCurrentLayout ||
+          embeddedBrowserFocused.current ||
+          isBrowserChromeKeyboardTarget(event.target) ||
+          inlineRename !== null ||
+          renameDialogTarget !== null ||
+          draggedTab !== null ||
+          selected === null ||
+          store.lastClosed(selected) === null ||
+          reopeningTab.current
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        void reopenClosedTab();
+        return;
+      }
 
       if (isCyclePluginTabsShortcut(event)) {
         const direction: TabCycleDirection = event.shiftKey ? "previous" : "next";
@@ -1709,7 +2042,8 @@ function ChatTabsOverlay() {
         embeddedBrowserFocused.current ||
         inlineRename !== null ||
         renameDialogTarget !== null ||
-        isBrowserChromeKeyboardTarget(event.target)
+        isBrowserChromeKeyboardTarget(event.target) ||
+        isDialogKeyboardTarget(event.target)
       )
         return;
       const now = Date.now();
@@ -1738,6 +2072,9 @@ function ChatTabsOverlay() {
     closeCurrentTab,
     currentEntry,
     cycleTabsByKeyboard,
+    reopenClosedTab,
+    showTabsOnCurrentLayout,
+    draggedTab,
     shouldDock,
     tabListMenuHasNavigation,
     inlineRename,
@@ -2078,6 +2415,13 @@ function ChatTabsOverlay() {
         </div>
         <div className="bb-chat-tabs-content-row">
           {tabListButtonPosition === "left" ? tabListSwitcher : null}
+          {settings.values?.enableWorkspaces !== false ? (
+            <WorkspaceSwitcher
+              key={workspaceGeneration}
+              locale={locale}
+              currentThreadId={context.threadId}
+            />
+          ) : null}
           <div
             ref={stripRef}
             className="bb-chat-tabs-strip"
@@ -2123,9 +2467,9 @@ function ChatTabsOverlay() {
                 const editing = inlineRename?.entry.threadId === entry.threadId;
                 const draggable = entry.pinned && !editing && !isCompactTabLayout;
                 const dragging = draggedTab?.threadId === entry.threadId;
-                const workLabel = hasNestedWork
-                  ? t("nested work is running")
-                  : t("work is running");
+                const nestedOnly =
+                  hasNestedWork && !workIndex.directlyWorkingThreadIds.has(entry.threadId);
+                const workLabel = nestedOnly ? t("nested work is running") : t("work is running");
                 const waitingLabel = hasNestedWaiting
                   ? t("A nested chat needs your input.")
                   : t("Waiting for your input.");
@@ -2279,7 +2623,11 @@ function ChatTabsOverlay() {
                                 ?
                               </span>
                             ) : isWorking ? (
-                              <span className="bb-chat-tab-working" aria-hidden />
+                              <span
+                                className="bb-chat-tab-working"
+                                data-nested-only={nestedOnly ? "true" : "false"}
+                                aria-hidden
+                              />
                             ) : null}
                             {isSubthread ? <SubthreadBadge locale={locale} /> : null}
                             <span className="bb-chat-tab-copy">
@@ -2307,9 +2655,9 @@ function ChatTabsOverlay() {
                             onOpen={(candidate) => {
                               // Explicitly create/reopen this child's preview before navigation;
                               // background children never create tabs by themselves.
-                              void syncActivity([candidate], true).then(() =>
-                                openThread(candidate),
-                              );
+                              void syncActivity([candidate], true).then(() => {
+                                if (isCurrentVisit()) openThread(candidate);
+                              });
                             }}
                           />
                         ) : null}
@@ -2340,7 +2688,11 @@ function ChatTabsOverlay() {
               openNewThread={threadActions.openNewThread}
             />
             {error === null ? null : (
-              <span className="bb-chat-tabs-error" role="status" title={error}>
+              <span
+                className="bb-chat-tabs-error"
+                role="status"
+                title={workspaceErrorMessage(locale, error)}
+              >
                 {t("Tabs unavailable")}
               </span>
             )}
@@ -2358,7 +2710,16 @@ function ChatTabsOverlay() {
   );
 }
 
-function PinnedTabsHomepageSection({
+function PinnedTabsHomepageSection(props: PluginHomepageSectionProps & { favorites?: boolean }) {
+  const settings = useSettings();
+  const selection = useWorkspaceSelection(settings.values?.enableWorkspaces !== false);
+  // Bootstrap resolves generation 0 to 1 without ending the first homepage visit.
+  const visitKey =
+    selection.workspaceId === null && selection.generation === 0 ? 1 : selection.generation;
+  return <WorkspaceHomepageVisit key={visitKey} {...props} />;
+}
+
+function WorkspaceHomepageVisit({
   favorites = false,
 }: PluginHomepageSectionProps & { favorites?: boolean }) {
   const settings = useSettings();
@@ -2366,8 +2727,18 @@ function PinnedTabsHomepageSection({
   const sidebar = experimental_useSidebarThreads();
   const threadActions = experimental_useSidebarThreadActions();
   const showPinnedTabsList = favorites || settings.values?.showPinnedTabsList !== false;
-  const { activeWorkflowThreadIds, refresh, state, history, syncActivity, setPinned, setFavorite } =
-    useTabsState(showPinnedTabsList);
+  const {
+    activeWorkflowThreadIds,
+    activeSidechatSourceThreadIds,
+    refresh,
+    state,
+    history,
+    syncActivity,
+    setPinned,
+    setFavorite,
+    isCurrentVisit,
+    error,
+  } = useTabsState(showPinnedTabsList);
   // Keep only removals made on this visit; remount drops them from the homepage.
   const [deferredRemovals, setDeferredRemovals] = useState<{ entry: TabEntry; index: number }[]>(
     [],
@@ -2376,8 +2747,9 @@ function PinnedTabsHomepageSection({
   const [pendingThreadIds, setPendingThreadIds] = useState<ReadonlySet<string>>(new Set());
   const sidebarWorkIndex = useMemo(() => buildThreadWorkIndex(sidebar.threads), [sidebar.threads]);
   const workIndex = useMemo(
-    () => buildThreadWorkIndex(sidebar.threads, activeWorkflowThreadIds),
-    [activeWorkflowThreadIds, sidebar.threads],
+    () =>
+      buildThreadWorkIndex(sidebar.threads, activeWorkflowThreadIds, activeSidechatSourceThreadIds),
+    [activeWorkflowThreadIds, activeSidechatSourceThreadIds, sidebar.threads],
   );
   const tabs = useMemo(() => {
     if (state === null) return [];
@@ -2402,7 +2774,6 @@ function PinnedTabsHomepageSection({
           .filter((entry) => !unavailableIds.has(entry.threadId))
           .map((entry) => ({ ...entry, pinned: true })),
       },
-      sidebar.threads,
       sidebar.projects,
       workIndex,
       locale,
@@ -2447,9 +2818,11 @@ function PinnedTabsHomepageSection({
 
   return (
     <>
-      {removalFailed && showPinnedTabsList ? (
+      {showPinnedTabsList && (removalFailed || error !== null) ? (
         <p role="alert" className="bb-chat-tabs-error">
-          {translate(locale, "Could not update the chat.")}
+          {removalFailed
+            ? translate(locale, "Could not update the chat.")
+            : workspaceErrorMessage(locale, error)}
         </p>
       ) : null}
       <PinnedTabsList
@@ -2457,6 +2830,12 @@ function PinnedTabsHomepageSection({
         visible={showPinnedTabsList}
         loading={state === null}
         heading={favorites ? "Favorites" : "Tabs"}
+        headerActions={
+          settings.values?.enableWorkspaces !== false &&
+          (!favorites || settings.values?.showPinnedTabsList === false) ? (
+            <WorkspaceSwitcher locale={locale} currentThreadId={null} />
+          ) : null
+        }
         emptyMessage={
           favorites
             ? "No favorite chats yet. Open a tab menu and choose “Add to favorites”."
@@ -2525,7 +2904,9 @@ function PinnedTabsHomepageSection({
                 },
               ],
               true,
-            ).then(() => threadActions.open(threadId));
+            ).then(() => {
+              if (isCurrentVisit()) threadActions.open(threadId);
+            });
           } else {
             threadActions.open(threadId);
           }

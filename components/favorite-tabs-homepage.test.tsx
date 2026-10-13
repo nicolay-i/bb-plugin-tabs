@@ -86,7 +86,11 @@ describe("Favorite chats homepage", () => {
           ).toBe(false),
         );
       }
-      await slot.emitRealtime("tabs-changed", state);
+      await slot.emitRealtime("tabs-changed:work", {
+        workspaceId: "work",
+        stateRevision: 1,
+        state,
+      });
       expect(
         Array.from(slot.container.querySelectorAll(".bb-chat-tabs-homepage-pinned-title")).map(
           (node) => node.textContent,
@@ -95,7 +99,11 @@ describe("Favorite chats homepage", () => {
       const restoreAction = favorites ? "Add to favorites" : "Pin";
       // Both previews are gone: restoration must work from the retained card alone.
       state = { ...state, entries: state.entries.filter((entry) => entry.pinned) };
-      await slot.emitRealtime("tabs-changed", state);
+      await slot.emitRealtime("tabs-changed:work", {
+        workspaceId: "work",
+        stateRevision: 2,
+        state,
+      });
       fireEvent.click(slot.getByRole("button", { name: `${restoreAction}: C` }));
       await waitFor(() =>
         expect(
@@ -229,13 +237,14 @@ describe("Favorite chats homepage", () => {
     expect(slot.inspection.rpcCalls).toContainEqual({
       method: "tabs_sync_activity",
       input: {
+        workspaceId: "work",
         threads: [{ threadId: "thr_saved", projectId: "proj_api", title: "Saved chat" }],
         reopen: true,
       },
     });
     expect(state.entries[0]?.pinned).toBe(false);
     state = { ...state, favorites: [] };
-    await slot.emitRealtime("tabs-changed", state);
+    await slot.emitRealtime("tabs-changed:work", { workspaceId: "work", stateRevision: 3, state });
     expect(slot.queryByRole("button", { name: /Saved chat/ })).toBeNull();
     expect(
       slot.getByText(

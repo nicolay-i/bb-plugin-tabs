@@ -1,7 +1,7 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.11",
-  "description": "Pinned and preview chat tabs with favorites, history, subthread markers, and 15 interface languages.",
+  "version": "0.1.12",
+  "description": "Workspaces with independent pinned and preview chat tabs, favorites, history, and 15 interface languages for BB.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -35,7 +35,7 @@
   },
   "bb": {
     "name": "Chat Tabs",
-    "description": "Keep important BB chats one click away with pinned tabs, favorites, search, and live activity indicators in 15 languages.",
+    "description": "Keep BB chats within reach with workspaces, pinned tabs, favorites, search, and live activity indicators in 15 languages.",
     "branding": {
       "icon": "./assets/icon.svg"
     },

@@ -9,6 +9,30 @@
  * the frontend safely renders state received through RPC.
  */
 
+import { z } from "zod";
+
+export const tabCandidateSchema = z
+  .object({
+    threadId: z.string().trim().min(1).max(200),
+    projectId: z.string().trim().min(1).max(200),
+    title: z.string().trim().min(1).max(300),
+    parentThreadId: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict();
+
+export const tabEntrySchema = tabCandidateSchema.extend({
+  pinned: z.boolean(),
+  openedAt: z.number().finite().nonnegative(),
+});
+
+export const tabsStateSchema = z
+  .object({
+    version: z.literal(1),
+    entries: z.array(tabEntrySchema).max(100),
+    favorites: z.array(tabEntrySchema).max(100).optional(),
+  })
+  .strict();
+
 export const TAB_STATE_VERSION = 1 as const;
 export const MAX_TAB_ENTRIES = 100;
 export const TABS_CHANGED_CHANNEL = "tabs-changed";
@@ -234,6 +258,20 @@ export function openTabCandidate(
   };
 }
 
+/** Explicit undo: never evict another tab or replace its preview. */
+export function restoreClosedTab(state: TabsState, entry: TabEntry, index: number): TabsState {
+  const current = normalizeTabsState(state);
+  if (current.entries.some((item) => item.threadId === entry.threadId)) return current;
+  if (current.entries.length >= MAX_TAB_ENTRIES) throw new Error("Tabs are limited to 100 chats.");
+  const restored = {
+    ...entry,
+    pinned: entry.pinned || current.entries.some((item) => !item.pinned),
+  };
+  const entries = [...current.entries];
+  entries.splice(Math.min(index, entries.length), 0, restored);
+  return { ...current, entries };
+}
+
 export function setTabPinned(state: TabsState, threadId: string, pinned: boolean): TabsState {
   const current = normalizeTabsState(state);
   const target = current.entries.find((entry) => entry.threadId === threadId);
@@ -341,8 +379,8 @@ export function closeTabs(
   return {
     ...current,
     entries,
-    ...(removeFavorites
-      ? { favorites: current.favorites?.filter((entry) => !closingIds.has(entry.threadId)) }
+    ...(removeFavorites && current.favorites !== undefined
+      ? { favorites: current.favorites.filter((entry) => !closingIds.has(entry.threadId)) }
       : {}),
   };
 }

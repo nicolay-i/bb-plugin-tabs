@@ -17,6 +17,188 @@ async function loadPlugin() {
 }
 
 describe("Chat Tabs", () => {
+  it("tracks hidden sidechat forks by source, keeps parallel work, and clears terminal activity", async () => {
+    const first = makeThreadResponse({
+      id: "side_a",
+      sourceThreadId: "parent",
+      parentThreadId: null,
+      originPluginId: "side-chat",
+      originKind: "fork",
+      visibility: "hidden",
+      status: "active",
+    });
+    const second = makeThreadResponse({ ...first, id: "side_b" });
+    const list = vi.fn(async () => [
+      first,
+      second,
+      makeThreadResponse({
+        ...first,
+        id: "ordinary_fork",
+        originPluginId: "another-plugin",
+        sourceThreadId: "unrelated",
+      }),
+      makeThreadResponse({
+        ...first,
+        id: "archived",
+        sourceThreadId: "archived_source",
+        archivedAt: 1,
+      }),
+      makeThreadResponse({
+        ...first,
+        id: "deleted",
+        sourceThreadId: "deleted_source",
+        deletedAt: 1,
+      }),
+      makeThreadResponse({ ...first, id: "idle", sourceThreadId: "idle_source", status: "idle" }),
+    ]);
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    expect((await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity).toEqual({
+      generation: 1,
+      revision: 2,
+      sourceThreadIds: ["parent"],
+    });
+    expect(list).toHaveBeenCalledWith({
+      originPluginId: "side-chat",
+      includeHidden: true,
+      archived: false,
+      limit: 200,
+      offset: 0,
+    });
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ ...first, status: "idle" }),
+      lastAssistantText: null,
+    });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual(["parent"]);
+    await host.harness.behavior.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ ...second, status: "error" }),
+      error: "failed",
+    });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual([]);
+    const signals = host.harness.inspection.realtimeSignals.filter(
+      (signal) => signal.channel === "tabs-sidechat-activity-changed",
+    );
+    expect(signals.map((signal) => signal.payload)).toEqual([
+      { generation: 1, revision: 3, sourceThreadIds: ["parent"] },
+      { generation: 1, revision: 4, sourceThreadIds: [] },
+    ]);
+    expect(list).toHaveBeenCalledTimes(1);
+    await host.harness.behavior.emitThreadEvent("thread.active", { thread: first });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual(["parent"]);
+    await host.harness.behavior.emitThreadEvent("thread.deleted", {
+      thread: makeThreadResponse({ ...first, deletedAt: 1 }),
+    });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual([]);
+  });
+
+  it("does not revive stopped sidechat activity from a delayed startup metadata page", async () => {
+    const child = makeThreadResponse({
+      id: "side",
+      originPluginId: "side-chat",
+      sourceThreadId: "parent",
+      visibility: "hidden",
+      status: "active",
+    });
+    let resolvePage: ((threads: ReturnType<typeof makeThreadResponse>[]) => void) | undefined;
+    const page = new Promise<ReturnType<typeof makeThreadResponse>[]>((resolve) => {
+      resolvePage = resolve;
+    });
+    const list = vi.fn(() => page);
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    const request = host.harness.behavior.callRpc("tabs_list", null);
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await host.harness.behavior.emitThreadEvent("thread.active", { thread: child });
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ ...child, status: "idle" }),
+      lastAssistantText: null,
+    });
+    resolvePage?.([child]);
+    expect((await request).sidechatActivity).toEqual({
+      generation: 1,
+      revision: 2,
+      sourceThreadIds: [],
+    });
+  });
+
+  it("advances the activity producer generation across reload and reports cleared work even with a lower revision", async () => {
+    const child = makeThreadResponse({
+      id: "side",
+      originPluginId: "side-chat",
+      sourceThreadId: "parent",
+      status: "active",
+    });
+    const list = vi.fn(async () => [child]);
+    let host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    const initial = (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity;
+    expect(initial).toEqual({ generation: 1, revision: 1, sourceThreadIds: ["parent"] });
+    list.mockResolvedValue([]);
+    host = withTabsRpcTypes(await host.harness.lifecycle.reload(plugin));
+    loadedHosts[loadedHosts.length - 1] = host;
+    expect((await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity).toEqual({
+      generation: 2,
+      revision: 0,
+      sourceThreadIds: [],
+    });
+    const emitted = await host.harness.behavior.emitThreadEvent("experimental_thread.events", {
+      thread: makeThreadResponse({ ...child, status: "starting" }),
+      sequence: 1,
+    });
+    expect(emitted.errors).toEqual([]);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual(["parent"]);
+  });
+
+  it("reads later sidechat metadata pages once and retries a failed initial read", async () => {
+    const idle = Array.from({ length: 200 }, (_, i) =>
+      makeThreadResponse({
+        id: `idle_${i}`,
+        originPluginId: "side-chat",
+        sourceThreadId: "parent",
+        status: "idle",
+      }),
+    );
+    const active = makeThreadResponse({
+      id: "active",
+      originPluginId: "side-chat",
+      sourceThreadId: "parent",
+      status: "active",
+    });
+    const list = vi.fn(async () => [active]);
+    list.mockRejectedValueOnce(new Error("metadata temporarily unavailable"));
+    list.mockResolvedValueOnce(idle);
+    const host = createFakePluginHost({ pluginId: "tabs", sdk: { threads: { list } } });
+    loadedHosts.push(host);
+    await plugin(host.bb);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual([]);
+    expect(
+      (await host.harness.behavior.callRpc("tabs_list", null)).sidechatActivity?.sourceThreadIds,
+    ).toEqual(["parent"]);
+    expect(list).toHaveBeenNthCalledWith(3, {
+      originPluginId: "side-chat",
+      includeHidden: true,
+      archived: false,
+      limit: 200,
+      offset: 200,
+    });
+    await host.harness.behavior.callRpc("tabs_list", null);
+    expect(list).toHaveBeenCalledTimes(3);
+  });
   it("hydrates parent metadata in legacy history and favorites and returns it in search/current resolution", async () => {
     const child = makeThreadResponse({
       id: "thr_child",
@@ -212,13 +394,16 @@ describe("Chat Tabs", () => {
     const updated = await host.harness.behavior.callRpc("tabs_settings_update", {
       language: "Русский",
       searchArchivedChats: true,
+      enableWorkspaces: false,
     });
+    expect(updated.values.enableWorkspaces).toBe(false);
     expect(updated.values.language).toBe("Русский");
     expect(updated.values.searchArchivedChats).toBe(true);
     expect(updated.values.showTabsOnDesktop).toBe(false);
     for (const invalid of [
       { language: "Unknown" },
       { searchArchivedChats: "true" },
+      { enableWorkspaces: "false" },
       { unexpected: true },
       {},
     ]) {
@@ -230,6 +415,7 @@ describe("Chat Tabs", () => {
       (
         await host.harness.behavior.callRpc("tabs_settings_update", {
           tabListButtonPosition: "Right",
+          enableWorkspaces: true,
         })
       ).values.language,
     ).toBe("Русский");
@@ -909,7 +1095,7 @@ describe("Chat Tabs", () => {
       threadId: "thr_keep",
     });
 
-    expect(closed).toEqual({ state: { version: 1, entries: [] }, removed: true });
+    expect(closed).toEqual({ state: { version: 1, entries: [] }, removed: true, stateRevision: 2 });
     expect(host.harness.inspection.sdk.calls).toEqual([]);
   });
 });

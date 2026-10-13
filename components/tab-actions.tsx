@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useSettings } from "@get-bb/plugin-sdk/app";
 import type { TabEntry } from "../lib/tabs-model";
 import { Icon } from "./ui/icon";
+import { WorkspaceMembershipOptions } from "./workspace-membership-menu";
 import { translate, type PluginLocale } from "../lib/plugin-locale";
 
 const MAX_THREAD_TITLE_LENGTH = 300;
@@ -47,10 +49,11 @@ export function TabActionsContextMenu({
   title,
   locale = "en",
 }: TabActionsContextMenuProps) {
+  const settings = useSettings();
   const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
     translate(locale, key, variables);
   return (
-    <ContextMenu.Root>
+    <ContextMenu.Root dir={locale === "ar" ? "rtl" : "ltr"}>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content
@@ -85,6 +88,24 @@ export function TabActionsContextMenu({
             <Icon name="Star" aria-hidden />
             {isFavorite ? t("Remove from favorites") : t("Add to favorites")}
           </ContextMenu.Item>
+          {settings.values?.enableWorkspaces !== false ? (
+            <ContextMenu.Sub>
+              <ContextMenu.SubTrigger className="bb-chat-tab-context-menu-item bb-chat-tabs-membership-trigger">
+                <Icon name="ListTodo" aria-hidden />
+                {t("Show in workspaces")}
+                <Icon name="ChevronRight" className="bb-chat-tabs-membership-chevron" aria-hidden />
+              </ContextMenu.SubTrigger>
+              <ContextMenu.Portal>
+                <ContextMenu.SubContent
+                  className="bb-chat-tab-context-menu bb-chat-tabs-membership-menu"
+                  sideOffset={4}
+                  collisionPadding={8}
+                >
+                  <WorkspaceMembershipOptions entry={entry} locale={locale} />
+                </ContextMenu.SubContent>
+              </ContextMenu.Portal>
+            </ContextMenu.Sub>
+          ) : null}
           <ContextMenu.Item
             className="bb-chat-tab-context-menu-item"
             onSelect={() => {

@@ -5,6 +5,23 @@ import { describe, expect, it } from "vitest";
 const styles = await readFile(`${process.cwd()}/tabs.css`, "utf8");
 
 describe("Chat Tabs", () => {
+  it("keeps the visible workspace menu trigger compact with a focus ring and theme-aware popup", () => {
+    const trigger = styles.match(/\.bb-chat-tabs-workspace-trigger\s*\{([\s\S]*?)\n\}/u)?.[1];
+    expect(trigger).toContain("box-sizing: border-box;");
+    expect(trigger).toContain("width: 1.75rem;");
+    const row = styles.match(/\.bb-chat-tabs-content-row\s*\{([\s\S]*?)\n\}/u)?.[1];
+    expect(row).toContain("padding-inline-start: 0.5rem;");
+    expect(styles).toContain(".bb-chat-tabs-workspace-trigger:focus-visible");
+    expect(styles).toContain("--radix-dropdown-menu-content-available-height");
+    expect(styles).not.toContain(".bb-chat-tabs-workspace-switcher select");
+  });
+  it("sets explicit 44px trigger and menu targets on narrow/coarse surfaces", () => {
+    const mobile = styles.match(
+      /@media \(max-width: 767px\), \(pointer: coarse\) \{([\s\S]*?)\n\}/u,
+    )?.[1];
+    expect(mobile).toMatch(/\.bb-chat-tabs-workspace-trigger\s*\{\s*height: 44px;/u);
+    expect(mobile).toContain(".bb-chat-tabs-workspace-menu-item,");
+  });
   it("limits replacement settings checks to the host form panel", () => {
     const selector = styles
       .match(
@@ -190,6 +207,19 @@ describe("Chat Tabs", () => {
     expect(styles).toContain("background: var(--popover, var(--background));");
     expect(styles).toContain(".bb-chat-tab-rename-dialog {");
     expect(styles).toContain(".bb-chat-tab-rename-overlay {");
+  });
+
+  it("keeps nested-only work grey even on the selected parent tab", () => {
+    const selector = '.bb-chat-tab .bb-chat-tab-working[data-nested-only="true"]';
+    expect(styles).toContain(selector);
+    expect(styles.indexOf(selector)).toBeGreaterThan(
+      styles.indexOf('.bb-chat-tab[data-active="true"] .bb-chat-tab-working'),
+    );
+    const rule = styles.slice(styles.indexOf(selector)).split("}")[0];
+    expect(rule).toContain(
+      "background: color-mix(in oklch, var(--muted-foreground) 80%, var(--background));",
+    );
+    expect(rule).toContain("box-shadow: none;");
   });
 
   it("handles behavior 10", () => {

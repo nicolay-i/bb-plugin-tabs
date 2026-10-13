@@ -6,6 +6,7 @@ import {
   movePinnedTab,
   normalizeTabsState,
   openTabCandidate,
+  restoreClosedTab,
   setTabPinned,
   setTabFavorite,
   tabsStatesEqual,
@@ -13,6 +14,31 @@ import {
 } from "./tabs-model";
 
 describe("Chat Tabs", () => {
+  it("restores original position/time/pin without replacing a preview, duplicating tabs or evicting at capacity", () => {
+    const entry = {
+      threadId: "closed",
+      projectId: "project",
+      title: "Closed",
+      pinned: false,
+      openedAt: 5,
+    };
+    const pinned = { ...entry, threadId: "pin", pinned: true };
+    const preview = { ...entry, threadId: "preview", openedAt: 10 };
+    const state = { version: 1 as const, entries: [pinned, preview], favorites: [entry] };
+    const restored = restoreClosedTab(state, entry, 1);
+    expect(restored.entries.map((item) => item.threadId)).toEqual(["pin", "closed", "preview"]);
+    expect(restored.entries[1]).toEqual({ ...entry, pinned: true });
+    expect(restored.favorites).toEqual([entry]);
+    expect(restoreClosedTab(restored, entry, 0)).toEqual(restored);
+    expect(restoreClosedTab({ version: 1, entries: [] }, entry, 1).entries).toEqual([entry]);
+    const full = {
+      version: 1 as const,
+      entries: Array.from({ length: 100 }, (_, i) => ({ ...pinned, threadId: `full-${i}` })),
+    };
+    expect(() => restoreClosedTab(full, entry, 0)).toThrow("100 chats");
+    expect(full.entries).toHaveLength(100);
+  });
+
   it("normalizes favorite snapshots without treating them as open previews", () => {
     const entry = {
       threadId: "thr_saved",
