@@ -26,9 +26,11 @@ export function workspaceErrorMessage(locale: PluginLocale, cause: unknown): str
 export function WorkspaceSwitcher({
   locale,
   currentThreadId,
+  compact = false,
 }: {
   locale: PluginLocale;
   currentThreadId: string | null;
+  compact?: boolean;
 }) {
   const selection = useWorkspaceSelection();
   const store = workspaceSelectionStore();
@@ -46,6 +48,7 @@ export function WorkspaceSwitcher({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceInfo | null>(null);
   const [value, setValue] = useState("");
+  const [newValue, setNewValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
@@ -107,6 +110,7 @@ export function WorkspaceSwitcher({
       setEditingId(null);
       setDeleteTarget(null);
       setValue("");
+      setNewValue("");
       setError(null);
     }
   };
@@ -162,33 +166,32 @@ export function WorkspaceSwitcher({
       window.location.href === url;
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (
+    event: FormEvent<HTMLFormElement>,
+    workspaceId: string | null,
+    inputValue: string,
+  ) => {
     event.preventDefault();
     if (pending) return;
     setError(null);
     try {
       const name = validateWorkspaceName(
         { workspaces: selection.workspaces },
-        value,
-        editingId ?? undefined,
+        inputValue,
+        workspaceId ?? undefined,
       );
-      const visit = store.getSnapshot();
-      const current = captureNavigation();
-      const revision = visit.revision;
+      const revision = store.getSnapshot().revision;
       setPending(true);
-      if (editingId !== null) {
-        const result = await rpc.call("tabs_workspace_rename", { workspaceId: editingId, name });
+      if (workspaceId !== null) {
+        const result = await rpc.call("tabs_workspace_rename", { workspaceId, name });
         store.acceptCatalog(result.workspaces, revision, result.stateRevision);
       } else {
         const result = await rpc.call("tabs_workspace_create", { name });
-        const restore = current() && store.getSnapshot().generation === visit.generation;
         store.acceptCatalog(result.workspaces, revision, result.stateRevision);
-        if (!restore) return;
-        setOpen(false);
-        await switchWorkspace(result.workspaceId);
       }
       setEditingId(null);
       setValue("");
+      if (workspaceId === null) setNewValue("");
     } catch (cause) {
       setError(
         t("Could not update the workspace: {error}", {
@@ -232,6 +235,7 @@ export function WorkspaceSwitcher({
   return (
     <div
       className="bb-chat-tabs-workspace-switcher"
+      data-compact={compact ? "true" : undefined}
       lang={locale}
       dir={locale === "ar" ? "rtl" : undefined}
     >
@@ -278,6 +282,10 @@ export function WorkspaceSwitcher({
             <span className="bb-chat-tabs-workspace-initial" aria-hidden="true">
               {initialFor(selectedLabel)}
             </span>
+            <span className="bb-chat-tabs-workspace-label" aria-hidden="true">
+              {selectedLabel}
+            </span>
+            <Icon name="ChevronDown" className="bb-chat-tabs-workspace-chevron" aria-hidden />
           </button>
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
@@ -370,7 +378,7 @@ export function WorkspaceSwitcher({
       </DropdownMenu.Root>
       <Dialog.Root open={open} onOpenChange={changeDialogOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="bb-chat-tab-rename-overlay" />
+          <Dialog.Overlay className="bb-chat-tab-rename-overlay bb-chat-tabs-workspace-overlay" />
           <Dialog.Content
             className="bb-chat-tab-rename-dialog bb-chat-tabs-workspace-dialog"
             onCloseAutoFocus={(event) => {
@@ -380,136 +388,194 @@ export function WorkspaceSwitcher({
             lang={locale}
             dir={locale === "ar" ? "rtl" : undefined}
           >
-            <Dialog.Title className="bb-chat-tab-rename-title">
-              {t(deleteTarget ? "Delete workspace" : "Manage workspaces")}
-            </Dialog.Title>
-            <Dialog.Description className="bb-chat-tab-rename-description">
-              {deleteTarget
-                ? t(
-                    "Delete workspace “{name}”? Only its tabs and favorites will be removed. Chats and shared history will stay.",
-                    { name: label(deleteTarget) },
-                  )
-                : t(
-                    "Each workspace has its own tabs and favorites. Selection applies to this window only.",
-                  )}
-            </Dialog.Description>
+            <div className="bb-chat-tabs-workspace-dialog-header">
+              <Dialog.Title className="bb-chat-tab-rename-title">{t("Workspaces")}</Dialog.Title>
+              <Dialog.Description className="bb-chat-tab-rename-description">
+                {t(
+                  "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.",
+                )}
+              </Dialog.Description>
+            </div>
             {error ? (
               <p role="alert" className="bb-chat-tab-rename-error">
                 {error}
               </p>
             ) : null}
-            {deleteTarget ? (
-              <div className="bb-chat-tab-rename-actions">
+            <div className="bb-chat-tabs-workspace-dialog-body">
+              <ul className="bb-chat-tabs-workspace-list">
+                {selection.workspaces.map((workspace) => (
+                  <li
+                    key={workspace.id}
+                    data-editing={editingId === workspace.id ? "true" : undefined}
+                    data-confirming={deleteTarget?.id === workspace.id ? "true" : undefined}
+                  >
+                    {deleteTarget?.id === workspace.id ? (
+                      <div
+                        className="bb-chat-tabs-workspace-confirm"
+                        role="group"
+                        aria-label={t("Delete workspace")}
+                      >
+                        <p>
+                          {t("Delete workspace “{name}”? Tabs will stay in history.", {
+                            name: label(workspace),
+                          })}
+                          <span className="bb-chat-tabs-workspace-sr-only">
+                            {t(
+                              "Delete workspace “{name}”? Only its tabs and favorites will be removed. Chats and shared history will stay.",
+                              { name: label(workspace) },
+                            )}
+                          </span>
+                        </p>
+                        <div className="bb-chat-tabs-workspace-confirm-actions">
+                          <button
+                            type="button"
+                            className="bb-chat-tab-dialog-button"
+                            autoFocus
+                            disabled={pending}
+                            onClick={() => {
+                              setDeleteTarget(null);
+                              setError(null);
+                            }}
+                          >
+                            {t("Cancel")}
+                          </button>
+                          <button
+                            type="button"
+                            className="bb-chat-tab-dialog-button bb-chat-tab-dialog-button-primary"
+                            disabled={pending}
+                            onClick={() => void remove()}
+                          >
+                            {t("Delete")}
+                          </button>
+                        </div>
+                      </div>
+                    ) : editingId === workspace.id ? (
+                      <form
+                        className="bb-chat-tabs-workspace-edit"
+                        onSubmit={(event) => void submit(event, workspace.id, value)}
+                      >
+                        <label
+                          className="bb-chat-tabs-workspace-sr-only"
+                          htmlFor={`${nameId}-rename`}
+                        >
+                          {t("Rename workspace")}: {label(workspace)}
+                        </label>
+                        <input
+                          id={`${nameId}-rename`}
+                          className="bb-chat-tab-rename-input"
+                          value={value}
+                          maxLength={160}
+                          autoFocus
+                          disabled={pending}
+                          onChange={(event) => setValue(event.target.value)}
+                        />
+                        <button
+                          type="submit"
+                          className="bb-chat-tabs-workspace-action bb-chat-tabs-workspace-action-primary"
+                          aria-label={t("Save")}
+                          title={t("Save")}
+                          disabled={pending}
+                        >
+                          <Icon name="Check" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="bb-chat-tabs-workspace-action"
+                          aria-label={t("Cancel")}
+                          title={t("Cancel")}
+                          disabled={pending}
+                          onClick={() => {
+                            setEditingId(null);
+                            setValue("");
+                            setError(null);
+                          }}
+                        >
+                          <Icon name="X" aria-hidden />
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <span className="bb-chat-tabs-workspace-row-name" title={label(workspace)}>
+                          {label(workspace)}
+                        </span>
+                        {workspace.id === selection.workspaceId ? (
+                          <span className="bb-chat-tabs-workspace-current">{t("Current")}</span>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="bb-chat-tabs-workspace-action"
+                          aria-label={`${t("Rename workspace")}: ${label(workspace)}`}
+                          title={t("Rename workspace")}
+                          disabled={pending}
+                          onClick={() => {
+                            setEditingId(workspace.id);
+                            setDeleteTarget(null);
+                            setValue(label(workspace));
+                            setError(null);
+                          }}
+                        >
+                          <Icon name="Edit" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          className="bb-chat-tabs-workspace-action"
+                          aria-label={`${t("Delete workspace")}: ${label(workspace)}`}
+                          title={t("Delete workspace")}
+                          disabled={pending || selection.workspaces.length === 1}
+                          onClick={() => {
+                            setDeleteTarget(workspace);
+                            setEditingId(null);
+                            setValue("");
+                            setError(null);
+                          }}
+                        >
+                          <Icon name="Trash2" aria-hidden />
+                        </button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <form
+                className="bb-chat-tabs-workspace-add"
+                onSubmit={(event) => void submit(event, null, newValue)}
+              >
+                <label className="bb-chat-tabs-workspace-sr-only" htmlFor={nameId}>
+                  {t("Workspace name")}
+                </label>
+                <input
+                  id={nameId}
+                  className="bb-chat-tab-rename-input"
+                  placeholder={t("New workspace")}
+                  value={newValue}
+                  maxLength={160}
+                  disabled={pending || selection.workspaces.length >= MAX_WORKSPACES}
+                  onChange={(event) => setNewValue(event.target.value)}
+                />
                 <button
-                  type="button"
+                  type="submit"
                   className="bb-chat-tab-dialog-button"
-                  autoFocus
-                  disabled={pending}
-                  onClick={() => {
-                    setDeleteTarget(null);
-                    setError(null);
-                  }}
+                  disabled={pending || selection.workspaces.length >= MAX_WORKSPACES}
                 >
-                  {t("Cancel")}
+                  <Icon name="Plus" aria-hidden />
+                  {t("Add")}
                 </button>
+              </form>
+              {selection.workspaces.length >= MAX_WORKSPACES ? (
+                <p role="status">{t("Workspace limit reached (20).")}</p>
+              ) : null}
+            </div>
+            <div className="bb-chat-tabs-workspace-dialog-footer">
+              <Dialog.Close asChild>
                 <button
                   type="button"
-                  className="bb-chat-tab-dialog-button bb-chat-tabs-workspace-delete"
+                  className="bb-chat-tab-dialog-button bb-chat-tab-dialog-button-primary"
                   disabled={pending}
-                  onClick={() => void remove()}
                 >
-                  {t("Delete")}
+                  {t("Done")}
                 </button>
-              </div>
-            ) : (
-              <>
-                <ul className="bb-chat-tabs-workspace-list">
-                  {selection.workspaces.map((workspace) => (
-                    <li key={workspace.id}>
-                      <span title={label(workspace)}>{label(workspace)}</span>
-                      <button
-                        type="button"
-                        className="bb-chat-tabs-workspace-action"
-                        aria-label={`${t("Rename workspace")}: ${label(workspace)}`}
-                        disabled={pending}
-                        onClick={() => {
-                          setEditingId(workspace.id);
-                          setValue(label(workspace));
-                          setError(null);
-                        }}
-                      >
-                        <Icon name="Edit" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="bb-chat-tabs-workspace-action"
-                        aria-label={`${t("Delete workspace")}: ${label(workspace)}`}
-                        disabled={pending || selection.workspaces.length === 1}
-                        onClick={() => {
-                          setDeleteTarget(workspace);
-                          setError(null);
-                        }}
-                      >
-                        <Icon name="Delete" aria-hidden />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <form onSubmit={(event) => void submit(event)}>
-                  <h3>{t(editingId ? "Rename workspace" : "New workspace")}</h3>
-                  <label htmlFor={nameId}>{t("Workspace name")}</label>
-                  <input
-                    id={nameId}
-                    className="bb-chat-tab-rename-input"
-                    value={value}
-                    maxLength={160}
-                    disabled={
-                      pending ||
-                      (editingId === null && selection.workspaces.length >= MAX_WORKSPACES)
-                    }
-                    onChange={(event) => setValue(event.target.value)}
-                  />
-                  <div className="bb-chat-tab-rename-actions">
-                    {editingId ? (
-                      <button
-                        type="button"
-                        className="bb-chat-tab-dialog-button"
-                        disabled={pending}
-                        onClick={() => {
-                          setEditingId(null);
-                          setValue("");
-                          setError(null);
-                        }}
-                      >
-                        {t("Cancel")}
-                      </button>
-                    ) : null}
-                    <button
-                      type="submit"
-                      className="bb-chat-tab-dialog-button bb-chat-tab-dialog-button-primary"
-                      disabled={
-                        pending ||
-                        (editingId === null && selection.workspaces.length >= MAX_WORKSPACES)
-                      }
-                    >
-                      {t(editingId ? "Save" : "Create")}
-                    </button>
-                    <Dialog.Close asChild>
-                      <button
-                        type="button"
-                        className="bb-chat-tab-dialog-button"
-                        disabled={pending}
-                      >
-                        {t("Close")}
-                      </button>
-                    </Dialog.Close>
-                  </div>
-                  {selection.workspaces.length >= MAX_WORKSPACES && editingId === null ? (
-                    <p role="status">{t("Workspace limit reached (20).")}</p>
-                  ) : null}
-                </form>
-              </>
-            )}
+              </Dialog.Close>
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

@@ -4,6 +4,20 @@ All notable changes to Chat Tabs are documented here.
 
 ## Unreleased
 
+## 0.1.13
+
+### Changed
+
+- Move workspace selection into the native thread header: show the workspace name on desktop and its first complete Unicode character on compact/mobile, without duplicating it in the tab strip. Keep header controls available when the strip is hidden.
+- Restyle workspace management with compact grouped rows, a current-workspace badge, inline rename/delete confirmation, and a separate add form and Done action.
+- Animate workspace dialog opening/closing and backdrop fading, respecting reduced-motion preferences.
+- Creating a workspace keeps the current workspace, chat, and management dialog open; the new name can be corrected immediately.
+- Remove redundant tests and use scope-specific CSS assertions, retaining storage, lifecycle, selection, and focus regressions.
+
+### Fixed
+
+- Workspace deletion buttons use the trash icon instead of the fallback lightning bolt.
+
 ## 0.1.12
 
 ### Added

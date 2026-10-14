@@ -3,41 +3,96 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const styles = await readFile(`${process.cwd()}/tabs.css`, "utf8");
+const element = document.createElement("style");
+element.textContent = styles;
+document.head.append(element);
+if (!element.sheet) throw new Error("Chat Tabs stylesheet did not parse");
 
-describe("Chat Tabs", () => {
-  it("keeps the visible workspace menu trigger compact with a focus ring and theme-aware popup", () => {
-    const trigger = styles.match(/\.bb-chat-tabs-workspace-trigger\s*\{([\s\S]*?)\n\}/u)?.[1];
-    expect(trigger).toContain("box-sizing: border-box;");
-    expect(trigger).toContain("width: 1.75rem;");
-    const row = styles.match(/\.bb-chat-tabs-content-row\s*\{([\s\S]*?)\n\}/u)?.[1];
-    expect(row).toContain("padding-inline-start: 0.5rem;");
-    expect(styles).toContain(".bb-chat-tabs-workspace-trigger:focus-visible");
-    expect(styles).toContain("--radix-dropdown-menu-content-available-height");
-    expect(styles).not.toContain(".bb-chat-tabs-workspace-switcher select");
+const blocks: Array<{ rule: CSSStyleRule; scope: string }> = [];
+function collect(rules: CSSRuleList, scope = "") {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) blocks.push({ rule, scope });
+    else if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule)
+      collect(rule.cssRules, rule.conditionText);
+  }
+}
+collect(element.sheet.cssRules);
+const compact = "(max-width: 767px), (pointer: coarse)";
+function value(selector: string, property: string, scope = "") {
+  const matches = blocks.filter(
+    (block) =>
+      block.scope === scope &&
+      block.rule.selectorText
+        .split(",")
+        .map((part) => part.trim())
+        .includes(selector),
+  );
+  expect(matches.length, `Missing ${scope}: ${selector}`).toBeGreaterThan(0);
+  return (
+    matches
+      .map(({ rule }) => rule.style.getPropertyValue(property))
+      .filter(Boolean)
+      .at(-1) ?? ""
+  );
+}
+function expectStyle(selector: string, properties: Record<string, string>, scope = "") {
+  for (const [property, expected] of Object.entries(properties))
+    expect(value(selector, property, scope), `${scope}: ${selector} ${property}`).toBe(expected);
+}
+
+describe("Chat Tabs CSS contracts", () => {
+  it("shows a bounded full desktop workspace name with keyboard focus and keeps chat-list inset", () => {
+    expectStyle(".bb-chat-tabs-workspace-trigger", {
+      "box-sizing": "border-box",
+      width: "auto",
+      height: "1.75rem",
+      "max-width": "min(16rem, 40vw)",
+    });
+    expectStyle(".bb-chat-tabs-content-row", { "padding-inline-start": "0.5rem" });
+    expectStyle(".bb-chat-tabs-workspace-initial", { display: "none" });
+    expectStyle(".bb-chat-tabs-workspace-label", {
+      "white-space": "nowrap",
+      "text-overflow": "ellipsis",
+    });
+    expect(value(".bb-chat-tabs-workspace-trigger:focus-visible", "outline")).toContain(
+      "var(--ring",
+    );
+    expect(value(".bb-chat-tabs-workspace-menu-list", "max-height")).toContain(
+      "--radix-dropdown-menu-content-available-height",
+    );
   });
-  it("sets explicit 44px trigger and menu targets on narrow/coarse surfaces", () => {
-    const mobile = styles.match(
-      /@media \(max-width: 767px\), \(pointer: coarse\) \{([\s\S]*?)\n\}/u,
-    )?.[1];
-    expect(mobile).toMatch(/\.bb-chat-tabs-workspace-trigger\s*\{\s*height: 44px;/u);
-    expect(mobile).toContain(".bb-chat-tabs-workspace-menu-item,");
+  it("shows only the short name and keeps all workspace controls at least 44px on compact/coarse surfaces", () => {
+    expectStyle(".bb-chat-tabs-workspace-initial", { display: "inline" }, compact);
+    expectStyle(".bb-chat-tabs-workspace-label", { display: "none" }, compact);
+    expectStyle(
+      '.bb-chat-tabs-workspace-switcher[data-compact="true"] .bb-chat-tabs-workspace-initial',
+      { display: "inline" },
+    );
+    expectStyle(
+      '.bb-chat-tabs-workspace-switcher[data-compact="true"] .bb-chat-tabs-workspace-label',
+      { display: "none" },
+    );
+    expectStyle(
+      ".bb-chat-tabs-workspace-trigger",
+      { height: "44px", width: "44px", "min-height": "44px" },
+      compact,
+    );
+    for (const selector of [
+      ".bb-chat-tabs-workspace-action",
+      ".bb-chat-tabs-workspace-menu-item",
+      ".bb-chat-tabs-workspace-dialog .bb-chat-tab-dialog-button",
+    ])
+      expectStyle(selector, { "min-height": "44px" }, compact);
   });
-  it("limits replacement settings checks to the host form panel", () => {
-    const selector = styles
-      .match(
-        /\[data-testid="plugin-detail-tabs"\]:has\(\.bb-chat-tabs-settings\)\s*>\s*([^{}]+)\{/u,
-      )?.[1]
-      ?.trim();
-    expect(selector).toBe(".overflow-hidden:first-child:not(:has(.bb-chat-tabs-settings))");
-  });
+
   it.each([
     {
-      name: "hides the host panel while replacement settings are mounted",
+      name: "hides only the host form while replacement settings exist",
       html: '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="host"></div><div class="bb-chat-tabs-settings"></div></div>',
       expected: ["host"],
     },
     {
-      name: "keeps the fallback visible without replacement settings",
+      name: "keeps the native fallback without replacement settings",
       html: '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="host"></div></div>',
       expected: [],
     },
@@ -47,260 +102,304 @@ describe("Chat Tabs", () => {
       expected: [],
     },
     {
-      name: "does not affect another plugin",
+      name: "does not affect other plugins",
       html: '<div data-testid="plugin-detail-other"><div class="overflow-hidden" id="host"></div><div class="bb-chat-tabs-settings"></div></div>',
       expected: [],
     },
     {
-      name: "does not match generic first children or later panels",
+      name: "does not hide generic first children or later panels",
       html: '<div data-testid="plugin-detail-tabs"><div id="generic"></div><div class="overflow-hidden" id="later"></div><div class="bb-chat-tabs-settings"></div></div>',
       expected: [],
     },
   ])("$name", ({ html, expected }) => {
-    const selector = styles
-      .match(
-        /(\[data-testid="plugin-detail-tabs"\]:has\(\.bb-chat-tabs-settings\)\s*>\s*[^{}]+)\{/u,
-      )?.[1]
-      ?.trim();
-    expect(selector).toBeDefined();
+    const selectors = blocks.filter(
+      ({ scope, rule }) =>
+        !scope &&
+        rule.style.display === "none" &&
+        rule.selectorText.includes('[data-testid="plugin-detail-tabs"]'),
+    );
+    expect(selectors).toHaveLength(1);
+    const selector = selectors[0]!.rule.selectorText;
     const root = document.createElement("div");
     root.innerHTML = html;
-    expect(Array.from(root.querySelectorAll(selector!), (element) => element.id)).toEqual(expected);
-  });
-  it("highlights pointer hover independently of menu item focus", () => {
-    expect(styles).toContain(".bb-chat-tabs-list-menu-item:not([data-disabled]):hover,");
-    expect(styles).toContain(".bb-chat-tabs-list-menu-more:hover,");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-list-menu-item\[data-selected="true"\]\s*\{[^}]*background: var\(--muted\);/u,
-    );
-  });
-  it("handles behavior 1", () => {
-    const strip = styles.match(/\.bb-chat-tabs-strip\s*\{([\s\S]*?)\n\}/u)?.[1];
-    expect(strip).toContain("display: flex;");
-    expect(strip).toContain("gap: 0.375rem;");
-    expect(strip).toContain("overflow-x: auto;");
-    expect(strip).toContain("overflow-y: hidden;");
-    expect(styles).not.toContain(".bb-chat-tabs-project-tabs");
-    expect(styles).not.toContain(".bb-chat-tabs-project {");
-    expect(styles).toContain("flex: 0 0 9rem;");
-    expect(styles).not.toContain('#bb-chat-tabs-overlay[data-row-count="3"]');
+    expect(Array.from(root.querySelectorAll(selector), (node) => node.id)).toEqual(expected);
+    if (expected.length) {
+      const replacement = root.querySelector(".bb-chat-tabs-settings")!;
+      const wrapper = document.createElement("div");
+      replacement.replaceWith(wrapper);
+      wrapper.append(replacement);
+      expect(Array.from(root.querySelectorAll(selector), (node) => node.id)).toEqual(expected);
+      replacement.remove();
+      expect(root.querySelectorAll(selector)).toHaveLength(0);
+    }
   });
 
-  it("handles behavior 2", () => {
-    expect(styles).toMatch(/\.bb-chat-tab-action\s*\{[\s\S]*?margin-inline-end: 0\.25rem;/u);
+  it("highlights pointer hover independently of keyboard selection", () => {
+    for (const selector of [
+      ".bb-chat-tabs-list-menu-item:not([data-disabled]):hover",
+      ".bb-chat-tabs-list-menu-more:hover",
+      '.bb-chat-tabs-list-menu-item[data-selected="true"]',
+    ])
+      expectStyle(selector, { background: "var(--muted)" });
   });
-
-  it("handles behavior 3", () => {
-    expect(styles).toContain('.bb-chat-tab[data-dragging="true"]');
-    expect(styles).toContain("opacity: 0.52;");
-    expect(styles).toContain(".bb-chat-tab-drop-slot {");
-    expect(styles).toContain('.bb-chat-tabs-strip[data-dragging="true"] .bb-chat-tab-drop-slot');
-    expect(styles).toContain("flex: 0 0 0;");
-    expect(styles).toContain("margin-inline: -0.1875rem;");
-    expect(styles).not.toContain("gap: 0;");
-    expect(styles).toContain(
-      '.bb-chat-tab-drop-slot[data-active="true"] .bb-chat-tab-drop-slot-hit::before',
-    );
-    expect(styles).not.toContain(".bb-chat-tab[data-drop-position]");
-    expect(styles).toContain("background: var(--ring, var(--primary));");
+  it("keeps a flat scrollable strip and an RTL-safe close-button inset", () => {
+    expectStyle(".bb-chat-tabs-strip", {
+      display: "flex",
+      gap: "0.375rem",
+      "overflow-x": "auto",
+      "overflow-y": "hidden",
+      padding: "0.25rem 0.5rem",
+    });
+    expectStyle(".bb-chat-tab", { flex: "0 0 9rem", height: "var(--bb-chat-tabs-tab-height)" });
+    expectStyle(".bb-chat-tab-action", { "margin-inline-end": "0.25rem" });
+    expect(value(".bb-chat-tabs-shell", "border-bottom")).toBe("");
   });
-
-  it("handles behavior 4", () => {
+  it("shows drag feedback without allocating space for inactive drop targets", () => {
+    expectStyle('.bb-chat-tab[data-dragging="true"]', { opacity: "0.52" });
+    expectStyle(".bb-chat-tab-drop-slot", { width: "0px", display: "none" });
+    expectStyle('.bb-chat-tabs-strip[data-dragging="true"] .bb-chat-tab-drop-slot', {
+      width: "0px",
+      display: "block",
+      "margin-inline": "-0.1875rem",
+    });
+    // JSDOM drops the valid unitless-zero flex shorthand and WebKit-only properties.
+    expect(styles).toMatch(/\.bb-chat-tab-drop-slot\s*\{[^}]*\bflex:\s*0 0 0(?:px)?;/u);
+    expectStyle('.bb-chat-tab-drop-slot[data-active="true"] .bb-chat-tab-drop-slot-hit::before', {
+      background: "var(--ring, var(--primary))",
+    });
+  });
+  it("uses host theme tokens for work, unread and scrollbar colors", () => {
     expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/iu);
-    expect(styles).toContain("var(--background)");
-    expect(styles).toContain("var(--foreground)");
-    expect(styles).toContain("var(--muted)");
-    expect(styles).toContain("var(--border)");
-    expect(styles).toContain("var(--primary)");
-    expect(styles).toContain("var(--popover");
-    expect(styles).toContain("--bb-chat-tabs-status-working: var(--foreground);");
-    expect(styles).toContain("--bb-chat-tabs-status-working-dot: color-mix(");
-    expect(styles).toContain("var(--primary) 45%");
-    expect(styles).toContain("--bb-chat-tabs-status-unread");
-    expect(styles).toContain("color-mix(in oklch");
+    expectStyle(":root", {
+      "--bb-chat-tabs-status-working": "var(--foreground)",
+      "--bb-chat-tabs-status-unread": "var(--foreground)",
+    });
+    expect(value(":root", "--bb-chat-tabs-status-working-dot")).toContain("var(--primary) 45%");
+    expect(value(":root", "--bb-chat-tabs-status-working-halo")).toContain("var(--primary) 20%");
+    for (const token of ["--bb-chat-tabs-scrollbar-track", "--bb-chat-tabs-scrollbar-thumb"])
+      expect(value(":root", token)).toContain("color-mix(");
   });
-
-  it("handles behavior 5", () => {
-    expect(styles).toContain("--bb-chat-tabs-active-background: color-mix(");
-    expect(styles).toContain("var(--foreground) 20%");
-    expect(styles).toContain("--bb-chat-tabs-active-border:");
-    expect(styles).toContain(".dark {");
-    expect(styles).toMatch(
-      /\.dark\s*\{[\s\S]*?--bb-chat-tabs-active-background:\s*color-mix\([\s\S]*?var\(--foreground\) 12%/u,
-    );
-    expect(styles).not.toContain("--bb-chat-tabs-active-background: var(--foreground);");
+  it("keeps selected tabs readable in light and dark themes", () => {
+    expect(value(":root", "--bb-chat-tabs-active-background")).toContain("var(--foreground) 20%");
+    expect(value(".dark", "--bb-chat-tabs-active-background")).toContain("var(--foreground) 12%");
+    expect(value(":root", "--bb-chat-tabs-active-border")).toContain("color-mix(");
   });
-
-  it("handles behavior 6", () => {
-    expect(styles).toMatch(/\.bb-chat-tabs-top-scrollbar\s*\{[\s\S]*?overflow-x: scroll;/u);
-    expect(styles).toMatch(/\.bb-chat-tabs-top-scrollbar\s*\{[\s\S]*?scrollbar-width: thin;/u);
-    expect(styles).toContain("--bb-chat-tabs-scrollbar-track:");
-    expect(styles).toContain("--bb-chat-tabs-scrollbar-thumb:");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-top-scrollbar::-webkit-scrollbar\s*\{[\s\S]*?height: 0\.5rem;/u,
-    );
-    expect(styles).toContain(".bb-chat-tabs-strip::-webkit-scrollbar {");
-    expect(styles).toContain("display: none;");
-    expect(styles).toContain(
-      '.bb-chat-tabs-shell[data-scrollable="false"] .bb-chat-tabs-top-scrollbar',
-    );
-    expect(styles).toContain("--bb-chat-tabs-strip-height: 38px;");
-    expect(styles).toContain("--bb-chat-tabs-strip-height: 48px;");
-    expect(styles).toMatch(/\.bb-chat-tabs-strip\s*\{[^}]*padding: 0\.25rem 0\.5rem;/u);
-    expect(styles).not.toMatch(/\.bb-chat-tabs-shell\s*\{[^}]*border-bottom:/u);
-    expect(styles).toContain("background: var(--bb-chat-tabs-scrollbar-track);");
-    expect(styles).toContain("background: var(--bb-chat-tabs-scrollbar-thumb);");
+  it("uses a thin desktop proxy scrollbar instead of a second native strip scrollbar", () => {
+    expectStyle(".bb-chat-tabs-top-scrollbar", {
+      "overflow-x": "scroll",
+      "scrollbar-width": "thin",
+    });
+    expectStyle(".bb-chat-tabs-top-scrollbar::-webkit-scrollbar", { height: "0.5rem" });
+    expectStyle(".bb-chat-tabs-top-scrollbar::-webkit-scrollbar-track", {
+      background: "var(--bb-chat-tabs-scrollbar-track)",
+    });
+    expectStyle(".bb-chat-tabs-top-scrollbar::-webkit-scrollbar-thumb", {
+      background: "var(--bb-chat-tabs-scrollbar-thumb)",
+    });
+    expectStyle(".bb-chat-tabs-strip::-webkit-scrollbar", { display: "none" });
+    expectStyle('.bb-chat-tabs-shell[data-scrollable="false"] .bb-chat-tabs-top-scrollbar', {
+      display: "none",
+    });
+    expectStyle(":root", { "--bb-chat-tabs-strip-height": "48px" });
   });
-
-  it("handles behavior 7", () => {
-    expect(styles).toContain(".bb-chat-tabs-homepage-pinned-list");
-    expect(styles).toContain("section:has(");
-    expect(styles).toContain('[data-bb-plugin="tabs"]');
-    expect(styles).toContain('data-visible="false"');
-    expect(styles).toContain(".bb-chat-tabs-homepage-pinned-items {");
-    expect(styles).toContain("grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));");
-    expect(styles).toContain("max-height: 18rem;");
-    expect(styles).toContain(".bb-chat-tabs-homepage-pinned-meta {");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-homepage-pinned-project\s*\{[\s\S]*?min-width: 0;[\s\S]*?flex: 1 1 auto;/u,
+  it("bounds homepage cards and keeps their actions compact with larger touch targets", () => {
+    expectStyle(".bb-chat-tabs-homepage-pinned-items", {
+      "grid-template-columns": "repeat(auto-fit, minmax(11rem, 1fr))",
+      "max-height": "18rem",
+    });
+    expectStyle(".bb-chat-tabs-homepage-pinned-project", {
+      "min-width": "0px",
+      flex: "1 1 auto",
+    });
+    expectStyle(".bb-chat-tabs-homepage-pinned-status", { "max-width": "68%" });
+    expectStyle(".bb-chat-tabs-homepage-remove svg", { width: "0.875rem", height: "0.875rem" });
+    expectStyle(".bb-chat-tabs-homepage-remove", { width: "1.5rem", height: "1.5rem" });
+    expectStyle(
+      ".bb-chat-tabs-homepage-remove",
+      { width: "2.75rem", height: "2.75rem" },
+      "(pointer: coarse)",
     );
-    expect(styles).toContain("max-width: 68%;");
-    expect(styles).toContain('.bb-chat-tabs-homepage-pinned-status[data-status="working"]');
-    expect(styles).toContain('.bb-chat-tabs-homepage-pinned-status[data-status="unread"]');
-    expect(styles).not.toContain(".bb-chat-tabs-pinned-list-trigger {");
-    expect(styles).not.toContain(".bb-chat-tabs-pinned-list-menu {");
+    expectStyle(".bb-chat-tabs-homepage-pinned-button", { padding: "0.375rem 0.5rem" });
+    for (const status of ["working", "unread"])
+      expect(
+        value(`.bb-chat-tabs-homepage-pinned-status[data-status="${status}"]`, "color"),
+      ).not.toBe("");
   });
-
-  it("keeps homepage actions visually compact with separate touch targets", () => {
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-homepage-remove svg\s*\{\s*width: 0\.875rem;\s*height: 0\.875rem;/u,
-    );
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-homepage-remove\s*\{[^}]*width: 1\.5rem;[^}]*height: 1\.5rem;/u,
-    );
-    expect(styles).toMatch(
-      /@media \(pointer: coarse\)\s*\{\s*\.bb-chat-tabs-homepage-remove\s*\{\s*width: 2\.75rem;\s*height: 2\.75rem;/u,
-    );
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-homepage-pinned-button\s*\{[^}]*padding: 0\.375rem 0\.5rem;/u,
-    );
+  it("keeps context menus compact and editable titles discoverable", () => {
+    expectStyle(".bb-chat-tab-context-menu", {
+      "min-width": "7rem",
+      "border-radius": "0.375rem",
+      background: "var(--popover, var(--background))",
+    });
+    expectStyle(".bb-chat-tab-context-menu-item", {
+      padding: "0.3125rem 0.5rem",
+      "font-size": "0.75rem",
+    });
+    expectStyle(".bb-chat-tab-context-menu-item > svg", { width: "1rem" });
+    expectStyle(".bb-chat-tab-context-menu-separator", { margin: "0.25rem -0.25rem" });
+    expectStyle(".bb-chat-tab-title", { cursor: "pointer" });
+    expectStyle(".bb-chat-tab-inline-rename", { cursor: "text" });
+    expect(value(".bb-chat-tab-rename-dialog", "background")).toContain("var(--popover");
+    expect(value(".bb-chat-tab-rename-overlay", "background")).not.toBe("");
   });
-
-  it("handles behavior 8", () => {
-    expect(styles).toMatch(/\.bb-chat-tab-context-menu\s*\{[\s\S]*?min-width: 7rem;/u);
-    expect(styles).toMatch(/\.bb-chat-tab-context-menu\s*\{[\s\S]*?border-radius: 0\.375rem;/u);
-    expect(styles).not.toContain("min-width: 14rem;");
-    expect(styles).toMatch(
-      /\.bb-chat-tab-context-menu-item\s*\{[\s\S]*?padding: 0\.3125rem 0\.5rem;/u,
-    );
-    expect(styles).toMatch(/\.bb-chat-tab-context-menu-item\s*\{[\s\S]*?font-size: 0\.75rem;/u);
-    expect(styles).toContain(".bb-chat-tab-context-menu-item > svg {");
-    expect(styles).toContain("width: 1rem;");
-    expect(styles).toContain("margin: 0.25rem -0.25rem;");
+  it("animates both modal layers in both directions, preserves centering and supports reduced motion", () => {
+    for (const target of ["dialog", "overlay"])
+      for (const [state, suffix, duration] of [
+        ["open", "in", "160ms"],
+        ["closed", "out", "120ms"],
+      ]) {
+        const animation = value(
+          `.bb-chat-tabs-workspace-${target}[data-state="${state}"]`,
+          "animation",
+        );
+        expect(animation).toContain(`bb-chat-tabs-${target}-${suffix}`);
+        expect(animation).toContain(duration);
+      }
+    expectStyle(".bb-chat-tab-rename-dialog.bb-chat-tabs-workspace-dialog", {
+      "transform-origin": "0 0",
+    });
+    for (const target of ["dialog", "overlay"])
+      for (const suffix of ["in", "out"]) {
+        const frames = Array.from(element.sheet!.cssRules).find(
+          (rule): rule is CSSKeyframesRule =>
+            rule instanceof CSSKeyframesRule && rule.name === `bb-chat-tabs-${target}-${suffix}`,
+        );
+        expect(frames).toBeDefined();
+        const steps = Array.from(frames!.cssRules).filter(
+          (frame): frame is CSSKeyframeRule => frame instanceof CSSKeyframeRule,
+        );
+        const from = steps.find((frame) => /^(from|0%)$/u.test(frame.keyText));
+        const to = steps.find((frame) => /^(to|100%)$/u.test(frame.keyText));
+        expect(from?.style.getPropertyValue("opacity")).toBe(suffix === "in" ? "0" : "1");
+        expect(to?.style.getPropertyValue("opacity")).toBe(suffix === "in" ? "1" : "0");
+        if (target === "dialog") {
+          expect(from?.style.getPropertyValue("scale")).toBe(suffix === "in" ? "0.97" : "1");
+          expect(to?.style.getPropertyValue("scale")).toBe(suffix === "in" ? "1" : "0.97");
+          expect(steps.map((frame) => frame.style.getPropertyValue("transform"))).toEqual(["", ""]);
+        }
+      }
+    for (const target of ["dialog", "overlay"])
+      expectStyle(
+        `.bb-chat-tabs-workspace-${target}[data-state]`,
+        { animation: "none" },
+        "(prefers-reduced-motion: reduce)",
+      );
   });
-
-  it("handles behavior 9", () => {
-    expect(styles).toContain(".bb-chat-tab-inline-rename {");
-    expect(styles).toContain(".bb-chat-tab-title {\n  cursor: pointer;\n}");
-    expect(styles).toMatch(/\.bb-chat-tab-inline-rename\s*\{[\s\S]*?cursor: text;/u);
-    expect(styles).toContain(".bb-chat-tab-context-menu {");
-    expect(styles).toContain("background: var(--popover, var(--background));");
-    expect(styles).toContain(".bb-chat-tab-rename-dialog {");
-    expect(styles).toContain(".bb-chat-tab-rename-overlay {");
-  });
-
   it("keeps nested-only work grey even on the selected parent tab", () => {
     const selector = '.bb-chat-tab .bb-chat-tab-working[data-nested-only="true"]';
-    expect(styles).toContain(selector);
+    expectStyle(selector, {
+      background: "color-mix(in oklch, var(--muted-foreground) 80%, var(--background))",
+      "box-shadow": "none",
+    });
     expect(styles.indexOf(selector)).toBeGreaterThan(
       styles.indexOf('.bb-chat-tab[data-active="true"] .bb-chat-tab-working'),
     );
-    const rule = styles.slice(styles.indexOf(selector)).split("}")[0];
-    expect(rule).toContain(
-      "background: color-mix(in oklch, var(--muted-foreground) 80%, var(--background));",
-    );
-    expect(rule).toContain("box-shadow: none;");
   });
-
-  it("handles behavior 10", () => {
-    expect(styles).toContain(".bb-chat-tab-unread {");
-    expect(styles).toContain("background: var(--bb-chat-tabs-status-unread);");
-    expect(styles).toContain('.bb-chat-tab[data-active="true"] .bb-chat-tab-unread');
+  it("keeps unread dots visible on selected tabs", () => {
+    expectStyle(".bb-chat-tab-unread", { background: "var(--bb-chat-tabs-status-unread)" });
+    expectStyle('.bb-chat-tab[data-active="true"] .bb-chat-tab-unread', {
+      background: "var(--bb-chat-tabs-active-foreground)",
+    });
   });
-
-  it("handles behavior 11", () => {
-    expect(styles).toContain("[data-thread-window]:not(aside [data-thread-window])");
-    expect(styles).toContain("position-anchor: --bb-chat-tabs-thread-window");
+  it("anchors only to main chat panes and reserves space only outside split layouts", () => {
+    expectStyle(
+      "[data-thread-window]:not(aside [data-thread-window])",
+      { "anchor-name": "--bb-chat-tabs-thread-window" },
+      "(left: anchor(left))",
+    );
+    expectStyle(
+      "body:has([data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay",
+      { "position-anchor": "--bb-chat-tabs-thread-window" },
+      "(left: anchor(left))",
+    );
+    const reserve =
+      'body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary])) [data-testid="app-layout-content-shell"] [data-thread-window]:not(aside [data-thread-window])';
+    for (const scope of ["(min-width: 768px) and (pointer: fine)", compact]) {
+      const block = blocks.find(
+        ({ rule, scope: actual }) =>
+          actual === scope && rule.selectorText.replace(/\s+/gu, " ") === reserve,
+      );
+      expect(block?.rule.style.getPropertyValue("padding-block-start")).toBe(
+        "var(--bb-chat-tabs-strip-height)",
+      );
+    }
   });
-
-  it("handles behavior 12", () => {
-    expect(styles).toContain(":not(:has([data-split-resize-grid-boundary]))");
-    expect(styles).not.toContain(":not(:has([data-split-pane-id]))");
-    expect(styles).toContain("padding-block-start: var(--bb-chat-tabs-strip-height);");
+  it("keeps menu controls, bounded content and unavailable statuses consistent", () => {
+    expectStyle('.bb-chat-tabs-list-switcher[data-position="right"]', {
+      padding: "0.25rem 0.5rem 0.25rem 0px",
+    });
+    expectStyle(".bb-chat-tabs-list-trigger", {
+      width: "var(--bb-chat-tabs-tab-height)",
+      height: "var(--bb-chat-tabs-tab-height)",
+    });
+    expectStyle(".bb-chat-tabs-new-trigger", { background: "transparent", border: "0px" });
+    expectStyle(".bb-chat-tabs-new-switcher", { "align-items": "center" });
+    for (const target of ["list", "new"])
+      expect(value(`.bb-chat-tabs-${target}-menu[data-state="closed"]`, "animation")).toContain(
+        "bb-chat-tabs-menu-out",
+      );
+    expectStyle(".bb-chat-tabs-list-menu-project", { "min-width": "0px", flex: "1 1 auto" });
+    expectStyle(".bb-chat-tabs-list-menu-item[data-disabled]", {
+      cursor: "not-allowed",
+      background: "transparent",
+    });
+    expectStyle(".bb-chat-tabs-list-menu-title[data-unavailable]", {
+      "text-decoration-line": "line-through",
+    });
+    expect(value(".bb-chat-tabs-list-menu", "max-height")).toContain("44rem");
+    expect(value(".bb-chat-tabs-list-menu", "max-height")).toContain(
+      "--radix-dropdown-menu-content-available-height",
+    );
+    expectStyle(".bb-chat-tabs-list-menu-more", {
+      "font-size": "0.75rem",
+      "font-weight": "500",
+      "line-height": "1rem",
+    });
+    expect(value(".bb-chat-tabs-list-menu-history-page-separator", "background")).toContain(
+      "var(--foreground) 20%",
+    );
+    expect(value('.bb-chat-tabs-new-menu-more[data-pending="true"]::after', "animation")).toContain(
+      "bb-chat-tabs-history-more-progress 300ms",
+    );
+    for (const target of ["list", "new", "workspace"])
+      expectStyle(
+        `.bb-chat-tabs-${target}-menu[data-state]`,
+        { animation: "none" },
+        "(prefers-reduced-motion: reduce)",
+      );
   });
-
-  it("handles behavior 13", () => {
-    expect(styles).toContain(".bb-chat-tabs-list-switcher {");
-    expect(styles).toContain('.bb-chat-tabs-list-switcher[data-position="right"]');
-    expect(styles).toContain("padding: 0.25rem 0.5rem 0.25rem 0;");
-    expect(styles).toContain(".bb-chat-tabs-list-trigger {");
-    expect(styles).toContain(".bb-chat-tabs-new-trigger {");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-new-trigger\s*\{[^}]*background: transparent;[^}]*border: 0;/u,
+  it("keeps mobile strips swipeable and hides them behind mobile shelves", () => {
+    expectStyle(
+      '#bb-chat-tabs-overlay[data-docked="true"]',
+      {
+        "z-index": "31",
+        display: "block",
+        "--bb-chat-tabs-strip-height": "3.5rem",
+        "--bb-chat-tabs-tab-height": "2.75rem",
+      },
+      compact,
     );
-    expect(styles).toMatch(/\.bb-chat-tabs-new-switcher\s*\{[^}]*align-items: center;\s*\}/u);
-    expect(styles).toContain('.bb-chat-tabs-list-menu[data-state="closed"]');
-    expect(styles).toContain('.bb-chat-tabs-new-menu[data-state="closed"]');
-    expect(styles).toContain('.bb-chat-tabs-new-menu-more[data-pending="true"]::after');
-    expect(styles).toContain(".bb-chat-tabs-list-menu-search-input {");
-    expect(styles).toContain('.bb-chat-tabs-list-menu-item[data-selected="true"]');
-    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-list-trigger\s*\{[^}]*width: var\(--bb-chat-tabs-tab-height\);[^}]*height: var\(--bb-chat-tabs-tab-height\);/u,
-    );
-    expect(styles).toMatch(/\.bb-chat-tab\s*\{[^}]*height: var\(--bb-chat-tabs-tab-height\);/u);
-    expect(styles).toContain(".bb-chat-tabs-list-menu {");
-    expect(styles).toContain(".bb-chat-tabs-list-menu-meta {");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-list-menu-project\s*\{[\s\S]*?min-width: 0;[\s\S]*?flex: 1 1 auto;/u,
-    );
-    expect(styles).toContain(".bb-chat-tabs-list-menu-status-dot {");
-    expect(styles).toContain(".bb-chat-tabs-list-menu-item[data-disabled] {");
-    expect(styles).toContain("cursor: not-allowed;");
-    expect(styles).not.toContain(".bb-chat-tabs-list-menu-unavailable-icon");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-list-menu-item\[data-disabled\]\s*\{[^}]*background: transparent;/u,
-    );
-    expect(styles).toContain(".bb-chat-tabs-list-menu-title[data-unavailable] {");
-    expect(styles).toContain("text-decoration-line: line-through;");
-    expect(styles).toContain(".bb-chat-tabs-list-menu-unavailable-label {");
-    expect(styles).toMatch(/max-height:\s*min\(\s*44rem,/u);
-    expect(styles).toContain("--radix-dropdown-menu-content-available-height");
-    expect(styles).not.toContain(".bb-chat-tabs-mobile-switcher");
-    expect(styles).not.toContain(".bb-chat-tabs-mobile-switcher-select");
-    expect(styles).toContain("@media (max-width: 767px), (pointer: coarse)");
-    expect(styles).toContain(
-      '#bb-chat-tabs-overlay[data-docked="true"] {\n    z-index: 31;\n    display: block;',
-    );
-    expect(styles).toContain('[data-sidebar-shelf="open"]');
-    expect(styles).toContain('[data-panel-shelf="shelf"]');
-    expect(styles).toContain('[data-panel-shelf="full"]');
-    expect(styles).toContain("--bb-chat-tabs-strip-height: 3.5rem;");
-    expect(styles).toContain("padding: 0.375rem 0.5rem;");
-    expect(styles).toContain("--bb-chat-tabs-tab-height: 2.75rem;");
-    expect(styles).toContain("scroll-snap-type: x proximity;");
-    expect(styles).toContain("-webkit-overflow-scrolling: touch;");
-    expect(styles).toContain("width: 2.75rem;");
-    expect(styles).toContain("min-height: 2.75rem;");
-    expect(styles).toMatch(
-      /\.bb-chat-tabs-list-menu-more\s*\{[^}]*font-size: 0\.75rem;[^}]*font-weight: 500;[^}]*line-height: 1rem;/u,
-    );
-    expect(styles).toContain(".bb-chat-tabs-list-menu-history-page-separator {");
-    expect(styles).toContain(
-      "background: color-mix(in oklch, var(--foreground) 20%, var(--border));",
-    );
-    expect(styles).toContain('data-pending="true"');
-    expect(styles).toContain("bb-chat-tabs-history-more-progress 300ms linear forwards");
-    expect(styles).toContain(".bb-chat-tab-drop-slot {\n    display: none !important;");
+    expectStyle(".bb-chat-tabs-strip", { "scroll-snap-type": "x proximity" }, compact);
+    expect(styles).toMatch(/\.bb-chat-tabs-strip\s*\{[^}]*-webkit-overflow-scrolling:\s*touch;/u);
+    for (const selector of [".bb-chat-tab-drop-slot", ".bb-chat-tabs-top-scrollbar"]) {
+      expectStyle(selector, { display: "none" }, compact);
+      expect(
+        blocks
+          .find((block) => block.scope === compact && block.rule.selectorText === selector)
+          ?.rule.style.getPropertyPriority("display"),
+      ).toBe("important");
+    }
+    for (const target of ["list", "new"])
+      expectStyle(
+        `.bb-chat-tabs-${target}-trigger`,
+        { width: "2.75rem", height: "2.75rem" },
+        compact,
+      );
+    for (const attribute of [
+      '[data-sidebar-shelf="open"]',
+      '[data-panel-shelf="shelf"]',
+      '[data-panel-shelf="full"]',
+    ])
+      expectStyle(`body:has(${attribute}) #bb-chat-tabs-overlay`, { display: "none" }, compact);
   });
 });

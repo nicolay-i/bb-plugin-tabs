@@ -1,5 +1,11 @@
 {
   "ru": {
+    "Workspaces": "Режимы",
+    "Current": "Текущий",
+    "Add": "Добавить",
+    "Done": "Готово",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Режим — это набор вкладок, между которыми можно переключаться в один клик. Выбор действует только в этом окне.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Удалить режим «{name}»? Вкладки останутся в истории.",
     "Work": "Работа",
     "Home": "Дом",
     "Other": "Другое",
@@ -132,6 +138,12 @@
     "Subthreads of “{title}”": "Сабтреды «{title}»"
   },
   "de": {
+    "Workspaces": "Arbeitsbereiche",
+    "Current": "Aktuell",
+    "Add": "Hinzufügen",
+    "Done": "Fertig",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Ein Arbeitsbereich ist eine Gruppe von Tabs, zu der du mit einem Klick wechseln kannst. Die Auswahl gilt nur für dieses Fenster.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Arbeitsbereich „{name}“ löschen? Die Tabs bleiben im Verlauf.",
     "Work": "Arbeit",
     "Home": "Zuhause",
     "Other": "Sonstiges",
@@ -264,6 +276,12 @@
     "Subthreads of “{title}”": "Unterchats von „{title}“"
   },
   "es": {
+    "Workspaces": "Espacios de trabajo",
+    "Current": "Actual",
+    "Add": "Añadir",
+    "Done": "Listo",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Un espacio de trabajo es un conjunto de pestañas al que puedes cambiar con un clic. La selección solo se aplica a esta ventana.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "¿Eliminar el espacio «{name}»? Las pestañas permanecerán en el historial.",
     "Work": "Trabajo",
     "Home": "Casa",
     "Other": "Otro",
@@ -396,6 +414,12 @@
     "Subthreads of “{title}”": "Subchats de «{title}»"
   },
   "pt-BR": {
+    "Workspaces": "Espaços de trabalho",
+    "Current": "Atual",
+    "Add": "Adicionar",
+    "Done": "Concluído",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Um espaço de trabalho é um conjunto de abas para o qual você pode alternar com um clique. A seleção vale apenas para esta janela.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Excluir o espaço “{name}”? As abas permanecerão no histórico.",
     "Work": "Trabalho",
     "Home": "Casa",
     "Other": "Outro",
@@ -528,6 +552,12 @@
     "Subthreads of “{title}”": "Subchats de «{title}»"
   },
   "fr": {
+    "Workspaces": "Espaces de travail",
+    "Current": "Actuel",
+    "Add": "Ajouter",
+    "Done": "Terminé",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Un espace de travail est un ensemble d’onglets auquel vous pouvez accéder en un clic. La sélection s’applique uniquement à cette fenêtre.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Supprimer l’espace « {name} » ? Les onglets resteront dans l’historique.",
     "Work": "Travail",
     "Home": "Maison",
     "Other": "Autre",
@@ -660,6 +690,12 @@
     "Subthreads of “{title}”": "Sous-discussions de «{title}»"
   },
   "hi": {
+    "Workspaces": "कार्यस्थान",
+    "Current": "वर्तमान",
+    "Add": "जोड़ें",
+    "Done": "हो गया",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "कार्यस्थान टैब का एक समूह है जिस पर आप एक क्लिक से जा सकते हैं। चयन केवल इस विंडो पर लागू होता है।",
+    "Delete workspace “{name}”? Tabs will stay in history.": "कार्यस्थान “{name}” हटाएँ? टैब इतिहास में बने रहेंगे।",
     "Work": "काम",
     "Home": "घर",
     "Other": "अन्य",
@@ -792,6 +828,12 @@
     "Subthreads of “{title}”": "“{title}” की उप-चैट"
   },
   "zh-CN": {
+    "Workspaces": "工作区",
+    "Current": "当前",
+    "Add": "添加",
+    "Done": "完成",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "工作区是一组可一键切换的标签页。选择仅对当前窗口生效。",
+    "Delete workspace “{name}”? Tabs will stay in history.": "删除工作区“{name}”？标签页仍会保留在历史记录中。",
     "Work": "工作",
     "Home": "家庭",
     "Other": "其他",
@@ -924,6 +966,12 @@
     "Subthreads of “{title}”": "“{title}”的子聊天"
   },
   "ar": {
+    "Workspaces": "مساحات العمل",
+    "Current": "الحالية",
+    "Add": "إضافة",
+    "Done": "تم",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "مساحة العمل هي مجموعة علامات تبويب يمكنك الانتقال إليها بنقرة واحدة. ينطبق الاختيار على هذه النافذة فقط.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "حذف مساحة العمل «{name}»؟ ستبقى علامات التبويب في السجل.",
     "Work": "العمل",
     "Home": "المنزل",
     "Other": "أخرى",
@@ -1056,6 +1104,12 @@
     "Subthreads of “{title}”": "المحادثات الفرعية لـ «{title}»"
   },
   "ja": {
+    "Workspaces": "ワークスペース",
+    "Current": "現在",
+    "Add": "追加",
+    "Done": "完了",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "ワークスペースは、ワンクリックで切り替えられるタブの集合です。選択はこのウィンドウにのみ適用されます。",
+    "Delete workspace “{name}”? Tabs will stay in history.": "ワークスペース「{name}」を削除しますか？タブは履歴に残ります。",
     "Work": "仕事",
     "Home": "自宅",
     "Other": "その他",
@@ -1188,6 +1242,12 @@
     "Subthreads of “{title}”": "「{title}」のサブチャット"
   },
   "id": {
+    "Workspaces": "Ruang kerja",
+    "Current": "Saat ini",
+    "Add": "Tambah",
+    "Done": "Selesai",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Ruang kerja adalah kumpulan tab yang dapat dipilih dengan satu klik. Pilihan hanya berlaku untuk jendela ini.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Hapus ruang kerja “{name}”? Tab akan tetap ada di riwayat.",
     "Work": "Kerja",
     "Home": "Rumah",
     "Other": "Lainnya",
@@ -1320,6 +1380,12 @@
     "Subthreads of “{title}”": "Subobrolan “{title}”"
   },
   "tr": {
+    "Workspaces": "Çalışma alanları",
+    "Current": "Geçerli",
+    "Add": "Ekle",
+    "Done": "Bitti",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Çalışma alanı, tek tıklamayla geçiş yapabileceğiniz bir sekme grubudur. Seçim yalnızca bu pencere için geçerlidir.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "“{name}” çalışma alanı silinsin mi? Sekmeler geçmişte kalacaktır.",
     "Work": "İş",
     "Home": "Ev",
     "Other": "Diğer",
@@ -1452,6 +1518,12 @@
     "Subthreads of “{title}”": "“{title}” alt sohbetleri"
   },
   "ko": {
+    "Workspaces": "작업 공간",
+    "Current": "현재",
+    "Add": "추가",
+    "Done": "완료",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "작업 공간은 한 번의 클릭으로 전환할 수 있는 탭 모음입니다. 선택은 이 창에만 적용됩니다.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "작업 공간 ‘{name}’을 삭제할까요? 탭은 기록에 남습니다.",
     "Work": "업무",
     "Home": "집",
     "Other": "기타",
@@ -1584,6 +1656,12 @@
     "Subthreads of “{title}”": "“{title}”의 하위 채팅"
   },
   "vi": {
+    "Workspaces": "Không gian làm việc",
+    "Current": "Hiện tại",
+    "Add": "Thêm",
+    "Done": "Xong",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Không gian làm việc là nhóm tab bạn có thể chuyển đến bằng một lần nhấp. Lựa chọn chỉ áp dụng cho cửa sổ này.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Xóa không gian “{name}”? Các tab sẽ vẫn còn trong lịch sử.",
     "Work": "Công việc",
     "Home": "Nhà",
     "Other": "Khác",
@@ -1716,6 +1794,12 @@
     "Subthreads of “{title}”": "Trò chuyện con của “{title}”"
   },
   "it": {
+    "Workspaces": "Spazi di lavoro",
+    "Current": "Attuale",
+    "Add": "Aggiungi",
+    "Done": "Fine",
+    "A workspace is a set of tabs you can switch to in one click. Selection applies to this window only.": "Uno spazio di lavoro è un gruppo di schede a cui puoi passare con un clic. La selezione vale solo per questa finestra.",
+    "Delete workspace “{name}”? Tabs will stay in history.": "Eliminare lo spazio «{name}»? Le schede resteranno nella cronologia.",
     "Work": "Lavoro",
     "Home": "Casa",
     "Other": "Altro",

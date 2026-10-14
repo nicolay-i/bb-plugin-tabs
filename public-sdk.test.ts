@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { experimental_scanPublicSdkOnly } from "@get-bb/plugin-sdk/testing";
 
-describe("Chat Tabs", () => {
-  it("handles behavior 1", async () => {
+describe("Public SDK boundary", () => {
+  it("rejects private SDK APIs and dependencies outside the runtime allowlist", () => {
     const result = experimental_scanPublicSdkOnly(process.cwd(), {
       allow: [
         /^react(?:\/.*)?$/u,

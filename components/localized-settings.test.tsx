@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { readFile } from "node:fs/promises";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -14,24 +13,6 @@ afterEach(() => {
 });
 
 describe("Localized settings", () => {
-  it("scopes duplicate-form suppression to Chat Tabs and restores the native fallback", async () => {
-    const css = await readFile(`${process.cwd()}/tabs.css`, "utf8");
-    const selector = css
-      .match(
-        /(\[data-testid="plugin-detail-tabs"\]:has\(\.bb-chat-tabs-settings\)[^{]+)\{\s*display: none;/,
-      )?.[1]
-      .trim();
-    expect(selector).toBeTruthy();
-    const root = document.createElement("div");
-    root.innerHTML =
-      '<div data-testid="plugin-detail-tabs"><div class="overflow-hidden" id="native-form"></div><div><section class="bb-chat-tabs-settings"></section></div></div><div data-testid="plugin-detail-other"><div id="other-form"></div></div>';
-    expect(Array.from(root.querySelectorAll(selector!), (node) => node.id)).toEqual([
-      "native-form",
-    ]);
-    root.querySelector(".bb-chat-tabs-settings")!.remove();
-    expect(root.querySelectorAll(selector!)).toHaveLength(0);
-  });
-
   it("follows live BB language changes in Auto mode without saving settings", async () => {
     document.documentElement.lang = "ru";
     const update = vi.fn(() => ({ values: { language: "Auto" } }));

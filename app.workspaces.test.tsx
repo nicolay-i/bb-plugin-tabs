@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import { renderPartialSlot as renderSlot, type PartialRenderSlotOptions } from "./test-utils";
 import type { rpcContract } from "./server";
@@ -26,6 +26,21 @@ import { workspaceSelectionStore } from "./lib/workspace-selection";
 
 const app = await loadPluginApp(() => import("./app"));
 const current = { threadId: "work-thread", projectId: "project", title: "Work chat" };
+function ChatSurface() {
+  const overlay = app.appOverlays[0];
+  const header = app.threadHeaderActions[0];
+  if (!overlay || !header) throw new Error("Missing chat surfaces");
+  const Overlay = overlay.component;
+  const Header = header.component;
+  return (
+    <>
+      <header data-testid="workspace-thread-header">
+        <Header threadId={current.threadId} projectId="project" isCompactViewport={false} />
+      </header>
+      <Overlay />
+    </>
+  );
+}
 const home = { threadId: "home-thread", projectId: "project", title: "Home chat" };
 const store = workspaceSelectionStore();
 type Handlers = NonNullable<PartialRenderSlotOptions<typeof rpcContract>["rpc"]>;
@@ -95,6 +110,10 @@ function fixture() {
     history: { version: 1, entries: [] },
   });
   const rpc: Handlers = {
+    tabs_workspaces_list: () => ({
+      workspaces: workspaceInfos(collection),
+      stateRevision: collection.revision,
+    }),
     tabs_list: (input) => list(input?.workspaceId ?? "work"),
     tabs_workspace_memberships: ({ threadId }) => ({
       stateRevision: collection.revision,
@@ -169,7 +188,7 @@ function fixture() {
     const overlay = app.appOverlays[0];
     if (!overlay) throw new Error("Missing overlay");
     return renderSlot<{}, typeof rpcContract>(
-      overlay,
+      { ...overlay, component: ChatSurface },
       {},
       {
         settings,
@@ -227,49 +246,84 @@ function choose(container: HTMLElement, id: string) {
 }
 
 describe("workspace surfaces and visit races", () => {
-  it.each(["route", "workspace", "A → B → A", "settings", "URL"] as const)(
-    "does not let a late workspace creation override a newer %s",
-    async (kind) => {
+  it.each([false, true])(
+    "renders the native header control with host compact flag %s",
+    async (compact) => {
       const fx = fixture();
-      const gate = deferred<PluginRpcResult<(typeof rpcContract)["tabs_workspace_create"]>>();
-      const overlay = fx.renderOverlay({ tabs_workspace_create: () => gate.promise });
-      await within(overlay.container).findByRole("button", { name: "Work chat" });
-      choose(overlay.container, "");
-      const dialog = await within(document.body).findByRole("dialog", {
-        name: "Manage workspaces",
-      });
-      fireEvent.change(within(dialog).getByRole("textbox", { name: "Workspace name" }), {
-        target: { value: "Late QA" },
-      });
-      fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-      await waitFor(() =>
-        expect(
-          overlay.inspection.rpcCalls.some((call) => call.method === "tabs_workspace_create"),
-        ).toBe(true),
+      const header = app.threadHeaderActions[0];
+      if (!header) throw new Error("Missing workspace header");
+      const slot = renderSlot(
+        header,
+        { threadId: current.threadId, projectId: "project", isCompactViewport: compact },
+        { rpc: fx.rpc },
       );
-      const url = window.location.href;
-      await act(async () => {
-        if (kind === "route") store.observeRoute("explicitly-opened-chat");
-        if (kind === "workspace" || kind === "A → B → A") store.select("home");
-        if (kind === "A → B → A") store.select("work");
-        if (kind === "settings") {
-          store.setWorkspacesEnabled(false);
-          store.setWorkspacesEnabled(true);
-        }
-        if (kind === "URL") window.history.replaceState(null, "", "/new-route");
-      });
-      const selected = store.getSnapshot().workspaceId;
-      try {
-        const result = await fx.rpc.tabs_workspace_create!({ name: "Late QA" });
-        await act(async () => gate.resolve(result));
-        expect(store.getSnapshot().workspaceId).toBe(selected);
-        expect(store.getSnapshot().workspaces.some((item) => item.id === "qa")).toBe(true);
-        expect(overlay.inspection.sidebarActionCalls).toEqual([]);
-      } finally {
-        window.history.replaceState(null, "", url);
-      }
+      const trigger = slot.getByRole("button", { name: "Workspace" });
+      expect(trigger.title).toBe("Work");
+      expect(trigger.querySelector(".bb-chat-tabs-workspace-label")?.textContent).toBe("Work");
+      expect(
+        trigger.closest(".bb-chat-tabs-workspace-switcher")?.getAttribute("data-compact"),
+      ).toBe(compact ? "true" : null);
+      expect(slot.container.querySelector(".bb-chat-tabs-content-row")).toBeNull();
     },
   );
+  it("loads and reconnects the header catalog on a cold page with both tab strips disabled", async () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    vi.stubGlobal("window", frame.contentWindow);
+    try {
+      const fx = fixture();
+      const slot = fx.renderOverlay({}, { showTabsOnDesktop: false, showTabsOnMobile: false });
+      await waitFor(() =>
+        expect(slot.getByRole("button", { name: "Workspace" }).title).toBe("Work"),
+      );
+      expect(
+        slot.inspection.rpcCalls.filter((call) => call.method === "tabs_workspaces_list"),
+      ).toHaveLength(1);
+      await fx.rpc.tabs_workspace_rename!({ workspaceId: "work", name: "After reconnect" });
+      await slot.setRealtimeConnectionState("reconnecting");
+      await slot.setRealtimeConnectionState("connected");
+      await waitFor(() =>
+        expect(slot.getByRole("button", { name: "Workspace" }).title).toBe("After reconnect"),
+      );
+      expect(
+        slot.inspection.rpcCalls.filter((call) => call.method === "tabs_workspaces_list"),
+      ).toHaveLength(2);
+      expect(slot.inspection.rpcCalls.filter((call) => call.method === "tabs_list")).toHaveLength(
+        0,
+      );
+      expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    } finally {
+      cleanup();
+      vi.unstubAllGlobals();
+      frame.remove();
+    }
+  });
+  it("accepts creation realtime before a delayed reply without restoring the old selection or navigating", async () => {
+    const fx = fixture();
+    const gate = deferred<PluginRpcResult<(typeof rpcContract)["tabs_workspace_create"]>>();
+    const overlay = fx.renderOverlay({ tabs_workspace_create: () => gate.promise });
+    await within(overlay.container).findByRole("button", { name: "Work chat" });
+    choose(overlay.container, "");
+    const dialog = await within(document.body).findByRole("dialog", { name: "Workspaces" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Workspace name" }), {
+      target: { value: "Late QA" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(
+        overlay.inspection.rpcCalls.some((call) => call.method === "tabs_workspace_create"),
+      ).toBe(true),
+    );
+    await act(async () => store.select("home"));
+    const visit = store.getSnapshot();
+    const result = await fx.rpc.tabs_workspace_create!({ name: "Late QA" });
+    await overlay.emitRealtime("tabs-workspaces-changed", result);
+    await act(async () => gate.resolve(result));
+    expect(store.getSnapshot().workspaceId).toBe("home");
+    expect(store.getSnapshot().generation).toBe(visit.generation);
+    expect(store.getSnapshot().workspaces.some((item) => item.id === "qa")).toBe(true);
+    expect(overlay.inspection.sidebarActionCalls).toEqual([]);
+  });
 
   it.each(["route", "workspace", "A → B → A", "settings", "own realtime"] as const)(
     "preserves navigation ownership on workspace deletion after %s",
@@ -280,7 +334,7 @@ describe("workspace surfaces and visit races", () => {
       await within(overlay.container).findByRole("button", { name: "Work chat" });
       choose(overlay.container, "");
       const dialog = await within(document.body).findByRole("dialog", {
-        name: "Manage workspaces",
+        name: "Workspaces",
       });
       fireEvent.click(within(dialog).getByRole("button", { name: "Delete workspace: Work" }));
       fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -318,7 +372,7 @@ describe("workspace surfaces and visit races", () => {
     await within(overlay.container).findByRole("button", { name: "Second" });
     store.rememberClosed("work", { ...current, threadId: "closed", pinned: true, openedAt: 1 }, 0);
     choose(overlay.container, "");
-    const dialog = await within(document.body).findByRole("dialog", { name: "Manage workspaces" });
+    const dialog = await within(document.body).findByRole("dialog", { name: "Workspaces" });
     const input = within(dialog).getByRole("textbox", { name: "Workspace name" });
     for (const key of [
       { key: "Tab", ctrlKey: true },
@@ -991,6 +1045,7 @@ describe("workspace surfaces and visit races", () => {
       await within(overlay.container).findByRole("button", { name: "Work chat" });
       const trigger = within(overlay.container).getByRole("button", { name: "Workspace" });
       expect(trigger.title).toBe(name);
+      expect(trigger.querySelector(".bb-chat-tabs-workspace-label")?.textContent).toBe(name);
       expect(trigger.getAttribute("aria-description")).toBe(name);
       fireEvent.keyDown(trigger, { key: "ArrowDown" });
       expect(
@@ -1014,7 +1069,7 @@ describe("workspace surfaces and visit races", () => {
     },
   );
 
-  it("keeps chat-list first and toggles workspace functionality without modifying either set or navigating", async () => {
+  it("keeps the chat list first, moves workspace to the header and toggles it without changing sets or navigating", async () => {
     const fx = fixture();
     fx.changeState("home", (state) =>
       openTabCandidate(state, { ...home, threadId: "second-home", title: "Second home" }, 2),
@@ -1026,10 +1081,13 @@ describe("workspace surfaces and visit races", () => {
     await within(overlay.container).findByRole("button", { name: "Home chat" });
     const row = overlay.container.querySelector(".bb-chat-tabs-content-row");
     expect(row?.firstElementChild?.className).toBe("bb-chat-tabs-list-switcher");
-    expect(row?.children[1]?.className).toBe("bb-chat-tabs-workspace-switcher");
-    const definition = app.appOverlays[0];
-    if (!definition) throw new Error("Missing overlay");
-    const Component = definition.component;
+    expect(row?.querySelector(".bb-chat-tabs-workspace-switcher")).toBeNull();
+    expect(
+      overlay
+        .getByTestId("workspace-thread-header")
+        .querySelector(".bb-chat-tabs-workspace-switcher"),
+    ).not.toBeNull();
+    const Component = ChatSurface;
     const beforeHome = fx.changeState("home", (state) => state);
     const beforeWork = fx.changeState("work", (state) => state);
     settings.enableWorkspaces = false;
@@ -1174,12 +1232,43 @@ describe("workspace surfaces and visit races", () => {
     ).toEqual(["Work", "Home", "Other"]);
     expect(within(menu).getByRole("separator")).toBeTruthy();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Manage workspaces…" }));
-    const dialog = await within(document.body).findByRole("dialog", { name: "Manage workspaces" });
+    const dialog = await within(document.body).findByRole("dialog", { name: "Workspaces" });
     expect(store.getSnapshot().workspaceId).toBe("work");
     expect(trigger.title).toBe("Work");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     expect(overlay.inspection.sidebarActionCalls).toEqual([]);
+  });
+
+  it("keeps the new-workspace draft while inline rename and deletion are cancelled", async () => {
+    const fx = fixture();
+    const overlay = fx.renderOverlay();
+    await within(overlay.container).findByRole("button", { name: "Work chat" });
+    choose(overlay.container, "");
+    const dialog = await within(document.body).findByRole("dialog", { name: "Workspaces" });
+    expect(dialog.querySelectorAll(".bb-chat-tabs-workspace-current")).toHaveLength(1);
+    expect(
+      dialog.querySelector(".bb-chat-tabs-workspace-current")?.closest("li")?.textContent,
+    ).toContain("Work");
+    const draft = within(dialog).getByRole("textbox", { name: "Workspace name" });
+    fireEvent.change(draft, { target: { value: "New draft" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename workspace: Home" }));
+    const rename = within(dialog).getByRole("textbox", { name: "Rename workspace: Home" });
+    expect(document.activeElement).toBe(rename);
+    fireEvent.change(rename, { target: { value: "Cancelled name" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(within(dialog).getByRole("button", { name: "Rename workspace: Home" })).toBeTruthy();
+    expect((draft as HTMLInputElement).value).toBe("New draft");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete workspace: Home" }));
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect((draft as HTMLInputElement).value).toBe("New draft");
+    expect(
+      overlay.inspection.rpcCalls.filter((call) =>
+        /^tabs_workspace_(create|rename|delete)$/u.test(call.method),
+      ),
+    ).toEqual([]);
+    expect(store.getSnapshot().workspaceId).toBe("work");
   });
 
   it("supports create/rename, validates names, confirms deletion and never archives chats", async () => {
@@ -1187,11 +1276,15 @@ describe("workspace surfaces and visit races", () => {
     const overlay = fx.renderOverlay();
     await within(overlay.container).findByRole("button", { name: "Work chat" });
     choose(overlay.container, "");
-    let dialog = await within(document.body).findByRole("dialog", { name: "Manage workspaces" });
+    const dialog = await within(document.body).findByRole("dialog", { name: "Workspaces" });
+    for (const button of within(dialog).getAllByRole("button", { name: /^Delete workspace:/ })) {
+      expect(button.querySelector('[data-icon="Trash2"]')).not.toBeNull();
+      expect(button.querySelector('[data-icon="Zap"]')).toBeNull();
+    }
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Workspace name" }), {
       target: { value: "WORK" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
     expect(within(dialog).getByRole("alert").textContent).toContain("already exists");
     expect(
       overlay.inspection.rpcCalls.filter((call) => call.method === "tabs_workspace_create"),
@@ -1199,38 +1292,49 @@ describe("workspace surfaces and visit races", () => {
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Workspace name" }), {
       target: { value: "QA" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(store.getSnapshot().workspaceId).toBe("qa"));
-    choose(overlay.container, "");
-    dialog = await within(document.body).findByRole("dialog", { name: "Manage workspaces" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    await within(dialog).findByRole("button", { name: "Rename workspace: QA" });
+    expect(dialog.isConnected).toBe(true);
+    expect(store.getSnapshot().workspaceId).toBe("work");
+    expect(
+      overlay.container
+        .querySelector('.bb-chat-tab[data-active="true"] .bb-chat-tab-select')
+        ?.getAttribute("aria-label"),
+    ).toBe("Work chat");
+    expect(
+      (within(dialog).getByRole("textbox", { name: "Workspace name" }) as HTMLInputElement).value,
+    ).toBe("");
+    expect(overlay.inspection.sidebarActionCalls).toEqual([]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Rename workspace: QA" }));
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Workspace name" }), {
+    const renameInput = within(dialog).getByRole("textbox", { name: "Rename workspace: QA" });
+    expect(renameInput.closest("li")?.getAttribute("data-editing")).toBe("true");
+    expect(within(dialog).getByRole("textbox", { name: "Workspace name" })).toBeTruthy();
+    fireEvent.change(renameInput, {
       target: { value: "Renamed" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await within(dialog).findByRole("button", { name: "Delete workspace: Renamed" });
-    expect(store.getSnapshot().workspaceId).toBe("qa");
+    expect(store.getSnapshot().workspaceId).toBe("work");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete workspace: Renamed" }));
+    expect(
+      within(dialog)
+        .getByRole("group", { name: "Delete workspace" })
+        .closest("li")
+        ?.getAttribute("data-confirming"),
+    ).toBe("true");
+    expect(within(dialog).getByRole("button", { name: "Delete workspace: Work" })).toBeTruthy();
     expect(within(dialog).getByText(/Chats and shared history will stay/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(store.getSnapshot().workspaces).toHaveLength(4);
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete workspace: Renamed" }));
-    fx.changeState("work", () =>
-      openTabCandidate(createEmptyTabsState(), { ...current, threadId: "restored-work" }, 1),
-    );
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(store.getSnapshot().workspaceId).toBe("work"));
-    expect(store.getSnapshot().workspaces).toHaveLength(3);
+    await waitFor(() => expect(store.getSnapshot().workspaces).toHaveLength(3));
+    expect(store.getSnapshot().workspaceId).toBe("work");
     expect(overlay.inspection.rpcCalls).toContainEqual({
       method: "tabs_workspace_delete",
       input: { workspaceId: "qa" },
     });
-    await waitFor(() =>
-      expect(overlay.inspection.sidebarActionCalls).toEqual([
-        { method: "openNewThread", options: { focusPrompt: true } },
-        { method: "open", threadId: "restored-work" },
-      ]),
-    );
+    expect(overlay.inspection.sidebarActionCalls).toEqual([]);
   });
 
   it("scopes realtime content, shares metadata without selection changes, and falls back only if the selected mode is deleted", async () => {

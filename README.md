@@ -90,16 +90,18 @@ records are retained. Re-enabling restores this window’s previous selection,
 including after reload, without navigating or inserting the current chat into
 another set.
 
-Use the compact workspace selector in the strip or on **New chat**. With the list
-button on the left, the chat-list icon is closest to the edge, followed by the
-workspace selector. It displays
-only the first character of the selected name, with full names in the tooltip and
-dropdown (including complete emoji or combined characters). The theme-aware popover
+Use the workspace selector in the **thread header** or on **New chat**. It remains
+available when the tab strip is hidden. Desktop shows the selected workspace name;
+compact/mobile shows its first complete Unicode character (including emoji or
+combined characters). Very long desktop names are ellipsized to keep header actions
+accessible; full names remain in the tooltip and dropdown. The chat-list button
+stays in the tab strip, with its existing left/right setting. The theme-aware popover
 uses initial badges, a checkmark for the selected set, keyboard navigation, and
 44px touch rows instead of the browser’s native select list. Its last option,
 **Manage workspaces…**, opens the dialog to create, rename, or delete sets without
-an extra toolbar button or changing the current selection. Creating a set selects it in this window
-only. Deletion requires confirmation, removes only that set, and never archives
+an extra toolbar button or changing the current selection. Creating a set keeps the
+current workspace and chat open, and leaves the management dialog open so its name
+can be corrected or another set added. Deletion requires confirmation, removes only that set, and never archives
 or deletes chats. At least one workspace must remain; the maximum is 20.
 Names contain 1–80 Unicode characters after trimming and cannot duplicate an
 existing name, including translated default labels. Default names follow the

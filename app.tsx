@@ -21,7 +21,11 @@ import {
   useSettings,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
-import type { PluginHomepageSectionProps, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type {
+  PluginHomepageSectionProps,
+  PluginSidebarThread,
+  PluginThreadHeaderActionProps,
+} from "@get-bb/plugin-sdk/app";
 import type { rpcContract } from "./server";
 import type { PluginRpcResult } from "@get-bb/plugin-sdk";
 import { chatStatusFor } from "./lib/chat-status";
@@ -2415,13 +2419,6 @@ function ChatTabsOverlay() {
         </div>
         <div className="bb-chat-tabs-content-row">
           {tabListButtonPosition === "left" ? tabListSwitcher : null}
-          {settings.values?.enableWorkspaces !== false ? (
-            <WorkspaceSwitcher
-              key={workspaceGeneration}
-              locale={locale}
-              currentThreadId={context.threadId}
-            />
-          ) : null}
           <div
             ref={stripRef}
             className="bb-chat-tabs-strip"
@@ -2916,11 +2913,58 @@ function WorkspaceHomepageVisit({
   );
 }
 
+function WorkspaceHeaderAction({ threadId, isCompactViewport }: PluginThreadHeaderActionProps) {
+  const settings = useSettings();
+  const enabled = settings.values?.enableWorkspaces !== false;
+  const locale = usePluginLocale(settings.values?.language as LanguageSetting);
+  const selection = useWorkspaceSelection(enabled);
+  const store = workspaceSelectionStore();
+  const rpc = useRpc<typeof rpcContract>();
+  const connection = useRealtimeConnectionState();
+  const stripEnabled = isCompactViewport
+    ? settings.values?.showTabsOnMobile !== false
+    : settings.values?.showTabsOnDesktop !== false;
+  useEffect(() => {
+    if (
+      !enabled ||
+      connection !== "connected" ||
+      (stripEnabled && store.getSnapshot().workspaces.length > 0)
+    )
+      return;
+    let mounted = true;
+    const revision = store.getSnapshot().revision;
+    void rpc.call("tabs_workspaces_list", null).then(
+      (result) => {
+        if (mounted) store.acceptCatalog(result.workspaces, revision, result.stateRevision);
+      },
+      (cause: unknown) => {
+        if (mounted) toast.error(workspaceErrorMessage(locale, cause));
+      },
+    );
+    return () => {
+      mounted = false;
+    };
+  }, [enabled, stripEnabled, rpc, store, connection, locale]);
+  return enabled ? (
+    <WorkspaceSwitcher
+      key={selection.generation}
+      locale={locale}
+      currentThreadId={threadId}
+      compact={isCompactViewport}
+    />
+  ) : null;
+}
+
 function FavoriteTabsHomepageSection(props: PluginHomepageSectionProps) {
   return <PinnedTabsHomepageSection {...props} favorites />;
 }
 
 export default definePluginApp((app) => {
+  app.slots.experimental_threadHeaderAction({
+    id: "workspace",
+    title: "Workspace",
+    component: WorkspaceHeaderAction,
+  });
   app.slots.settingsSection({ id: "localized-settings", component: LocalizedSettings });
   app.slots.homepageSection({
     id: "pinned-tabs",

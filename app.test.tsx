@@ -672,8 +672,9 @@ describe("Chat Tabs", () => {
     expect(slot.getByRole("menuitem", { name: "Открепить" })).toBeTruthy();
   });
 
-  it("handles behavior 1", () => {
-    expect(app.threadHeaderActions).toHaveLength(0);
+  it("registers the workspace switcher in the native thread header", () => {
+    expect(app.threadHeaderActions).toHaveLength(1);
+    expect(app.threadHeaderActions[0]?.id).toBe("workspace");
   });
 
   it("handles behavior 2", async () => {
@@ -1242,9 +1243,7 @@ describe("Chat Tabs", () => {
     expect(trigger.querySelector('[data-icon="ListView"]')).not.toBeNull();
     expect(slot.queryByRole("combobox", { name: "Go to chat" })).toBeNull();
     expect(slot.container.querySelectorAll("select")).toHaveLength(0);
-    expect(slot.getByRole("button", { name: "Workspace" }).getAttribute("aria-haspopup")).toBe(
-      "menu",
-    );
+    expect(slot.queryByRole("button", { name: "Workspace" })).toBeNull();
 
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     const menu = await waitFor(() => {

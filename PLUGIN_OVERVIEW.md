@@ -1,10 +1,10 @@
-Keep chats in a manually ordered strip beneath BB's header; the sidebar stays available. See the [screenshots and setup guide](https://github.com/nicolay-i/bb-plugin-tabs#readme).
+Keep chats in a manually ordered strip beneath BB's header. See the [setup guide](https://github.com/nicolay-i/bb-plugin-tabs#readme).
 
 ## Workspaces
 
-Work, Home, Other, and custom sets keep independent pins, order, preview, and favorites. A letter/emoji selector opens on click or hover, with management in its menu. Switching restores this window's last active tab, then the first member, or New chat for an empty set. It never inserts the previously viewed chat into another set. Sets synchronize across windows; selections remain independent.
+Work, Home, Other, and custom sets keep independent pins, order, preview, and favorites. The thread-header selector shows the name on desktop or a letter/emoji on mobile, even with the strip hidden. It opens on click or hover; New chat retains its selector. Switching restores this window's last active tab, then the first member, or New chat for an empty set, without inserting the previous chat. Sets synchronize; selections remain window-local.
 
-Create or rename up to 20 sets with 1–80-character Unicode names. Default labels follow the current interface language; renamed/custom labels stay unchanged. Confirmed deletion removes only a set, never chats or shared history. Existing tabs and favorites migrate once into Work. Workspaces are enabled by default; disabling them uses Work or the first remaining set, preserving all other sets and the window's previous selection.
+Manage up to 20 sets with 1–80-character Unicode names, inline rename/delete confirmation, and reduced-motion-aware dialog animations. Creation keeps the current chat, selection, and dialog open. Default labels follow the interface language; custom names stay unchanged. Deletion never removes chats or history. Existing tabs and favorites migrate once into Work. Disabling workspaces uses Work or the first remaining set, preserving other sets and the window's previous selection.
 
 Choose **Show in workspaces** in a tab menu to add one chat to several sets or remove it from selected sets. Favorites remain independent; membership edits do not navigate or switch your workspace.
 
