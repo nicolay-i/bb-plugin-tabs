@@ -1,7 +1,17 @@
 import { LANGUAGE_OPTIONS } from "./languages";
+import { appearanceSettingSchema, defaultTabAppearance } from "./tab-appearance";
 
 /** Shared labels/defaults: English for the CLI, translated in the settings slot. */
 export const SETTINGS = {
+  tabAppearance: {
+    type: "string",
+    label: "Tab appearance",
+    description:
+      "Palette, project aliases and individual tab colors. Changes apply in every workspace.",
+    experimental_multiline: true,
+    experimental_schema: appearanceSettingSchema,
+    default: JSON.stringify(defaultTabAppearance()),
+  },
   language: {
     type: "select",
     label: "Language",

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import type { PluginSidebarProject } from "@get-bb/plugin-sdk/app";
 import { Icon } from "./ui/icon";
 import { translate, type PluginLocale } from "../lib/plugin-locale";
+import { tabAppearanceTitle, type TabAppearance } from "../lib/tab-appearance";
 
 const HOVER_DELAY_MS = 300;
 const LEAVE_DELAY_MS = 120;
@@ -11,10 +12,18 @@ const PROJECT_PAGE_SIZE = 15;
 interface NewChatSwitcherProps {
   locale?: PluginLocale;
   projects: readonly PluginSidebarProject[];
+  preferredProjectIds?: ReadonlySet<string>;
+  appearance?: TabAppearance;
   openNewThread: (options?: { projectId?: string; focusPrompt?: boolean }) => void;
 }
 
-export function NewChatSwitcher({ projects, openNewThread, locale = "en" }: NewChatSwitcherProps) {
+export function NewChatSwitcher({
+  projects,
+  preferredProjectIds,
+  appearance,
+  openNewThread,
+  locale = "en",
+}: NewChatSwitcherProps) {
   const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
     translate(locale, key, variables);
   const [open, setOpen] = useState(false);
@@ -144,18 +153,36 @@ export function NewChatSwitcher({ projects, openNewThread, locale = "en" }: NewC
             onPointerLeave={(event) => leave(event.pointerType)}
           >
             <div className="bb-chat-tabs-new-menu-heading">{t("New chat in project")}</div>
-            {projects.slice(0, visibleCount).map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                role="menuitem"
-                className="bb-chat-tabs-new-menu-item"
-                onClick={() => navigate(project.id)}
-                title={project.name}
-              >
-                <Icon name="Folder" className="bb-chat-tabs-new-menu-icon" aria-hidden />
-                <span>{project.name}</span>
-              </button>
+            {projects.slice(0, visibleCount).map((project, index) => (
+              <Fragment key={project.id}>
+                {preferredProjectIds &&
+                preferredProjectIds.size > 0 &&
+                (index === 0 ||
+                  preferredProjectIds.has(projects[index - 1]!.id) !==
+                    preferredProjectIds.has(project.id)) ? (
+                  <div className="bb-chat-tabs-new-menu-heading">
+                    {t(
+                      preferredProjectIds.has(project.id)
+                        ? "Projects in this workspace"
+                        : "Other projects",
+                    )}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="bb-chat-tabs-new-menu-item"
+                  onClick={() => navigate(project.id)}
+                  title={project.name}
+                >
+                  <Icon name="Folder" className="bb-chat-tabs-new-menu-icon" aria-hidden />
+                  <span>
+                    {appearance
+                      ? tabAppearanceTitle(appearance, project.id, project.name)
+                      : project.name}
+                  </span>
+                </button>
+              </Fragment>
             ))}
             {visibleCount < projects.length ? (
               <button

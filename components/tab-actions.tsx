@@ -3,6 +3,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useSettings } from "@get-bb/plugin-sdk/app";
 import type { TabEntry } from "../lib/tabs-model";
+import type { TabAppearance } from "../lib/tab-appearance";
 import { Icon } from "./ui/icon";
 import { WorkspaceMembershipOptions } from "./workspace-membership-menu";
 import { translate, type PluginLocale } from "../lib/plugin-locale";
@@ -25,6 +26,9 @@ interface TabActionsContextMenuProps {
   entry: TabEntry;
   isPinned: boolean;
   isFavorite: boolean;
+  appearance: TabAppearance;
+  colorSaving: boolean;
+  onSetColor: (threadId: string, color: number | null) => void;
   onSetFavorite: (entry: TabEntry, favorite: boolean) => void;
   onArchive: (entry: TabEntry) => void;
   onCopyLink: (entry: TabEntry) => void;
@@ -40,6 +44,9 @@ export function TabActionsContextMenu({
   entry,
   isPinned,
   isFavorite,
+  appearance,
+  colorSaving,
+  onSetColor,
   onSetFavorite,
   onArchive,
   onCopyLink,
@@ -88,6 +95,28 @@ export function TabActionsContextMenu({
             <Icon name="Star" aria-hidden />
             {isFavorite ? t("Remove from favorites") : t("Add to favorites")}
           </ContextMenu.Item>
+          <ContextMenu.Sub>
+            <ContextMenu.SubTrigger className="bb-chat-tab-context-menu-item bb-chat-tabs-membership-trigger">
+              <Icon name="Circle" aria-hidden />
+              {t("Tab color")}
+              <Icon name="ChevronRight" className="bb-chat-tabs-membership-chevron" aria-hidden />
+            </ContextMenu.SubTrigger>
+            <ContextMenu.Portal>
+              <ContextMenu.SubContent
+                className="bb-chat-tab-context-menu"
+                sideOffset={4}
+                collisionPadding={8}
+              >
+                <TabColorOptions
+                  entry={entry}
+                  appearance={appearance}
+                  colorSaving={colorSaving}
+                  onSetColor={onSetColor}
+                  locale={locale}
+                />
+              </ContextMenu.SubContent>
+            </ContextMenu.Portal>
+          </ContextMenu.Sub>
           {settings.values?.enableWorkspaces !== false ? (
             <ContextMenu.Sub>
               <ContextMenu.SubTrigger className="bb-chat-tab-context-menu-item bb-chat-tabs-membership-trigger">
@@ -127,6 +156,57 @@ export function TabActionsContextMenu({
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
+  );
+}
+
+function TabColorOptions({
+  entry,
+  appearance,
+  colorSaving,
+  onSetColor,
+  locale = "en",
+}: Pick<
+  TabActionsContextMenuProps,
+  "entry" | "appearance" | "colorSaving" | "onSetColor" | "locale"
+>) {
+  const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
+    translate(locale, key, variables);
+  return (
+    <ContextMenu.RadioGroup
+      value={String(appearance.tabs[entry.threadId] ?? "project")}
+      onValueChange={(value) =>
+        onSetColor(entry.threadId, value === "project" ? null : Number(value))
+      }
+    >
+      <ContextMenu.RadioItem
+        className="bb-chat-tab-context-menu-item"
+        value="project"
+        disabled={colorSaving}
+      >
+        <ContextMenu.ItemIndicator>
+          <Icon name="Check" aria-hidden />
+        </ContextMenu.ItemIndicator>
+        {t("Use project color")}
+      </ContextMenu.RadioItem>
+      {appearance.palette.map((color, index) => (
+        <ContextMenu.RadioItem
+          key={index}
+          className="bb-chat-tab-context-menu-item"
+          value={String(index)}
+          disabled={colorSaving}
+        >
+          <span
+            className="bb-chat-tabs-color-swatch"
+            style={{ backgroundColor: color }}
+            aria-hidden
+          />
+          {t("Color {number}", { number: index + 1 })}
+          <ContextMenu.ItemIndicator>
+            <Icon name="Check" aria-hidden />
+          </ContextMenu.ItemIndicator>
+        </ContextMenu.RadioItem>
+      ))}
+    </ContextMenu.RadioGroup>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   useState,
   type DragEvent,
   type PointerEvent,
+  type CSSProperties,
 } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
@@ -32,6 +33,8 @@ import { chatStatusFor } from "./lib/chat-status";
 import {
   DEFAULT_WORKSPACE_ID,
   WORKSPACES_CHANGED_CHANNEL,
+  WORKSPACE_MEMBERSHIPS_CHANGED_CHANNEL,
+  stateRevisionSchema,
   workspaceStateChannel,
   workspaceCatalogEventSchema,
   workspaceStateEventSchema,
@@ -90,6 +93,13 @@ import { ThreadChildrenMenu } from "./components/thread-children-menu";
 import { childThreadTree, indexThreadChildren } from "./lib/thread-children";
 import { useOverlayBounds } from "./lib/use-overlay-bounds";
 import { recentProjects } from "./lib/recent-projects";
+import {
+  defaultTabAppearance,
+  readTabAppearance,
+  tabAppearanceColor,
+  tabAppearanceTitle,
+  type TabAppearance,
+} from "./lib/tab-appearance";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { Icon } from "./components/ui/icon";
 import { SubthreadBadge } from "./components/subthread-badge";
@@ -1059,6 +1069,56 @@ function ChatTabsOverlay() {
   const showTabListPinned = settings.values?.showTabListPinned !== false;
   const showTabListHistory = settings.values?.showTabListHistory !== false;
   const searchArchivedChats = settings.values?.searchArchivedChats === true;
+  // A→B→A settings changes must invalidate an older optimistic reply too.
+  const appearanceSource = useRef({
+    values: settings.values,
+    raw: settings.values?.tabAppearance,
+    revision: 0,
+  });
+  if (
+    appearanceSource.current.values !== settings.values ||
+    appearanceSource.current.raw !== settings.values?.tabAppearance
+  ) {
+    appearanceSource.current = {
+      values: settings.values,
+      raw: settings.values?.tabAppearance,
+      revision: appearanceSource.current.revision + 1,
+    };
+  }
+  const storedAppearance = useMemo(
+    () => readTabAppearance(settings.values?.tabAppearance) ?? defaultTabAppearance(),
+    [settings.values?.tabAppearance],
+  );
+  const [appearanceOverride, setAppearanceOverride] = useState<{
+    source: number;
+    value: TabAppearance;
+  } | null>(null);
+  const appearance =
+    appearanceOverride !== null && appearanceOverride.source === appearanceSource.current.revision
+      ? appearanceOverride.value
+      : storedAppearance;
+  const [colorSaving, setColorSaving] = useState(false);
+  const colorSavingRef = useRef(false);
+  const setTabColor = async (threadId: string, color: number | null) => {
+    if (colorSavingRef.current) return;
+    colorSavingRef.current = true;
+    setColorSaving(true);
+    const source = appearanceSource.current.revision;
+    try {
+      const result = await resolveRpcRef.current.call("tabs_appearance_update", {
+        kind: "tab",
+        threadId,
+        color,
+      });
+      const next = readTabAppearance(result.values.tabAppearance);
+      if (next !== null) setAppearanceOverride({ source, value: next });
+    } catch {
+      toast.error(t("Could not save settings."));
+    } finally {
+      colorSavingRef.current = false;
+      setColorSaving(false);
+    }
+  };
   const tabListButtonPosition =
     settings.values?.tabListButtonPosition === "Right" ||
     settings.values?.tabListButtonPosition === LEGACY_RIGHT_TAB_LIST_BUTTON_POSITION
@@ -1086,6 +1146,9 @@ function ChatTabsOverlay() {
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
   const topScrollbarSpacerRef = useRef<HTMLDivElement | null>(null);
   const tabElementsRef = useRef(new Map<string, HTMLDivElement>());
+  const lastRevealedTabRef = useRef<{ element: HTMLDivElement | undefined; width: number } | null>(
+    null,
+  );
   const [inlineRename, setInlineRename] = useState<InlineRenameTarget | null>(null);
   const [renameDialogTarget, setRenameDialogTarget] = useState<RenameTabTarget | null>(null);
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
@@ -1533,10 +1596,58 @@ function ChatTabsOverlay() {
     () => (state === null ? [] : buildPresentedTabs(state, sidebar.projects, workIndex, locale)),
     [sidebar.projects, state, workIndex, locale],
   );
-  const newChatProjects = useMemo(
-    () => recentProjects(sidebar.projects, sidebar.threads),
-    [sidebar.projects, sidebar.threads],
+  const workspaceProjectIds = useMemo(
+    () => new Set(state?.entries.map((entry) => entry.projectId) ?? []),
+    [state?.entries],
   );
+  const newChatProjects = useMemo(
+    () => recentProjects(sidebar.projects, sidebar.threads, undefined, workspaceProjectIds),
+    [sidebar.projects, sidebar.threads, workspaceProjectIds],
+  );
+  const includeWorkspacePins =
+    settings.values?.enableWorkspaces !== false &&
+    showTabListButton &&
+    showTabListHistory &&
+    showTabsOnCurrentLayout &&
+    context.threadId !== null &&
+    workspaceSelectionStore().getSnapshot().workspaces.length > 1;
+  const [workspacePins, setWorkspacePins] = useState<TabEntry[]>([]);
+  const [pinsRevision, setPinsRevision] = useState(0);
+  const pinsRevisionRef = useRef(0);
+  const pinsConnection = useRealtimeConnectionState();
+  useEffect(() => {
+    if (!includeWorkspacePins || pinsConnection !== "connected") return;
+    let cancelled = false;
+    const load = async (retry = true): Promise<void> => {
+      try {
+        const result = await resolveRpcRef.current.call("tabs_pinned_list", null);
+        if (cancelled) return;
+        if (result.stateRevision < pinsRevisionRef.current) {
+          if (retry) await load(false);
+          return;
+        }
+        pinsRevisionRef.current = result.stateRevision;
+        setWorkspacePins(result.entries);
+      } catch (cause) {
+        if (!cancelled) toast.error(workspaceErrorMessage(locale, cause));
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [includeWorkspacePins, pinsConnection, pinsRevision, locale]);
+  useRealtime(WORKSPACE_MEMBERSHIPS_CHANGED_CHANNEL, (payload) => {
+    const parsed = stateRevisionSchema.safeParse(payload);
+    if (
+      !parsed.success ||
+      !Number.isSafeInteger(parsed.data) ||
+      parsed.data <= pinsRevisionRef.current
+    )
+      return;
+    pinsRevisionRef.current = parsed.data;
+    if (includeWorkspacePins) setPinsRevision(parsed.data);
+  });
   const pinnedMenuTabs = useMemo(() => tabs.filter((tab) => tab.entry.pinned), [tabs]);
   const historyMenuTabs = useMemo(() => {
     const pinnedIds = new Set(pinnedMenuTabs.map((tab) => tab.entry.threadId));
@@ -1554,9 +1665,33 @@ function ChatTabsOverlay() {
       !knownIds.has(preview.entry.threadId)
     ) {
       presented.unshift(preview);
+      knownIds.add(preview.entry.threadId);
+    }
+    if (includeWorkspacePins) {
+      const otherPins = buildPresentedTabs(
+        { version: 1, entries: workspacePins.map((entry) => ({ ...entry, pinned: false })) },
+        sidebar.projects,
+        workIndex,
+        locale,
+      );
+      for (const tab of otherPins) {
+        if (pinnedIds.has(tab.entry.threadId) || knownIds.has(tab.entry.threadId)) continue;
+        knownIds.add(tab.entry.threadId);
+        presented.push(tab);
+      }
     }
     return presented;
-  }, [history, pinnedMenuTabs, showTabListPinned, sidebar.projects, tabs, workIndex, locale]);
+  }, [
+    history,
+    pinnedMenuTabs,
+    showTabListPinned,
+    sidebar.projects,
+    tabs,
+    workIndex,
+    locale,
+    includeWorkspacePins,
+    workspacePins,
+  ]);
   const menuPinnedTabs = useMemo(
     () => (showTabListPinned ? pinnedMenuTabs : []),
     [showTabListPinned, pinnedMenuTabs],
@@ -1755,15 +1890,34 @@ function ChatTabsOverlay() {
         frame = null;
         const scrollWidth = strip.scrollWidth;
         const clientWidth = strip.clientWidth;
-        const scrollLeft = strip.scrollLeft;
         const scrollbarLeft = topScrollbar.scrollLeft;
+        const scrollbarWidth = topScrollbar.clientWidth;
+        let revealActiveTab = false;
+        const activeTab = tabElementsRef.current.get(context.threadId ?? "");
+        const previous = lastRevealedTabRef.current;
+        lastRevealedTabRef.current = { element: activeTab, width: clientWidth };
+        if (
+          activeTab !== undefined &&
+          clientWidth > 0 &&
+          (previous?.element !== activeTab || previous.width !== clientWidth)
+        ) {
+          const viewport = strip.getBoundingClientRect();
+          const active = activeTab.getBoundingClientRect();
+          revealActiveTab = active.left < viewport.left || active.right > viewport.right;
+        }
         const nextHasHorizontalOverflow = scrollWidth > clientWidth;
-        const width = `${Math.max(scrollWidth, clientWidth)}px`;
+        const width = `${Math.max(scrollWidth, clientWidth) + Math.max(0, scrollbarWidth - clientWidth)}px`;
         setHasHorizontalOverflow((previous) =>
           previous === nextHasHorizontalOverflow ? previous : nextHasHorizontalOverflow,
         );
         if (spacer.style.width !== width) spacer.style.width = width;
-        if (scrollbarLeft !== scrollLeft) topScrollbar.scrollLeft = scrollLeft;
+        // Compact snapping needs the active tab's start, not a neighbouring snap point.
+        if (revealActiveTab && typeof activeTab?.scrollIntoView === "function")
+          activeTab.scrollIntoView({
+            block: "nearest",
+            inline: isCompactTabLayout ? "start" : "nearest",
+          });
+        if (scrollbarLeft !== strip.scrollLeft) topScrollbar.scrollLeft = strip.scrollLeft;
       });
     };
     const syncFromStrip = () => {
@@ -1796,7 +1950,7 @@ function ChatTabsOverlay() {
       resizeObserver?.disconnect();
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
-  }, [error, tabs]);
+  }, [context.threadId, error, isCompactTabLayout, tabs]);
 
   const shouldDock =
     showTabsOnCurrentLayout &&
@@ -2460,6 +2614,8 @@ function ChatTabsOverlay() {
               }) => {
                 const childTree = childThreadTree(entry.threadId, childrenByParent, workIndex);
                 const active = entry.threadId === context.threadId;
+                const displayTitle = tabAppearanceTitle(appearance, entry.projectId, title);
+                const tabColor = tabAppearanceColor(appearance, entry.threadId, entry.projectId);
                 const preview = !entry.pinned;
                 const editing = inlineRename?.entry.threadId === entry.threadId;
                 const draggable = entry.pinned && !editing && !isCompactTabLayout;
@@ -2489,6 +2645,9 @@ function ChatTabsOverlay() {
                       locale={locale}
                       entry={entry}
                       isPinned={entry.pinned}
+                      appearance={appearance}
+                      colorSaving={colorSaving}
+                      onSetColor={(threadId, color) => void setTabColor(threadId, color)}
                       isFavorite={
                         state?.favorites?.some((tab) => tab.threadId === entry.threadId) ?? false
                       }
@@ -2511,6 +2670,12 @@ function ChatTabsOverlay() {
                           }
                         }}
                         className="bb-chat-tab"
+                        data-colored={tabColor === undefined ? undefined : "true"}
+                        style={
+                          tabColor === undefined
+                            ? undefined
+                            : ({ "--bb-chat-tab-color": tabColor } as CSSProperties)
+                        }
                         data-active={active ? "true" : "false"}
                         data-dragging={dragging ? "true" : "false"}
                         data-draggable={draggable ? "true" : "false"}
@@ -2587,7 +2752,7 @@ function ChatTabsOverlay() {
                             aria-description={`${t("Click opens the chat.")} ${t("Project: {project}", { project: projectName })}. ${t(
                               preview ? "Preview tab." : "Pinned tab. Drag it to change the order.",
                             )} ${t("Middle-click closes this tab.")}`}
-                            aria-label={`${title}${
+                            aria-label={`${displayTitle}${
                               isWaiting ? `, ${waitingLabel}` : isWorking ? `, ${workLabel}` : ""
                             }${isUnread ? `, ${t("unread messages")}` : ""}`}
                             title={tabHint}
@@ -2637,7 +2802,7 @@ function ChatTabsOverlay() {
                                   beginInlineRename(entry, title);
                                 }}
                               >
-                                {title}
+                                {displayTitle}
                               </span>
                             </span>
                             {isUnread ? <span className="bb-chat-tab-unread" aria-hidden /> : null}
@@ -2679,11 +2844,6 @@ function ChatTabsOverlay() {
                 );
               },
             )}
-            <NewChatSwitcher
-              projects={newChatProjects}
-              locale={locale}
-              openNewThread={threadActions.openNewThread}
-            />
             {error === null ? null : (
               <span
                 className="bb-chat-tabs-error"
@@ -2694,6 +2854,13 @@ function ChatTabsOverlay() {
               </span>
             )}
           </div>
+          <NewChatSwitcher
+            projects={newChatProjects}
+            preferredProjectIds={workspaceProjectIds}
+            appearance={appearance}
+            locale={locale}
+            openNewThread={threadActions.openNewThread}
+          />
           {tabListButtonPosition === "right" ? tabListSwitcher : null}
         </div>
       </div>

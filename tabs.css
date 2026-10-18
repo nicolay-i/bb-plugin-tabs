@@ -27,13 +27,15 @@
   --bb-chat-tabs-active-border: color-mix(in oklch, var(--foreground) 22%, var(--background));
 }
 
+/* The body predicate bridge retains the former :has() specificity without
+   subscribing BODY to descendant style invalidation. */
 #bb-chat-tabs-overlay[data-row-count="1"],
-body:has(#bb-chat-tabs-overlay[data-row-count="1"]) {
+body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="row-one"] {
   --bb-chat-tabs-strip-height: 48px;
 }
 
 #bb-chat-tabs-overlay[data-scrollable="false"],
-body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
+body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="no-overflow"] {
   --bb-chat-tabs-strip-height: 38px;
 }
 
@@ -67,7 +69,11 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
     anchor-name: --bb-chat-tabs-thread-window;
   }
 
-  body:has([data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay {
+  body:where([data-bb-chat-tabs-layout~="main"]):is(
+      body,
+      [data-thread-window]:not(aside [data-thread-window])
+    )
+    #bb-chat-tabs-overlay {
     position-anchor: --bb-chat-tabs-thread-window;
   }
 }
@@ -653,6 +659,7 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
 }
 
 .bb-chat-tabs-new-switcher {
+  margin-inline-end: 0.5rem;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -1217,6 +1224,28 @@ body:has(#bb-chat-tabs-overlay[data-scrollable="false"]) {
   color: var(--bb-chat-tabs-active-foreground);
   background: var(--bb-chat-tabs-active-background);
   border-color: var(--bb-chat-tabs-active-border);
+}
+
+.bb-chat-tab[data-colored="true"] {
+  background: color-mix(in srgb, var(--bb-chat-tab-color) 12%, var(--background));
+  box-shadow: inset 0 2px 0 var(--bb-chat-tab-color);
+}
+
+.bb-chat-tab[data-colored="true"][data-active="true"] {
+  background: color-mix(
+    in srgb,
+    var(--bb-chat-tab-color) 20%,
+    var(--bb-chat-tabs-active-background)
+  );
+}
+
+.bb-chat-tabs-color-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
 }
 
 .bb-chat-tab-select,
@@ -1803,7 +1832,9 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
 }
 
 @media (min-width: 768px) and (pointer: fine) {
-  body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary]))
+  body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="docked"]:not(
+      [data-bb-chat-tabs-layout~="split"]
+    )
     [data-testid="app-layout-content-shell"]
     [data-thread-window]:not(aside [data-thread-window]) {
     box-sizing: border-box;
@@ -1813,7 +1844,7 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
 
 @media (max-width: 767px), (pointer: coarse) {
   #bb-chat-tabs-overlay[data-docked="true"],
-  body:has(#bb-chat-tabs-overlay[data-docked="true"]) {
+  body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="docked"] {
     --bb-chat-tabs-strip-height: 3.5rem;
     --bb-chat-tabs-tab-height: 2.75rem;
   }
@@ -1854,7 +1885,7 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
 
   .bb-chat-tabs-new-switcher {
     flex: 0 0 2.75rem;
-    scroll-snap-align: start;
+    margin-inline-end: 0;
   }
 
   .bb-chat-tabs-list-menu-item,
@@ -1895,28 +1926,34 @@ section:has(> [data-bb-plugin-root][data-bb-plugin="tabs"] > .bb-chat-tabs-homep
     display: none !important;
   }
 
-  body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary]))
+  body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="docked"]:not(
+      [data-bb-chat-tabs-layout~="split"]
+    )
     [data-testid="app-layout-content-shell"]
     [data-thread-window]:not(aside [data-thread-window]) {
     box-sizing: border-box;
     padding-block-start: var(--bb-chat-tabs-strip-height);
   }
 
-  body:has([data-sidebar-shelf="open"]) #bb-chat-tabs-overlay,
-  body:has([data-panel-shelf="shelf"]) #bb-chat-tabs-overlay,
-  body:has([data-panel-shelf="full"]) #bb-chat-tabs-overlay,
-  body:has([data-sidebar-shelf="open"]) .bb-chat-tabs-list-menu,
-  body:has([data-panel-shelf="shelf"]) .bb-chat-tabs-list-menu,
-  body:has([data-panel-shelf="full"]) .bb-chat-tabs-list-menu {
+  body[data-bb-chat-tabs-layout~="sidebar-open"] #bb-chat-tabs-overlay,
+  body[data-bb-chat-tabs-layout~="panel-shelf"] #bb-chat-tabs-overlay,
+  body[data-bb-chat-tabs-layout~="panel-full"] #bb-chat-tabs-overlay,
+  body[data-bb-chat-tabs-layout~="sidebar-open"] .bb-chat-tabs-list-menu,
+  body[data-bb-chat-tabs-layout~="panel-shelf"] .bb-chat-tabs-list-menu,
+  body[data-bb-chat-tabs-layout~="panel-full"] .bb-chat-tabs-list-menu {
     display: none;
   }
 }
 
-body:has([inert] [data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay {
+body:where([data-bb-chat-tabs-layout~="inert"]):is(
+    body,
+    [inert] [data-thread-window]:not(aside [data-thread-window])
+  )
+  #bb-chat-tabs-overlay {
   display: none;
 }
 
-body:has([data-split-resize-grid-boundary]) #bb-chat-tabs-overlay {
+body[data-bb-chat-tabs-layout~="split"] #bb-chat-tabs-overlay {
   display: none;
 }
 
@@ -1931,6 +1968,38 @@ body:has([data-split-resize-grid-boundary]) #bb-chat-tabs-overlay {
   margin: 0 0 1rem;
   font-size: 0.875rem;
   font-weight: 600;
+}
+
+.bb-chat-tabs-settings-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-block-end: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.bb-chat-tabs-settings-tabs > button {
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-settings-tabs > button[aria-selected="true"] {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+}
+
+.bb-chat-tabs-settings-tabs > button:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: -2px;
+}
+
+.bb-chat-tabs-settings-panel[hidden] {
+  display: none;
 }
 
 .bb-chat-tabs-settings fieldset {
@@ -1985,6 +2054,180 @@ body:has([data-split-resize-grid-boundary]) #bb-chat-tabs-overlay {
 .bb-chat-tabs-settings :is(input, select):focus-visible {
   outline: 2px solid var(--ring, var(--primary));
   outline-offset: 2px;
+}
+
+.bb-chat-tabs-appearance-settings h3 {
+  margin: 1rem 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.bb-chat-tabs-appearance-settings p {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.bb-chat-tabs-appearance-settings label {
+  font-size: 0.8125rem;
+}
+
+.bb-chat-tabs-settings .bb-chat-tabs-appearance-settings select,
+.bb-chat-tabs-project-appearance input,
+.bb-chat-tabs-project-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--foreground);
+  background: var(--background);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.bb-chat-tabs-project-search {
+  margin-block: 0.25rem 0;
+}
+
+.bb-chat-tabs-project-manage {
+  display: block;
+  margin-block-start: 1rem;
+}
+
+.bb-chat-tab-rename-dialog.bb-chat-tabs-project-dialog {
+  width: min(44rem, calc(100vw - 2rem));
+}
+
+.bb-chat-tabs-project-list {
+  margin-block-start: 0.75rem;
+}
+
+.bb-chat-tabs-project-row-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.25rem;
+  padding-block: 0.5rem;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
+
+.bb-chat-tabs-project-row-copy > span {
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.bb-chat-tabs-project-color {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  margin-inline: 0.5rem;
+}
+
+.bb-chat-tabs-project-dialog .bb-chat-tabs-project-remove {
+  color: var(--destructive);
+}
+
+.bb-chat-tabs-project-picker {
+  margin-block-end: 0.75rem;
+}
+
+.bb-chat-tabs-project-options {
+  max-height: 14rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-block-start: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+}
+
+.bb-chat-tabs-project-options > button {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: start;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.bb-chat-tabs-project-options > button:is(:hover, [aria-selected="true"]) {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.bb-chat-tabs-selected-project {
+  grid-column: 1 / -1;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.bb-chat-tabs-palette {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-block-end: 0.75rem;
+}
+
+.bb-chat-tabs-palette label {
+  display: grid;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.bb-chat-tabs-palette input {
+  width: 100%;
+  min-width: 0;
+  height: 2.5rem;
+  padding: 0.125rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--background);
+  cursor: pointer;
+}
+
+.bb-chat-tabs-project-appearance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin-block-start: 0.75rem;
+}
+
+.bb-chat-tabs-project-appearance button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  .bb-chat-tabs-palette {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .bb-chat-tabs-project-dialog .bb-chat-tabs-workspace-confirm {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .bb-chat-tabs-project-appearance {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bb-chat-tabs-project-appearance button {
+    grid-column: 1;
+  }
+  .bb-chat-tabs-settings select,
+  .bb-chat-tabs-appearance-settings :is(input, select, button) {
+    min-height: 44px;
+  }
 }
 
 .bb-chat-tabs-settings-error {

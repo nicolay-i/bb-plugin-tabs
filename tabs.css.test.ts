@@ -18,14 +18,26 @@ function collect(rules: CSSRuleList, scope = "") {
 }
 collect(element.sheet.cssRules);
 const compact = "(max-width: 767px), (pointer: coarse)";
+function selectors(text: string) {
+  text = text.replace(/\s+/gu, " ").replace(/\(\s+/gu, "(").replace(/\s+\)/gu, ")");
+  const result: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    else if (char === "," && depth === 0) {
+      result.push(text.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  result.push(text.slice(start).trim());
+  return result;
+}
 function value(selector: string, property: string, scope = "") {
   const matches = blocks.filter(
-    (block) =>
-      block.scope === scope &&
-      block.rule.selectorText
-        .split(",")
-        .map((part) => part.trim())
-        .includes(selector),
+    (block) => block.scope === scope && selectors(block.rule.selectorText).includes(selector),
   );
   expect(matches.length, `Missing ${scope}: ${selector}`).toBeGreaterThan(0);
   return (
@@ -41,6 +53,22 @@ function expectStyle(selector: string, properties: Record<string, string>, scope
 }
 
 describe("Chat Tabs CSS contracts", () => {
+  it("has no document-wide relational predicates while retaining local settings fallback", () => {
+    expect(styles).not.toMatch(/\b(?:body|html)\s*:has\(/u);
+    expectStyle('body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="row-one"]', {
+      "--bb-chat-tabs-strip-height": "48px",
+    });
+    expectStyle('body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="no-overflow"]', {
+      "--bb-chat-tabs-strip-height": "38px",
+    });
+    expectStyle('body[data-bb-chat-tabs-layout~="split"] #bb-chat-tabs-overlay', {
+      display: "none",
+    });
+    expectStyle(
+      'body:where([data-bb-chat-tabs-layout~="inert"]):is(body, [inert] [data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay',
+      { display: "none" },
+    );
+  });
   it("shows a bounded full desktop workspace name with keyboard focus and keeps chat-list inset", () => {
     expectStyle(".bb-chat-tabs-workspace-trigger", {
       "box-sizing": "border-box",
@@ -83,6 +111,10 @@ describe("Chat Tabs CSS contracts", () => {
       ".bb-chat-tabs-workspace-dialog .bb-chat-tab-dialog-button",
     ])
       expectStyle(selector, { "min-height": "44px" }, compact);
+  });
+
+  it("keeps settings language and position selects at least 44px on compact/coarse surfaces", () => {
+    expectStyle(".bb-chat-tabs-settings select", { "min-height": "44px" }, compact);
   });
 
   it.each([
@@ -308,16 +340,16 @@ describe("Chat Tabs CSS contracts", () => {
       "(left: anchor(left))",
     );
     expectStyle(
-      "body:has([data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay",
+      'body:where([data-bb-chat-tabs-layout~="main"]):is(body, [data-thread-window]:not(aside [data-thread-window])) #bb-chat-tabs-overlay',
       { "position-anchor": "--bb-chat-tabs-thread-window" },
       "(left: anchor(left))",
     );
     const reserve =
-      'body:has(#bb-chat-tabs-overlay[data-docked="true"]):not(:has([data-split-resize-grid-boundary])) [data-testid="app-layout-content-shell"] [data-thread-window]:not(aside [data-thread-window])';
+      'body:is(body, #bb-chat-tabs-overlay)[data-bb-chat-tabs-layout~="docked"]:not([data-bb-chat-tabs-layout~="split"]) [data-testid="app-layout-content-shell"] [data-thread-window]:not(aside [data-thread-window])';
     for (const scope of ["(min-width: 768px) and (pointer: fine)", compact]) {
       const block = blocks.find(
         ({ rule, scope: actual }) =>
-          actual === scope && rule.selectorText.replace(/\s+/gu, " ") === reserve,
+          actual === scope && selectors(rule.selectorText).includes(reserve),
       );
       expect(block?.rule.style.getPropertyValue("padding-block-start")).toBe(
         "var(--bb-chat-tabs-strip-height)",
@@ -334,6 +366,7 @@ describe("Chat Tabs CSS contracts", () => {
     });
     expectStyle(".bb-chat-tabs-new-trigger", { background: "transparent", border: "0px" });
     expectStyle(".bb-chat-tabs-new-switcher", { "align-items": "center" });
+    expectStyle(".bb-chat-tabs-new-switcher", { "margin-inline-end": "0px" }, compact);
     for (const target of ["list", "new"])
       expect(value(`.bb-chat-tabs-${target}-menu[data-state="closed"]`, "animation")).toContain(
         "bb-chat-tabs-menu-out",
@@ -395,11 +428,13 @@ describe("Chat Tabs CSS contracts", () => {
         { width: "2.75rem", height: "2.75rem" },
         compact,
       );
-    for (const attribute of [
-      '[data-sidebar-shelf="open"]',
-      '[data-panel-shelf="shelf"]',
-      '[data-panel-shelf="full"]',
-    ])
-      expectStyle(`body:has(${attribute}) #bb-chat-tabs-overlay`, { display: "none" }, compact);
+    for (const token of ["sidebar-open", "panel-shelf", "panel-full"]) {
+      for (const target of ["#bb-chat-tabs-overlay", ".bb-chat-tabs-list-menu"])
+        expectStyle(
+          `body[data-bb-chat-tabs-layout~="${token}"] ${target}`,
+          { display: "none" },
+          compact,
+        );
+    }
   });
 });

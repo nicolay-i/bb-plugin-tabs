@@ -17,6 +17,7 @@ import {
 } from "./lib/tabs-model";
 import { visitTabHistory, type TabHistoryState } from "./lib/tab-history";
 import { workspaceSelectionStore } from "./lib/workspace-selection";
+import { defaultTabAppearance, updateTabAppearance } from "./lib/tab-appearance";
 
 const app = await loadPluginApp(() => import("./app"));
 
@@ -150,6 +151,248 @@ afterEach(() => {
 });
 
 describe("Chat Tabs", () => {
+  it("does not overwrite newer appearance after settings return to the original value", async () => {
+    const initial = updateTabAppearance(defaultTabAppearance(), {
+      kind: "project",
+      projectId: "p",
+      color: 0,
+    });
+    const original = JSON.stringify(initial);
+    const settings = { language: "English", tabAppearance: original };
+    const state: TabsState = {
+      version: 1,
+      entries: [{ threadId: "first", projectId: "p", title: "First", pinned: true, openedAt: 1 }],
+    };
+    let finish!: (result: { values: { tabAppearance: string } }) => void;
+    const response = new Promise<{ values: { tabAppearance: string } }>((resolve) => {
+      finish = resolve;
+    });
+    const update = vi.fn(() => response);
+    const slot = renderSlot<{}, typeof rpcContract>(
+      app.appOverlays[0]!,
+      {},
+      {
+        settings,
+        context: { projectId: "p", threadId: "first" },
+        rpc: { tabs_list: () => ({ state }), tabs_appearance_update: update },
+      },
+    );
+    const first = await slot.findByRole("button", { name: "First" });
+    const tab = first.closest<HTMLElement>(".bb-chat-tab")!;
+    fireEvent.contextMenu(first);
+    fireEvent.keyDown(await slot.findByRole("menuitem", { name: "Tab color" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(await slot.findByRole("menuitemradio", { name: "Color 2" }));
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    settings.tabAppearance = JSON.stringify(
+      updateTabAppearance(initial, { kind: "tab", threadId: "first", color: 3 }),
+    );
+    await slot.emitRealtime("tabs-sidechat-activity-changed", {
+      generation: 0,
+      revision: 1,
+      sourceThreadIds: ["first"],
+    });
+    await waitFor(() =>
+      expect(tab.style.getPropertyValue("--bb-chat-tab-color")).toBe(initial.palette[3]),
+    );
+    settings.tabAppearance = original;
+    await slot.emitRealtime("tabs-sidechat-activity-changed", {
+      generation: 0,
+      revision: 2,
+      sourceThreadIds: [],
+    });
+    await waitFor(() =>
+      expect(tab.style.getPropertyValue("--bb-chat-tab-color")).toBe(initial.palette[0]),
+    );
+    await act(async () =>
+      finish({
+        values: {
+          tabAppearance: JSON.stringify(
+            updateTabAppearance(initial, { kind: "tab", threadId: "first", color: 1 }),
+          ),
+        },
+      }),
+    );
+    expect(tab.style.getPropertyValue("--bb-chat-tab-color")).toBe(initial.palette[0]);
+  });
+  it("renders aliases without renaming and applies tab color overrides without navigating", async () => {
+    let appearance = updateTabAppearance(defaultTabAppearance(), {
+      kind: "project",
+      projectId: "p",
+      alias: "API",
+      color: 0,
+    });
+    const state: TabsState = {
+      version: 1,
+      entries: [
+        { threadId: "first", projectId: "p", title: "First", pinned: true, openedAt: 1 },
+        { threadId: "second", projectId: "p", title: "Second", pinned: true, openedAt: 2 },
+      ],
+    };
+    const update = vi.fn((patch: Parameters<typeof updateTabAppearance>[1]) => {
+      appearance = updateTabAppearance(appearance, patch);
+      return { values: { tabAppearance: JSON.stringify(appearance) } };
+    });
+    const slot = renderSlot<{}, typeof rpcContract>(
+      app.appOverlays[0]!,
+      {},
+      {
+        settings: { language: "English", tabAppearance: JSON.stringify(appearance) },
+        context: { projectId: "p", threadId: "first" },
+        sidebarThreads: {
+          projects: [{ id: "p", name: "Real project", isPersonal: false }],
+          threads: [sidebarThread("first", "p", "First"), sidebarThread("second", "p", "Second")],
+        },
+        rpc: { tabs_list: () => ({ state }), tabs_appearance_update: update },
+      },
+    );
+    const first = await slot.findByRole("button", { name: "[API] First" });
+    const firstTab = first.closest<HTMLElement>(".bb-chat-tab")!;
+    expect(firstTab.style.getPropertyValue("--bb-chat-tab-color")).toBe(appearance.palette[0]);
+    expect(
+      slot.getByRole("button", { name: "New chat" }).closest(".bb-chat-tabs-strip"),
+    ).toBeNull();
+    fireEvent.contextMenu(first);
+    const colorMenu = await slot.findByRole("menuitem", { name: "Tab color" });
+    fireEvent.keyDown(colorMenu, { key: "ArrowRight" });
+    fireEvent.click(await slot.findByRole("menuitemradio", { name: "Color 2" }));
+    await waitFor(() =>
+      expect(firstTab.style.getPropertyValue("--bb-chat-tab-color")).toBe(appearance.palette[1]),
+    );
+    expect(update).toHaveBeenCalledWith({ kind: "tab", threadId: "first", color: 1 });
+    expect(slot.inspection.navigateCalls).toEqual([]);
+    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    fireEvent.doubleClick(firstTab.querySelector(".bb-chat-tab-title")!);
+    const rename = await slot.findByRole("textbox", { name: "Rename tab “First”" });
+    expect(rename).toHaveProperty("value", "First");
+    fireEvent.keyDown(rename, { key: "Escape" });
+    expect(state.entries.map((entry) => entry.title)).toEqual(["First", "Second"]);
+  });
+  it.each([false, true])(
+    "reveals the active tab after narrowing without stealing focus or resetting manual scroll (compact=%s)",
+    async (compact) => {
+      const restoreMedia = installMatchMedia(compact);
+      const observers = new Map<ResizeObserver, { notify: () => void; targets: Set<Element> }>();
+      vi.stubGlobal(
+        "ResizeObserver",
+        class implements ResizeObserver {
+          constructor(callback: ResizeObserverCallback) {
+            observers.set(this, { notify: () => callback([], this), targets: new Set() });
+          }
+          observe(target: Element) {
+            observers.get(this)!.targets.add(target);
+          }
+          unobserve(target: Element) {
+            observers.get(this)!.targets.delete(target);
+          }
+          disconnect() {
+            observers.delete(this);
+          }
+        },
+      );
+      let slot: ReturnType<typeof renderSlot> | undefined;
+      try {
+        const state: TabsState = {
+          version: 1,
+          entries: Array.from({ length: 20 }, (_, i) => ({
+            threadId: `scroll-${i}`,
+            projectId: "project",
+            title: `Chat ${i}`,
+            pinned: true,
+            openedAt: i,
+          })),
+        };
+        slot = renderSlot<{}, typeof rpcContract>(
+          app.appOverlays[0]!,
+          {},
+          {
+            context: { projectId: "project", threadId: "scroll-15" },
+            rpc: {
+              tabs_list: () => ({ state }),
+              tabs_sync_activity: () => ({ state }),
+              tabs_history_visit: () => ({ history: { version: 1, entries: [] } }),
+            },
+          },
+        );
+        const active = (await slot.findByRole("button", { name: "Chat 15" })).closest<HTMLElement>(
+          ".bb-chat-tab",
+        )!;
+        const strip = slot.container.querySelector<HTMLElement>(".bb-chat-tabs-strip")!;
+        const top = slot.container.querySelector<HTMLElement>(".bb-chat-tabs-top-scrollbar")!;
+        const spacer = slot.container.querySelector<HTMLElement>(
+          ".bb-chat-tabs-top-scrollbar-spacer",
+        )!;
+        let width = 1000;
+        Object.defineProperty(top, "clientWidth", { configurable: true, get: () => width + 44 });
+        Object.defineProperties(strip, {
+          clientWidth: { configurable: true, get: () => width },
+          scrollWidth: { configurable: true, value: 1500 },
+        });
+        strip.getBoundingClientRect = () => new DOMRect(100, 48, width, 40);
+        active.getBoundingClientRect = () => new DOMRect(100 + 780 - strip.scrollLeft, 48, 144, 30);
+        active.scrollIntoView = vi.fn(() => {
+          const tab = active.getBoundingClientRect();
+          const viewport = strip.getBoundingClientRect();
+          if (compact) strip.scrollLeft += tab.left - viewport.left;
+          else if (tab.right > viewport.right) strip.scrollLeft += tab.right - viewport.right;
+          else if (tab.left < viewport.left) strip.scrollLeft += tab.left - viewport.left;
+        });
+        const input = document.createElement("textarea");
+        slot.container.append(input);
+        input.focus();
+        fireEvent.resize(window);
+        await waitFor(() => expect(spacer.style.width).toBe("1544px"));
+        expect(strip.scrollLeft).toBe(0);
+
+        const resize = () => {
+          for (const observer of observers.values()) {
+            if (observer.targets.has(strip)) observer.notify();
+          }
+        };
+        width = 600;
+        resize();
+        await waitFor(() => expect(strip.scrollLeft).toBe(compact ? 780 : 324));
+        expect(top.scrollLeft).toBe(compact ? 780 : 324);
+        expect(active.scrollIntoView).toHaveBeenCalledWith({
+          block: "nearest",
+          inline: compact ? "start" : "nearest",
+        });
+        expect(document.activeElement).toBe(input);
+
+        strip.scrollLeft = 950;
+        fireEvent.scroll(strip);
+        await act(async () =>
+          slot!.emitRealtime("tabs-sidechat-activity-changed", {
+            generation: 0,
+            revision: 1,
+            sourceThreadIds: ["scroll-0"],
+          }),
+        );
+        await waitFor(() =>
+          expect(
+            slot!.container.querySelector('.bb-chat-tab[data-nested-work="true"]'),
+          ).not.toBeNull(),
+        );
+        await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        expect(strip.scrollLeft).toBe(950);
+
+        width = 400;
+        resize();
+        await waitFor(() => expect(strip.scrollLeft).toBe(780));
+        expect(top.scrollLeft).toBe(780);
+        expect(slot.inspection.sidebarActionCalls).toEqual([]);
+        expect(slot.inspection.navigateCalls).toEqual([]);
+        resize();
+        slot.unmount();
+        expect(observers.size).toBe(0);
+      } finally {
+        slot?.unmount();
+        vi.unstubAllGlobals();
+        restoreMedia();
+      }
+    },
+  );
   it("distinguishes subthreads in tabs, pins, history, and remote search without marking roots", async () => {
     const state: TabsState = {
       version: 1,
@@ -1650,7 +1893,10 @@ describe("Chat Tabs", () => {
       slot.container.querySelector('.bb-chat-tabs-list-switcher[data-position="right"]'),
     );
     const strip = slot.container.querySelector(".bb-chat-tabs-strip");
-    expect(strip?.querySelector(".bb-chat-tabs-new-switcher")).toBe(strip?.lastElementChild);
+    expect(strip?.querySelector(".bb-chat-tabs-new-switcher")).toBeNull();
+    expect(slot.container.querySelector(".bb-chat-tabs-new-switcher")?.parentElement).toBe(
+      contentRow,
+    );
     const openMenu = () =>
       document.body.querySelector<HTMLElement>('.bb-chat-tabs-list-menu[data-state="open"]');
     const waitPastLeaveDelay = () =>
@@ -2110,6 +2356,7 @@ describe("Chat Tabs", () => {
       "Mark as unread",
       "Unpin",
       "Add to favorites",
+      "Tab color",
       "Show in workspaces",
       "Rename",
       "Archive",

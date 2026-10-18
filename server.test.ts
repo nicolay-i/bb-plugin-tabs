@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server";
+import { defaultTabAppearance, readTabAppearance } from "./lib/tab-appearance";
 import { createTabsTestHost as createFakePluginHost, withTabsRpcTypes } from "./test-utils";
 
 const loadedHosts: Array<ReturnType<typeof createFakePluginHost>> = [];
@@ -387,6 +388,80 @@ describe("Chat Tabs", () => {
       ).toEqual([]);
     },
   );
+
+  it("serializes appearance patches across windows, keeps other settings, and survives reload", async () => {
+    let host = await loadPlugin();
+    await host.harness.behavior.setSettings({ showTabsOnDesktop: false });
+    await Promise.all([
+      host.harness.behavior.callRpc("tabs_appearance_update", {
+        kind: "project",
+        projectId: "p",
+        alias: "API",
+      }),
+      host.harness.behavior.callRpc("tabs_appearance_update", {
+        kind: "project",
+        projectId: "p",
+        color: 2,
+      }),
+      host.harness.behavior.callRpc("tabs_appearance_update", {
+        kind: "tab",
+        threadId: "t",
+        color: 1,
+      }),
+      host.harness.behavior.callRpc("tabs_appearance_update", {
+        kind: "palette",
+        colors: [{ index: 1, color: "#123456" }],
+      }),
+      host.harness.behavior.callRpc("tabs_settings_update", { language: "Русский" }),
+    ]);
+    await host.harness.behavior.callRpc("tabs_appearance_update", {
+      kind: "project-add",
+      projectId: "empty",
+    });
+    await host.harness.behavior.callRpc("tabs_appearance_update", {
+      kind: "project-add",
+      projectId: "p",
+    });
+    host = withTabsRpcTypes(await host.harness.lifecycle.reload(plugin));
+    loadedHosts[loadedHosts.length - 1] = host;
+    const { values } = await host.harness.behavior.callRpc("tabs_appearance_update", {
+      kind: "project",
+      projectId: "p",
+      alias: "API",
+    });
+    expect(values.showTabsOnDesktop).toBe(false);
+    expect(values.language).toBe("Русский");
+    const appearance = readTabAppearance(values.tabAppearance);
+    expect(appearance?.projects.p).toEqual({ alias: "API", color: 2 });
+    expect(appearance?.projects.empty).toEqual({ alias: "", color: null });
+    const removed = await host.harness.behavior.callRpc("tabs_appearance_update", {
+      kind: "project-remove",
+      projectId: "p",
+    });
+    const afterRemoval = readTabAppearance(removed.values.tabAppearance);
+    expect(afterRemoval?.projects).toEqual({ empty: { alias: "", color: null } });
+    expect(afterRemoval?.tabs.t).toBe(1);
+    expect(afterRemoval?.palette[1]).toBe("#123456");
+    expect(appearance?.tabs.t).toBe(1);
+    expect(appearance?.palette[1]).toBe("#123456");
+    await expect(host.harness.behavior.setSettings({ tabAppearance: "broken" })).rejects.toThrow();
+    for (const invalid of [
+      { kind: "tab", threadId: "t", color: 6 },
+      { kind: "project", projectId: "p", alias: "x".repeat(33) },
+      { kind: "project", projectId: "p", title: "Do not rename" },
+      { kind: "palette", colors: [{ index: 0, color: "red" }] },
+    ])
+      await expect(
+        host.harness.behavior.callRpc("tabs_appearance_update", invalid),
+      ).rejects.toThrow();
+    const cleared = await host.harness.behavior.callRpc("tabs_appearance_update", {
+      kind: "tab",
+      threadId: "t",
+      color: null,
+    });
+    expect(readTabAppearance(cleared.values.tabAppearance)?.tabs).toEqual({});
+    expect(defaultTabAppearance().palette[1]).not.toBe("#123456");
+  });
 
   it("saves localized settings through validated patches without resetting unrelated fields", async () => {
     const host = await loadPlugin();

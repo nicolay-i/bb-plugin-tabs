@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import { LANGUAGE_OPTIONS } from "./lib/languages";
 import { SETTINGS } from "./lib/settings";
 import {
+  appearanceUpdateSchema,
+  readTabAppearance,
+  updateTabAppearance,
+} from "./lib/tab-appearance";
+import {
   sidechatActivitySchema,
   SIDECHAT_ACTIVITY_CHANGED_CHANNEL,
   type SidechatActivity,
@@ -117,6 +122,15 @@ const workflowActiveRunsResponseSchema = z
 
 export const rpcContract = defineRpcContract({
   tabs_workspaces_list: { input: z.null(), output: workspaceListOutput },
+  tabs_pinned_list: {
+    input: z.null(),
+    output: z
+      .object({
+        entries: z.array(tabEntrySchema).max(2000),
+        stateRevision: stateRevisionSchema,
+      })
+      .strict(),
+  },
   tabs_workspace_memberships: {
     input: z.object({ threadId: tabCandidateSchema.shape.threadId }).strict(),
     output: z
@@ -140,6 +154,12 @@ export const rpcContract = defineRpcContract({
   tabs_workspace_delete: {
     input: z.object({ workspaceId: workspaceIdSchema }).strict(),
     output: workspaceListOutput,
+  },
+  tabs_appearance_update: {
+    input: appearanceUpdateSchema,
+    output: z
+      .object({ values: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])) })
+      .strict(),
   },
   tabs_settings_update: {
     input: z
@@ -894,6 +914,18 @@ export default async function plugin(bb: BbPluginApi) {
       await mutationTail;
       return catalogResult(await readWorkspaces());
     },
+    tabs_pinned_list: async () => {
+      const { collection } = await reconcileTrackedThreadAvailability(
+        await readSnapshotAfterPendingMutations(),
+      );
+      const entries = new Map<string, TabEntry>();
+      for (const workspace of collection.workspaces) {
+        for (const entry of workspace.state.entries) {
+          if (entry.pinned && !entries.has(entry.threadId)) entries.set(entry.threadId, entry);
+        }
+      }
+      return { entries: [...entries.values()], stateRevision: collection.revision };
+    },
     tabs_workspace_memberships: async ({ threadId }) => {
       await mutationTail;
       const collection = await readWorkspaces();
@@ -920,9 +952,21 @@ export default async function plugin(bb: BbPluginApi) {
       ),
     tabs_workspace_delete: async ({ workspaceId }) =>
       catalogResult(await mutateWorkspaces((current) => deleteWorkspace(current, workspaceId))),
-    tabs_settings_update: async (values) => ({
-      values: await settingsHandle.experimental_set(values),
-    }),
+    tabs_settings_update: (values) =>
+      serialize(async () => ({
+        values: await settingsHandle.experimental_set(values),
+      })),
+    tabs_appearance_update: (patch) =>
+      serialize(async () => {
+        const values = await settingsHandle.get();
+        const appearance = readTabAppearance(values.tabAppearance);
+        if (appearance === null) throw new Error("Invalid tab appearance settings.");
+        const next = updateTabAppearance(appearance, patch);
+        if (JSON.stringify(appearance) === JSON.stringify(next)) return { values };
+        return {
+          values: await settingsHandle.experimental_set({ tabAppearance: JSON.stringify(next) }),
+        };
+      }),
     tabs_search: async ({ query, includeArchived }) => ({
       candidates: fuzzyChatSearch(await searchCandidates(includeArchived === true), query),
     }),

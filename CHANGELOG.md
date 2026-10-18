@@ -2,7 +2,26 @@
 
 All notable changes to Chat Tabs are documented here.
 
-## Unreleased
+## 0.1.14
+
+### Added
+
+- Manage project aliases/colors in a modal with a searchable list, autocomplete addition, editing, and confirmed removal from the list only. Empty project rows persist until explicitly removed; native BB projects/chats and individual tab colors are untouched. Pending saves lock portalled controls/dismissal, errors stay inside the modal, and unsaved drafts survive closing/reopening.
+- Split settings into keyboard-accessible General/Appearance tabs without losing unsaved drafts. Add a single project autocomplete with local name/alias search, keyboard/touch selection and recent-activity ordering to the appearance editor, keeping inactive and personal projects available. Typing alone never changes the edited project or saves its draft.
+- Local appearance prototype: a six-color settings palette, project alias prefixes and inherited colors in the strip, with individual tab overrides in the context menu. Field patches merge across windows without renaming native projects/chats or changing workspace memberships.
+
+### Fixed
+
+- Keep mobile language and tab-list-position selects at least 44px high, matching the existing appearance controls without changing desktop sizes.
+- Keep all 15 language autonyms in one stable alphabetical list after Auto, with no pinned locale and unchanged stored values. Keep publication descriptions and README screenshots English; update the overview for the appearance preview and internal language settings.
+- Avoid document-wide style invalidation when switching chats: replace global `body:has(...)` conditions with one shared, event-driven layout observer, preserving CSS priority, any-overlay semantics, panel/modal/split visibility, and anchor positioning with a coalesced fallback.
+- Keep New chat outside the horizontal scroller and give projects with open tabs in the current workspace priority in its menu, preserving activity order within each group and the existing pagination.
+- Keep the active tab visible when switching chats or resizing the available strip, including opening or closing BB's right panel, without moving chat focus or resetting manual scroll on status updates.
+- Keep the chat menu's Pinned section scoped to the selected Chat Tabs workspace; include pins from other workspaces in the general list below, deduplicated against history and active pins, without changing memberships or recording visits.
+
+### Documentation
+
+- Add linked, self-contained Russian notes for every plugin screen and feature, with current desktop/mobile screenshots and documented state, focus, and failure boundaries.
 
 ## 0.1.13
 

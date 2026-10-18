@@ -5,16 +5,15 @@ header. Switch chats, search recent conversations, or start a new chat in a
 selected project directly from the strip. An optional **Tabs** list of pinned tabs also
 appears on the **New chat** screen. The BB sidebar remains available.
 
-![Pinned and preview chat tabs in BB](docs/screenshots/real-bb-tabs-primary.png)
+![Project aliases and colored chat tabs in BB](docs/screenshots/chat-strip-desktop-en.png)
 
-![Choose a project from the plus button to create a new chat](docs/screenshots/real-bb-new-chat-projects.png)
+![Pinned tabs and independent favorites on New chat](docs/screenshots/new-chat-lists-en.png)
 
-![Search pinned and recent chats from the tab list](docs/screenshots/real-bb-thread-tabs.png)
+The screenshots show real plugin components in running BB with browser-local demonstration data. See [screenshot provenance and the complete gallery](docs/screenshots/README.md).
 
-![Pinned chats below the New chat composer](docs/screenshots/real-bb-pinned-list.png)
+## Documentation
 
-The screenshots show the real BB UI and the real plugin rendering with
-synthetic demonstration data.
+This README and the plugin overview are the English publication guides. Additional [feature notes (Russian)](docs/README.md) cover screens, operations, settings, persistence, and failure states.
 
 ## Highlights
 
@@ -45,10 +44,8 @@ synthetic demonstration data.
   a title to open that subthread as the normal preview tab. A zero counter still
   opens calm children. Keyboard navigation and separate touch expansion arrows
   are supported; archived branches are excluded.
-- **Create a chat from the strip.** A borderless plus after the last tab opens
-  BB's native composer with the prompt focused. Hover for 300 ms to see the 15
-  most recently active projects; **More** reveals the next 15 on click or after
-  another 300 ms of hover. Choosing a project preselects it in the composer.
+- **Create a chat from the strip.** A fixed plus outside the horizontal scroller opens BB's native composer with the prompt focused. Hover for 300 ms to see projects with tabs in the current workspace first, then other recently active projects, ordered by activity within each group. **More** reveals the next 15 on click or after another 300 ms of hover. Choosing a project preselects it in the composer.
+- **Try tab appearance locally.** The General/Appearance settings tabs offer a six-color palette and a searchable project alias/color manager with autocomplete, editing, and confirmed removal from the appearance list only. Strip titles can show `[alias] Title`; a tab's context menu overrides its inherited project color or restores inheritance. Appearance is shared across workspaces, without renaming native projects/chats or changing pins.
 - **Pinned and recent navigation menu.** Open it by click, a 300 ms mouse
   hover, or two quick Shift presses. Search chat titles and project names across
   available BB chats, including older chats outside the last 100 visits. A project
@@ -129,13 +126,11 @@ open during a switch into an otherwise empty set; explicit navigation clears it.
 ## Settings
 
 All settings are available in **Settings → Installed plugins → Chat Tabs** or
-through `bb plugin config tabs set <key> <value>`. They affect only the
-presentation: pins, preview state, manual order, and visit history remain
-stored.
+through `bb plugin config tabs set <key> <value>`. Hiding a surface preserves pins, preview, order, favorites, and visit history. Disabling workspaces temporarily changes which saved set is used without merging or deleting the other sets; see [settings and their consequences](docs/plugin-settings.md).
 
 | Key                     | Default | Purpose                                                                                                                                                                                                                                                                          |
 | ----------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `language`              | `Auto`  | Follow the BB page/browser language, or choose one of 15 languages: English, Русский, Español, Português (Brasil), Français, Deutsch, 中文（简体）, हिन्दी, العربية, 日本語, Bahasa Indonesia, Türkçe, 한국어, Tiếng Việt, Italiano. Unsupported languages fall back to English. |
+| `language`              | `Auto`  | Follow the BB page/browser language, or choose one of 15 languages: Bahasa Indonesia, Deutsch, English, Español, Français, Italiano, Português (Brasil), Tiếng Việt, Türkçe, Русский, العربية, हिन्दी, 한국어, 中文（简体）, 日本語. Unsupported languages fall back to English. |
 | `searchArchivedChats`   | `false` | Include archived chats in title search. Results remain disabled with a struck-through title and Archived status; deleted chats stay excluded.                                                                                                                                    |
 | `enableWorkspaces`      | `true`  | Enable separate workspaces. Off uses Work (or the first remaining set); other sets and window preferences are retained.                                                                                                                                                          |
 | `showPinnedTabsList`    | `true`  | Show the Tabs list below the composer on the New chat screen. It contains pinned tabs in their manual order.                                                                                                                                                                     |
@@ -146,8 +141,9 @@ stored.
 | `showTabListHistory`    | `true`  | History section in the dropdown list; hiding it does not stop recording visits.                                                                                                                                                                                                  |
 | `tabListButtonPosition` | `Left`  | Side for the icon button: `Left` or `Right`.                                                                                                                                                                                                                                     |
 
-The list button hides automatically when it is disabled or fewer than two
-allowed navigation targets remain. The additional language packs are
+English is the source language for publication text and static settings descriptors. The in-plugin language selector lists Auto first, followed by all 15 language autonyms in a stable alphabetical order; switching the UI language does not reorder the list or change stored values.
+
+The list button hides automatically when disabled or when the displayed pinned/history sections contain fewer than two entries. Disabled history tombstones count toward that threshold; button visibility does not guarantee two clickable results. The additional language packs are
 machine-assisted first drafts; native-speaker review is recommended before a
 public localization release. The settings panel follows the same language immediately,
 including labels, help text, Auto, and position choices. Setting keys and stored
@@ -169,19 +165,14 @@ carry the ID and a monotonic snapshot revision; catalog events never propagate a
 window's selection. Late RPCs and older notifications cannot replace a new visit's
 state. Sets are not derived from the BB sidebar and never replace it.
 
-The implementation uses the public `homepageSection` API, the experimental
-`experimental_appOverlay` and `settingsSection` APIs, and declarative
-`bb.settings.define`. The settings section saves validated patches through the
+The implementation uses the public `homepageSection` API, `experimental_threadHeaderAction` for the workspace selector, `experimental_appOverlay` for the strip, `settingsSection`, and declarative `bb.settings.define`. The settings section saves validated patches through the
 plugin RPC and `experimental_set`. A narrowly scoped CSS rule hides the redundant
 host-generated form only on the Chat Tabs detail page while the localized section
 is mounted; the native form returns if the section unmounts. This compatibility
 rule depends on the host detail layout and needs checking after BB upgrades. It does
-not modify BB core, replace sidebar slots, call `threads.tabs.update`, reparent
-host DOM, inject into the native header, or use content scripts.
+not modify BB core, replace sidebar slots, call `threads.tabs.update`, manually relocate host DOM, or use content scripts. The header control is host-rendered through its registered slot, not DOM injection.
 
-BB does not currently expose a public layout slot inside the native thread
-chrome. The visual reservation for the overlay is therefore a deliberately
-scoped CSS hybrid:
+The tab strip's visual reservation, unlike the registered header action, is a deliberately scoped CSS hybrid:
 
 - a single main chat pane reserves space for the tab strip;
 - a regular right panel does not count as a split and is not overlapped;

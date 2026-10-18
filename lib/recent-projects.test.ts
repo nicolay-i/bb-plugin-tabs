@@ -3,6 +3,28 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { recentProjects } from "./recent-projects";
 
 describe("recent projects", () => {
+  it("prioritizes current workspace projects before limiting and includes pins outside the loaded sidebar", () => {
+    const projects = [
+      { id: "old", name: "Older", isPersonal: false },
+      { id: "recent", name: "Recent", isPersonal: false },
+      { id: "missing", name: "Missing sidebar chat", isPersonal: false },
+      { id: "personal", name: "Personal", isPersonal: true },
+    ];
+    const threads = [
+      { projectId: "old", updatedAt: 1, isArchived: false },
+      { projectId: "recent", updatedAt: 100, isArchived: false },
+    ] as PluginSidebarThread[];
+    expect(
+      recentProjects(projects, threads, 2, new Set(["old", "missing", "personal"])).map(
+        (p) => p.id,
+      ),
+    ).toEqual(["old", "missing"]);
+    expect(recentProjects(projects, threads, 2, new Set(["recent"])).map((p) => p.id)).toEqual([
+      "recent",
+      "old",
+    ]);
+    expect(projects[0]?.id).toBe("old");
+  });
   it("ranks at most ten projects by latest chat activity, including child chats", () => {
     const projects = Array.from({ length: 12 }, (_, index) => ({
       id: `p${index}`,

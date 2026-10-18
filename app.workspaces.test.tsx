@@ -19,6 +19,7 @@ import {
   closeTab,
   openTabCandidate,
   restoreClosedTab,
+  setTabPinned,
   setTabFavorite,
   type TabsState,
 } from "./lib/tabs-model";
@@ -115,6 +116,12 @@ function fixture() {
       stateRevision: collection.revision,
     }),
     tabs_list: (input) => list(input?.workspaceId ?? "work"),
+    tabs_pinned_list: () => ({
+      entries: collection.workspaces.flatMap((workspace) =>
+        workspace.state.entries.filter((entry) => entry.pinned),
+      ),
+      stateRevision: collection.revision,
+    }),
     tabs_workspace_memberships: ({ threadId }) => ({
       stateRevision: collection.revision,
       workspaces: workspaceInfos(collection).map((info) => ({
@@ -232,6 +239,131 @@ function fixture() {
     revision: () => collection.revision,
   };
 }
+
+it("keeps only the selected workspace's pins above shared history and deduplicates other pins below", async () => {
+  const f = fixture();
+  f.changeState("other", (state) => openTabCandidate(state, home, 2));
+  const slot = f.renderOverlay();
+  await waitFor(() => expect(slot.container.querySelectorAll(".bb-chat-tab")).toHaveLength(1));
+  fireEvent.keyDown(await slot.findByRole("button", { name: "Open chat list" }), {
+    key: "ArrowDown",
+  });
+  const pinned = (await within(document.body).findByText("Pinned")).closest<HTMLElement>(
+    '[role="group"]',
+  )!;
+  const history = (await within(document.body).findByText("History")).closest<HTMLElement>(
+    '[role="group"]',
+  )!;
+  expect(within(pinned).getByText("Work chat")).toBeTruthy();
+  expect(within(pinned).queryByText("Home chat")).toBeNull();
+  await waitFor(() => expect(within(history).getAllByText("Home chat")).toHaveLength(1));
+  expect(within(history).queryByText("Work chat")).toBeNull();
+  expect(f.list("work").state.entries).toHaveLength(1);
+  expect(slot.inspection.navigateCalls).toEqual([]);
+
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+  await waitFor(() => expect(within(document.body).queryByText("Pinned")).toBeNull());
+  act(() => store.select("home"));
+  await waitFor(() =>
+    expect(slot.container.querySelector(".bb-chat-tab-title")?.textContent).toBe("Home chat"),
+  );
+  fireEvent.keyDown(slot.getByRole("button", { name: "Open chat list" }), { key: "ArrowDown" });
+  const nextPinned = (await within(document.body).findByText("Pinned")).closest<HTMLElement>(
+    '[role="group"]',
+  )!;
+  const nextHistory = (await within(document.body).findByText("History")).closest<HTMLElement>(
+    '[role="group"]',
+  )!;
+  expect(within(nextPinned).getByText("Home chat")).toBeTruthy();
+  expect(within(nextPinned).queryByText("Work chat")).toBeNull();
+  expect(within(nextHistory).getAllByText("Work chat")).toHaveLength(1);
+  expect(within(nextHistory).queryByText("Home chat")).toBeNull();
+  expect(slot.inspection.navigateCalls).toEqual([]);
+});
+
+it("refreshes inactive pins after realtime and reconnect without accepting a late snapshot", async () => {
+  const f = fixture();
+  const old = await f.rpc.tabs_pinned_list!(null);
+  const delayed = deferred<typeof old>();
+  let calls = 0;
+  const slot = f.renderOverlay({
+    tabs_pinned_list: () => {
+      calls++;
+      if (calls === 1) return delayed.promise;
+      return calls === 2 ? old : f.rpc.tabs_pinned_list!(null);
+    },
+  });
+  await waitFor(() => expect(calls).toBe(1));
+  f.changeState("home", (state) =>
+    openTabCandidate(
+      closeTab(state, home.threadId),
+      { ...home, threadId: "new", title: "New pin" },
+      3,
+    ),
+  );
+  await act(async () => slot.emitRealtime("tabs-workspace-memberships-changed", f.revision()));
+  fireEvent.keyDown(await slot.findByRole("button", { name: "Open chat list" }), {
+    key: "ArrowDown",
+  });
+  await within(document.body).findByText("New pin");
+  await act(async () => delayed.resolve(old));
+  expect(within(document.body).queryByText("Home chat")).toBeNull();
+  expect(slot.inspection.navigateCalls).toEqual([]);
+
+  f.changeState("home", () => createEmptyTabsState());
+  await act(async () => {
+    await slot.setRealtimeConnectionState("reconnecting");
+    await slot.setRealtimeConnectionState("connected");
+  });
+  await waitFor(() => expect(within(document.body).queryByText("New pin")).toBeNull());
+  expect(slot.container.querySelectorAll(".bb-chat-tab")).toHaveLength(1);
+  expect(calls).toBe(4);
+});
+
+it("deduplicates foreign pins against history, excludes previews and favorite-only chats, and opens without switching workspaces", async () => {
+  const f = fixture();
+  const preview = { ...home, threadId: "preview", title: "Foreign preview" };
+  const favorite = { ...home, threadId: "favorite", title: "Foreign favorite" };
+  f.changeState("home", (state) =>
+    setTabFavorite(
+      setTabPinned(openTabCandidate(state, preview, 3), preview.threadId, false),
+      favorite.threadId,
+      true,
+      favorite,
+    ),
+  );
+  const history = { version: 1 as const, entries: [{ ...home, visitedAt: 2 }] };
+  const slot = f.renderOverlay({
+    tabs_list: (input) => ({ ...f.list(input?.workspaceId ?? "work"), history }),
+    tabs_history_visit: () => ({ history }),
+  });
+  await waitFor(() =>
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "tabs_pinned_list")).toBe(true),
+  );
+  fireEvent.keyDown(await slot.findByRole("button", { name: "Open chat list" }), {
+    key: "ArrowDown",
+  });
+  expect(await within(document.body).findAllByText("Home chat")).toHaveLength(1);
+  expect(within(document.body).queryByText("Foreign preview")).toBeNull();
+  expect(within(document.body).queryByText("Foreign favorite")).toBeNull();
+  fireEvent.click(within(document.body).getByText("Home chat"));
+  expect(store.getSnapshot().workspaceId).toBe("work");
+  expect(slot.inspection.sidebarActionCalls).toEqual([{ method: "open", threadId: home.threadId }]);
+  expect(
+    f.list("home").state.entries.find((entry) => entry.threadId === home.threadId)?.pinned,
+  ).toBe(true);
+});
+
+it.each(["enableWorkspaces", "showTabListHistory", "showTabListButton"])(
+  "does not load or mix foreign pins when %s is off",
+  async (setting) => {
+    const f = fixture();
+    const slot = f.renderOverlay({}, { [setting]: false });
+    await within(slot.container).findByRole("button", { name: "Work chat" });
+    expect(slot.inspection.rpcCalls.some((call) => call.method === "tabs_pinned_list")).toBe(false);
+    expect(within(document.body).queryByText("Home chat")).toBeNull();
+  },
+);
 
 function choose(container: HTMLElement, id: string) {
   fireEvent.keyDown(within(container).getByRole("button", { name: "Workspace" }), {

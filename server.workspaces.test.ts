@@ -46,6 +46,54 @@ async function list(host: ReturnType<typeof makeHost>, workspaceId: string | nul
 }
 
 describe("workspace server and real SQLite", () => {
+  it("lists unique pins across workspaces without changing memberships or visit history", async () => {
+    const host = makeHost();
+    await plugin(host.bb);
+    await host.harness.behavior.callRpc("tabs_open", candidate);
+    await host.harness.behavior.callRpc("tabs_open", { ...candidate, workspaceId: "home" });
+    const foreign = {
+      ...candidate,
+      threadId: "foreign",
+      title: "Foreign pin",
+      workspaceId: "home",
+    };
+    await host.harness.behavior.callRpc("tabs_open", foreign);
+    await host.harness.behavior.callRpc("tabs_open", { ...foreign, threadId: "preview" });
+    await host.harness.behavior.callRpc("tabs_set_pinned", {
+      workspaceId: "home",
+      threadId: "preview",
+      pinned: false,
+    });
+    await host.harness.behavior.callRpc("tabs_set_favorite", {
+      workspaceId: "home",
+      threadId: "favorite",
+      favorite: true,
+      candidate: { ...candidate, threadId: "favorite" },
+    });
+    const before = readSaved(host);
+    const result = await host.harness.behavior.callRpc("tabs_pinned_list", null);
+    expect(result.entries.map((entry) => entry.threadId)).toEqual([candidate.threadId, "foreign"]);
+    expect(result.stateRevision).toBe(before.revision);
+    expect(readSaved(host)).toEqual(before);
+    expect((await list(host, "work")).history?.entries).toEqual([]);
+    await expect(host.harness.behavior.callRpc("tabs_pinned_list", {})).rejects.toThrow();
+
+    await host.harness.behavior.emitThreadEvent("thread.archived", {
+      thread: makeThreadResponse({ id: "foreign", archivedAt: 200 }),
+    });
+    expect(
+      (await host.harness.behavior.callRpc("tabs_pinned_list", null)).entries.map(
+        (entry) => entry.threadId,
+      ),
+    ).toEqual([candidate.threadId]);
+    const pending = host.harness.behavior.callRpc("tabs_open", { ...foreign, threadId: "queued" });
+    const afterPending = host.harness.behavior.callRpc("tabs_pinned_list", null);
+    await pending;
+    expect((await afterPending).entries.map((entry) => entry.threadId)).toEqual([
+      candidate.threadId,
+      "queued",
+    ]);
+  });
   it.each(["active", "archived", "not found", "transient error"] as const)(
     "prefers a lifecycle event to a delayed %s availability result",
     async (outcome) => {
