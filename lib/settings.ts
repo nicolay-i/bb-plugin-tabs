@@ -75,6 +75,13 @@ export const SETTINGS = {
       "Shows recently visited chats in the tab list menu. Turning it off hides the section but keeps recording visits.",
     default: true,
   },
+  showChatListAsTree: {
+    type: "boolean",
+    label: "Show chats as a tree",
+    description:
+      "Groups nested chats under their parents in the chat list. Search results stay flat. Turning this off shows a flat list.",
+    default: true,
+  },
   tabListButtonPosition: {
     type: "select",
     label: "Tab list button position",

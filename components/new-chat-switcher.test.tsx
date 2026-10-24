@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NewChatSwitcher } from "./new-chat-switcher";
+import { defaultTabAppearance, updateTabAppearance } from "../lib/tab-appearance";
 
 const projects = [
   { id: "p1", name: "First project", isPersonal: false },
@@ -14,6 +15,66 @@ afterEach(() => {
 });
 
 describe("New chat switcher", () => {
+  it("searches every project by name or alias, supports keyboard choice and clears on close", () => {
+    const manyProjects = Array.from({ length: 33 }, (_, index) => ({
+      id: `p${index}`,
+      name: `Project ${index}`,
+      isPersonal: false,
+    }));
+    const appearance = updateTabAppearance(defaultTabAppearance(), {
+      kind: "project",
+      projectId: "p32",
+      alias: "Backend",
+    });
+    const openNewThread = vi.fn();
+    render(
+      <NewChatSwitcher
+        projects={manyProjects}
+        appearance={appearance}
+        openNewThread={openNewThread}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: "New chat" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const search = screen.getByRole("searchbox", { name: "Search projects" });
+    fireEvent.change(search, { target: { value: "Backend" } });
+    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
+    expect(screen.getByRole("menuitem", { name: "[Backend] Project 32" })).toBeTruthy();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(search.getAttribute("aria-activedescendant")).toBe(screen.getByRole("menuitem").id);
+    expect(openNewThread).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+    expect(openNewThread).not.toHaveBeenCalled();
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(openNewThread).toHaveBeenCalledWith({ projectId: "p32", focusPrompt: true });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzzzzzzz" } });
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(screen.getByText("No projects found")).toBeTruthy();
+  });
+  it("reveals keyboard-selected projects without moving focus from the search", () => {
+    const manyProjects = Array.from({ length: 20 }, (_, index) => ({
+      id: `p${index}`,
+      name: `Project ${index}`,
+      isPersonal: false,
+    }));
+    render(<NewChatSwitcher projects={manyProjects} openNewThread={vi.fn()} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "New chat" }), { key: "ArrowDown" });
+    const search = screen.getByRole("searchbox");
+    search.focus();
+    const first = screen.getByRole("menuitem", { name: "Project 0" });
+    const last = screen.getByRole("menuitem", { name: "Project 14" });
+    first.scrollIntoView = vi.fn();
+    last.scrollIntoView = vi.fn();
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    expect(last.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+    expect(document.activeElement).toBe(search);
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(first.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+    expect(document.activeElement).toBe(search);
+  });
+
   it("shows Russian labels without translating project names", () => {
     render(<NewChatSwitcher projects={projects} locale="ru" openNewThread={vi.fn()} />);
     const trigger = screen.getByRole("button", { name: "Новый чат" });

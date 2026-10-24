@@ -17,6 +17,23 @@ afterEach(() => {
 });
 
 describe("Localized settings", () => {
+  it("defaults the chat list to a tree and saves only the explicit toggle", async () => {
+    const update = vi.fn((patch: { showChatListAsTree?: boolean }) => ({ values: patch }));
+    const slot = renderSlot<{}, Pick<typeof rpcContract, "tabs_settings_update">>(
+      slotDefinition!,
+      {},
+      {
+        settings: { language: "English" },
+        rpc: { tabs_settings_update: update },
+      },
+    );
+    const toggle = slot.getByRole("switch", { name: "Show chats as a tree" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ showChatListAsTree: false }));
+    expect(toggle.checked).toBe(false);
+    expect(slot.inspection.rpcCalls).toHaveLength(1);
+  });
   it.each(LANGUAGE_OPTIONS.filter((language) => language !== "Auto"))(
     "renders settings and the portalled project manager in %s with one ordinary language list",
     (language) => {

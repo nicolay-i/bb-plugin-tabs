@@ -365,7 +365,12 @@ describe("Chat Tabs CSS contracts", () => {
       height: "var(--bb-chat-tabs-tab-height)",
     });
     expectStyle(".bb-chat-tabs-new-trigger", { background: "transparent", border: "0px" });
-    expectStyle(".bb-chat-tabs-new-switcher", { "align-items": "center" });
+    expectStyle(".bb-chat-tabs-strip", {
+      flex: "0 1 auto",
+      "min-width": "0px",
+      "overflow-x": "auto",
+    });
+    expectStyle(".bb-chat-tabs-new-switcher", { "align-items": "center", flex: "0 0 auto" });
     expectStyle(".bb-chat-tabs-new-switcher", { "margin-inline-end": "0px" }, compact);
     for (const target of ["list", "new"])
       expect(value(`.bb-chat-tabs-${target}-menu[data-state="closed"]`, "animation")).toContain(

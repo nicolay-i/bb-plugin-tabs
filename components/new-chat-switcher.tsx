@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import type { PluginSidebarProject } from "@get-bb/plugin-sdk/app";
 import { Icon } from "./ui/icon";
 import { translate, type PluginLocale } from "../lib/plugin-locale";
 import { tabAppearanceTitle, type TabAppearance } from "../lib/tab-appearance";
+import { fuzzyChatSearch } from "../lib/fuzzy-chat-search";
 
 const HOVER_DELAY_MS = 300;
 const LEAVE_DELAY_MS = 120;
@@ -27,6 +28,28 @@ export function NewChatSwitcher({
   const t = (key: Parameters<typeof translate>[1], variables?: Record<string, string | number>) =>
     translate(locale, key, variables);
   const [open, setOpen] = useState(false);
+  const searchId = useId();
+  const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const selectedItemRef = useRef<HTMLButtonElement>(null);
+  const matches = useMemo(
+    () =>
+      query.trim()
+        ? fuzzyChatSearch(
+            projects.map((project) => ({
+              project,
+              title: project.name,
+              projectName: appearance?.projects[project.id]?.alias ?? "",
+            })),
+            query,
+            projects.length,
+          ).map(({ project }) => project)
+        : projects,
+    [projects, appearance, query],
+  );
+  useEffect(() => {
+    if (open) selectedItemRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [open, selectedIndex, matches]);
   const [visibleCount, setVisibleCount] = useState(PROJECT_PAGE_SIZE);
   const [morePending, setMorePending] = useState(false);
   const moreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -56,12 +79,14 @@ export function NewChatSwitcher({
     if (!open) {
       clearMoreTimer();
       setVisibleCount(PROJECT_PAGE_SIZE);
+      setQuery("");
+      setSelectedIndex(-1);
     }
   }, [open, clearMoreTimer]);
 
   const loadMore = () => {
     clearMoreTimer();
-    setVisibleCount((current) => Math.min(current + PROJECT_PAGE_SIZE, projects.length));
+    setVisibleCount((current) => Math.min(current + PROJECT_PAGE_SIZE, matches.length));
   };
   const scheduleMore = () => {
     clearMoreTimer();
@@ -139,6 +164,7 @@ export function NewChatSwitcher({
           <Popover.Content
             lang={locale}
             className="bb-chat-tabs-new-menu"
+            id={searchId}
             aria-label={t("Recent projects")}
             role="menu"
             side="bottom"
@@ -152,13 +178,55 @@ export function NewChatSwitcher({
             onPointerEnter={(event) => enter(event.pointerType)}
             onPointerLeave={(event) => leave(event.pointerType)}
           >
+            <div className="bb-chat-tabs-list-menu-search">
+              <Icon name="Search" className="bb-chat-tabs-list-menu-search-icon" aria-hidden />
+              <input
+                type="search"
+                className="bb-chat-tabs-list-menu-search-input"
+                aria-label={t("Search projects")}
+                aria-controls={searchId}
+                aria-activedescendant={
+                  selectedIndex < 0 ? undefined : `${searchId}-${selectedIndex}`
+                }
+                placeholder={t("Search projects")}
+                value={query}
+                maxLength={300}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setSelectedIndex(-1);
+                  setVisibleCount(PROJECT_PAGE_SIZE);
+                  clearMoreTimer();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" || event.nativeEvent.isComposing) return;
+                  event.stopPropagation();
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const count = Math.min(visibleCount, matches.length);
+                    setSelectedIndex((current) =>
+                      count === 0
+                        ? -1
+                        : event.key === "ArrowDown"
+                          ? (current + 1) % count
+                          : (current <= 0 ? count : current) - 1,
+                    );
+                  } else if (event.key === "Enter" && matches.length > 0) {
+                    event.preventDefault();
+                    navigate((matches[selectedIndex] ?? matches[0])!.id);
+                  }
+                }}
+              />
+            </div>
             <div className="bb-chat-tabs-new-menu-heading">{t("New chat in project")}</div>
-            {projects.slice(0, visibleCount).map((project, index) => (
+            {matches.length === 0 ? (
+              <span className="bb-chat-tabs-list-menu-search-empty">{t("No projects found")}</span>
+            ) : null}
+            {matches.slice(0, visibleCount).map((project, index) => (
               <Fragment key={project.id}>
                 {preferredProjectIds &&
                 preferredProjectIds.size > 0 &&
                 (index === 0 ||
-                  preferredProjectIds.has(projects[index - 1]!.id) !==
+                  preferredProjectIds.has(matches[index - 1]!.id) !==
                     preferredProjectIds.has(project.id)) ? (
                   <div className="bb-chat-tabs-new-menu-heading">
                     {t(
@@ -172,6 +240,9 @@ export function NewChatSwitcher({
                   type="button"
                   role="menuitem"
                   className="bb-chat-tabs-new-menu-item"
+                  data-selected={index === selectedIndex ? "true" : undefined}
+                  id={`${searchId}-${index}`}
+                  ref={index === selectedIndex ? selectedItemRef : undefined}
                   onClick={() => navigate(project.id)}
                   title={project.name}
                 >
@@ -184,13 +255,13 @@ export function NewChatSwitcher({
                 </button>
               </Fragment>
             ))}
-            {visibleCount < projects.length ? (
+            {visibleCount < matches.length ? (
               <button
                 type="button"
                 role="menuitem"
                 className="bb-chat-tabs-new-menu-more"
                 aria-label={t("Show {count} more projects", {
-                  count: Math.min(PROJECT_PAGE_SIZE, projects.length - visibleCount),
+                  count: Math.min(PROJECT_PAGE_SIZE, matches.length - visibleCount),
                 })}
                 data-pending={morePending ? "true" : "false"}
                 onClick={loadMore}
@@ -201,7 +272,7 @@ export function NewChatSwitcher({
                 onPointerCancel={clearMoreTimer}
               >
                 <span>{t("More")}</span>
-                <span>{projects.length - visibleCount}</span>
+                <span>{matches.length - visibleCount}</span>
               </button>
             ) : null}
           </Popover.Content>

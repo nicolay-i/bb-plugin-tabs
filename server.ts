@@ -173,6 +173,7 @@ export const rpcContract = defineRpcContract({
         showTabListButton: z.boolean().optional(),
         showTabListPinned: z.boolean().optional(),
         showTabListHistory: z.boolean().optional(),
+        showChatListAsTree: z.boolean().optional(),
         tabListButtonPosition: z.enum(["Left", "Right"]).optional(),
       })
       .strict()

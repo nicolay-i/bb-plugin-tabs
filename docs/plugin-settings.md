@@ -15,6 +15,7 @@
 - `showTabListButton=true`: кнопка [меню списка](chat-list-menu.md); дополнительно требуется минимум две записи в показываемых закреплённой и исторической секциях, включая disabled tombstones.
 - `showTabListPinned=true`: закреплённая секция меню, без открепления записей.
 - `showTabListHistory=true`: секция истории; выключение не прекращает запись [посещений](chat-history.md).
+- `showChatListAsTree=true`: вложенные чаты в боковых подменю родителей; `false` возвращает плоский список. Поисковые результаты остаются плоскими в обоих режимах.
 - `tabListButtonPosition=Left`: `Left` или `Right`, не порядок вкладок или `Ctrl+Tab`.
 
 Скрытие полосы не скрывает header-selector и не удаляет pins/favorites. Все параметры общие, а выбор режима [принадлежит окну](window-local-selection.md).

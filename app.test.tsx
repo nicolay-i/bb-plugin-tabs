@@ -393,6 +393,75 @@ describe("Chat Tabs", () => {
       }
     },
   );
+  it.each([true, false])(
+    "nests chats by default and switches to a flat list when disabled (%s)",
+    async (tree) => {
+      const entries = [
+        { threadId: "root", projectId: "p", title: "Root chat", pinned: true, openedAt: 1 },
+        {
+          threadId: "child",
+          projectId: "p",
+          title: "Child chat",
+          parentThreadId: "root",
+          pinned: true,
+          openedAt: 2,
+        },
+        {
+          threadId: "grandchild",
+          projectId: "p",
+          title: "Grandchild chat",
+          parentThreadId: "child",
+          pinned: true,
+          openedAt: 3,
+        },
+      ];
+      const state: TabsState = { version: 1, entries };
+      const slot = renderSlot(
+        app.appOverlays[0]!,
+        {},
+        {
+          settings: tree ? {} : { showChatListAsTree: false },
+          context: { projectId: "p", threadId: "root" },
+          sidebarThreads: {
+            projects: [{ id: "p", name: "Project", isPersonal: false }],
+            threads: entries.map((e) =>
+              sidebarThread(e.threadId, e.projectId, e.title, {
+                parentThreadId: e.parentThreadId ?? null,
+              }),
+            ),
+          },
+          rpc: { tabs_list: () => ({ state }), tabs_sync_activity: () => ({ state }) },
+        },
+      );
+      await slot.findByRole("button", { name: "Root chat" });
+      fireEvent.pointerDown(slot.getByRole("button", { name: "Open chat list" }), {
+        button: 0,
+        ctrlKey: false,
+      });
+      const root = await slot.findByRole("menuitem", { name: /Root chat/ });
+      if (!tree) {
+        expect(slot.getByRole("menuitem", { name: /Child chat/ })).toBeTruthy();
+        expect(slot.getByRole("menuitem", { name: /Grandchild chat/ })).toBeTruthy();
+        expect(root.getAttribute("aria-haspopup")).toBeNull();
+        return;
+      }
+      expect(slot.queryByRole("menuitem", { name: /Child chat/ })).toBeNull();
+      expect(slot.queryByRole("menuitem", { name: /Grandchild chat/ })).toBeNull();
+      expect(root.getAttribute("aria-haspopup")).toBe("menu");
+      fireEvent.keyDown(root, { key: "ArrowRight" });
+      const child = await slot.findByRole("menuitem", { name: /Child chat/ });
+      expect(slot.queryByRole("menuitem", { name: /Grandchild chat/ })).toBeNull();
+      fireEvent.keyDown(child, { key: "ArrowRight" });
+      const grandchild = await slot.findByRole("menuitem", { name: /Grandchild chat/ });
+      fireEvent.click(grandchild);
+      expect(slot.inspection.sidebarActionCalls).toContainEqual({
+        method: "open",
+        threadId: "grandchild",
+        options: undefined,
+      });
+    },
+  );
+
   it("distinguishes subthreads in tabs, pins, history, and remote search without marking roots", async () => {
     const state: TabsState = {
       version: 1,
@@ -423,6 +492,7 @@ describe("Chat Tabs", () => {
       app.appOverlays[0]!,
       {},
       {
+        settings: { showChatListAsTree: false },
         context: { projectId: "proj_api", threadId: "thr_root" },
         sidebarThreads: {
           threads: [

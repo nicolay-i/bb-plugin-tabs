@@ -9,6 +9,7 @@ import {
   type DragEvent,
   type PointerEvent,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { toast } from "sonner";
@@ -101,6 +102,7 @@ import {
   type TabAppearance,
 } from "./lib/tab-appearance";
 import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
+import { chatMenuTree, type ChatMenuNode } from "./lib/chat-menu-tree";
 import { Icon } from "./components/ui/icon";
 import { SubthreadBadge } from "./components/subthread-badge";
 import { WorkspaceSwitcher, workspaceErrorMessage } from "./components/workspace-switcher";
@@ -927,6 +929,16 @@ interface PresentedTab {
   unavailableReason: TabHistoryUnavailableReason | null;
 }
 
+function ChatMenuBranch({
+  node,
+  render,
+}: {
+  node: ChatMenuNode<PresentedTab>;
+  render: (tab: PresentedTab, children: readonly ChatMenuNode<PresentedTab>[]) => ReactNode;
+}) {
+  return render(node.tab, node.children);
+}
+
 function buildPresentedTabs(
   state: TabsState,
   projects: readonly { id: string; name: string; isPersonal: boolean }[],
@@ -1068,6 +1080,7 @@ function ChatTabsOverlay() {
   const showTabListButton = settings.values?.showTabListButton !== false;
   const showTabListPinned = settings.values?.showTabListPinned !== false;
   const showTabListHistory = settings.values?.showTabListHistory !== false;
+  const showChatListAsTree = settings.values?.showChatListAsTree !== false;
   const searchArchivedChats = settings.values?.searchArchivedChats === true;
   // A→B→A settings changes must invalidate an older optimistic reply too.
   const appearanceSource = useRef({
@@ -1829,25 +1842,86 @@ function ChatTabsOverlay() {
     history.entries,
     searchArchivedChats,
   ]);
-  const visibleHistoryMenuTabs = menuHistoryTabs.slice(0, historyVisibleCount);
-  const hasMoreHistory = visibleHistoryMenuTabs.length < menuHistoryTabs.length;
+  const menuTree = useMemo(() => {
+    if (!tabListMenuOpen || !showChatListAsTree) return { pinned: [], history: [] };
+    const menuTabs: PresentedTab[] = [...menuPinnedTabs, ...menuHistoryTabs].map((tab) => ({
+      ...tab,
+      entry: {
+        ...tab.entry,
+        parentThreadId: workIndex.threadsById.has(tab.entry.threadId)
+          ? (workIndex.threadsById.get(tab.entry.threadId)!.parentThreadId ?? undefined)
+          : tab.entry.parentThreadId,
+      },
+    }));
+    const knownTabs = buildPresentedTabs(
+      {
+        version: 1,
+        entries: sidebar.threads
+          .filter((thread) => !thread.isArchived)
+          .map((thread) => ({
+            threadId: thread.id,
+            projectId: thread.projectId,
+            title: thread.title?.trim() || thread.titleFallback?.trim() || t("Untitled"),
+            ...(thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : {}),
+            pinned: false,
+            openedAt: 0,
+          })),
+      },
+      sidebar.projects,
+      workIndex,
+      locale,
+    );
+    const roots = chatMenuTree(menuTabs, knownTabs);
+    const pinnedIds = new Set(menuPinnedTabs.map((tab) => tab.entry.threadId));
+    const containsPin = (node: ChatMenuNode<PresentedTab>): boolean => {
+      const pending = [node];
+      while (pending.length > 0) {
+        const current = pending.pop()!;
+        if (pinnedIds.has(current.tab.entry.threadId)) return true;
+        for (const child of current.children) pending.push(child);
+      }
+      return false;
+    };
+    const pinned: ChatMenuNode<PresentedTab>[] = [];
+    const history: ChatMenuNode<PresentedTab>[] = [];
+    for (const node of roots) (containsPin(node) ? pinned : history).push(node);
+    return { pinned, history };
+  }, [
+    tabListMenuOpen,
+    showChatListAsTree,
+    menuPinnedTabs,
+    menuHistoryTabs,
+    sidebar.threads,
+    sidebar.projects,
+    workIndex,
+    locale,
+    t,
+  ]);
+  const displayedPinnedTabs = showChatListAsTree
+    ? menuTree.pinned.map(({ tab }) => tab)
+    : menuPinnedTabs;
+  const displayedHistoryTabs = showChatListAsTree
+    ? menuTree.history.map(({ tab }) => tab)
+    : menuHistoryTabs;
+  const visibleHistoryMenuTabs = displayedHistoryTabs.slice(0, historyVisibleCount);
+  const hasMoreHistory = visibleHistoryMenuTabs.length < displayedHistoryTabs.length;
   const navigableMenuTabs = (
-    searchActive ? searchResults : [...menuPinnedTabs, ...visibleHistoryMenuTabs]
+    searchActive ? searchResults : [...displayedPinnedTabs, ...visibleHistoryMenuTabs]
   ).filter((tab) => tab.unavailableReason === null);
   const tabListMenuHasNavigation =
     showTabListButton && menuPinnedTabs.length + menuHistoryTabs.length > 1;
 
   useEffect(() => {
     setHistoryVisibleCount((current) =>
-      Math.min(Math.max(HISTORY_MENU_PAGE_SIZE, current), historyMenuTabs.length),
+      Math.min(Math.max(HISTORY_MENU_PAGE_SIZE, current), displayedHistoryTabs.length),
     );
-  }, [historyMenuTabs.length]);
+  }, [displayedHistoryTabs.length]);
 
   const loadMoreHistory = useCallback(() => {
     setHistoryVisibleCount((current) =>
-      Math.min(current + HISTORY_MENU_PAGE_SIZE, historyMenuTabs.length),
+      Math.min(current + HISTORY_MENU_PAGE_SIZE, displayedHistoryTabs.length),
     );
-  }, [historyMenuTabs.length]);
+  }, [displayedHistoryTabs.length]);
 
   const clearHistoryMoreTimer = useCallback(() => {
     if (historyMoreTimerRef.current !== null) {
@@ -2278,7 +2352,10 @@ function ChatTabsOverlay() {
     if (document.activeElement === searchInputRef.current) event.preventDefault();
   };
 
-  const renderTabListMenuItem = (tab: PresentedTab) => {
+  const renderTabListMenuItem = (
+    tab: PresentedTab,
+    children: readonly ChatMenuNode<PresentedTab>[] = [],
+  ): ReactNode => {
     const searchIndex = navigableMenuTabs.findIndex(
       (item) => item.entry.threadId === tab.entry.threadId,
     );
@@ -2287,13 +2364,22 @@ function ChatTabsOverlay() {
       unavailableReason === null ? null : unavailableHistoryLabel(unavailableReason, locale);
     const active = unavailableReason === null && tab.entry.threadId === context.threadId;
     const status = chatStatusFor(tab, locale);
-    return (
-      <DropdownMenu.Item
+    const choose = () => {
+      setTabListMenuOpen(false);
+      openThread({
+        threadId: tab.entry.threadId,
+        projectId: tab.entry.projectId,
+        title: tab.title,
+      });
+    };
+    const MenuItem = children.length > 0 ? DropdownMenu.SubTrigger : DropdownMenu.Item;
+    const item = (
+      <MenuItem
         key={tab.entry.threadId}
         id={searchIndex < 0 ? undefined : `bb-chat-tabs-search-result-${searchIndex}`}
         data-selected={searchIndex >= 0 && searchIndex === selectedSearchIndex ? "true" : undefined}
         className="bb-chat-tabs-list-menu-item"
-        disabled={unavailableReason !== null}
+        disabled={unavailableReason !== null && children.length === 0}
         aria-current={active ? "page" : undefined}
         aria-label={
           unavailableLabel === null
@@ -2303,17 +2389,29 @@ function ChatTabsOverlay() {
         data-active={active ? "true" : "false"}
         data-thread-id={tab.entry.threadId}
         data-unavailable={unavailableReason ?? undefined}
-        onPointerMove={preserveChatSearchFocus}
-        onPointerLeave={preserveChatSearchFocus}
-        onSelect={
-          unavailableReason === null
-            ? () => {
-                setTabListMenuOpen(false);
-                openThread({
-                  threadId: tab.entry.threadId,
-                  projectId: tab.entry.projectId,
-                  title: tab.title,
-                });
+        onPointerMove={children.length > 0 ? undefined : preserveChatSearchFocus}
+        onPointerLeave={children.length > 0 ? undefined : preserveChatSearchFocus}
+        onSelect={unavailableReason === null && children.length === 0 ? choose : undefined}
+        onClick={
+          children.length > 0
+            ? (event) => {
+                if (
+                  event.target instanceof Element &&
+                  event.target.closest(".bb-chat-tabs-child-expand")
+                )
+                  return;
+                event.preventDefault();
+                if (unavailableReason === null) choose();
+              }
+            : undefined
+        }
+        onKeyDown={
+          children.length > 0
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  if (unavailableReason === null) choose();
+                }
               }
             : undefined
         }
@@ -2348,13 +2446,58 @@ function ChatTabsOverlay() {
           </span>
         </span>
         {active ? <Icon name="Check" className="bb-chat-tabs-list-menu-check" aria-hidden /> : null}
-      </DropdownMenu.Item>
+        {children.length > 0 ? (
+          <span
+            className="bb-chat-tabs-child-expand"
+            aria-hidden
+            title={t("Subthreads of “{title}”", { title: tab.title })}
+          >
+            <Icon name="ChevronRight" className="bb-chat-tabs-child-chevron" />
+          </span>
+        ) : null}
+      </MenuItem>
     );
+    return children.length === 0 ? (
+      item
+    ) : (
+      <DropdownMenu.Sub key={tab.entry.threadId}>
+        {item}
+        <DropdownMenu.Portal>
+          <DropdownMenu.SubContent
+            lang={locale}
+            className="bb-chat-tabs-list-menu"
+            aria-label={t("Subthreads of “{title}”", { title: tab.title })}
+            aria-labelledby={undefined}
+            sideOffset={4}
+            collisionPadding={8}
+            onPointerEnter={(event) => enterTabListMenu(event.pointerType)}
+            onPointerLeave={(event) => leaveTabListMenu(event.pointerType)}
+          >
+            {children.map((node) => (
+              <ChatMenuBranch
+                key={node.tab.entry.threadId}
+                node={node}
+                render={renderTabListMenuItem}
+              />
+            ))}
+          </DropdownMenu.SubContent>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Sub>
+    );
+  };
+  const renderMenuTab = (tab: PresentedTab) => {
+    const node = showChatListAsTree
+      ? [...menuTree.pinned, ...menuTree.history].find(
+          (node) => node.tab.entry.threadId === tab.entry.threadId,
+        )
+      : undefined;
+    return renderTabListMenuItem(tab, node?.children);
   };
 
   const tabListSwitcher = tabListMenuHasNavigation ? (
     <div className="bb-chat-tabs-list-switcher" data-position={tabListButtonPosition}>
       <DropdownMenu.Root
+        dir={locale === "ar" ? "rtl" : "ltr"}
         modal={false}
         open={tabListMenuOpen}
         onOpenChange={(open) => {
@@ -2435,8 +2578,18 @@ function ChatTabsOverlay() {
                   setSelectedSearchIndex(-1);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Escape") return;
+                  if (event.key === "Escape" || event.nativeEvent.isComposing) return;
                   event.stopPropagation();
+                  if (
+                    event.key === (locale === "ar" ? "ArrowLeft" : "ArrowRight") &&
+                    !searchActive &&
+                    showChatListAsTree
+                  ) {
+                    event.preventDefault();
+                    const index = selectedSearchIndex < 0 ? 0 : selectedSearchIndex;
+                    document.getElementById(`bb-chat-tabs-search-result-${index}`)?.focus();
+                    return;
+                  }
                   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                     event.preventDefault();
                     setSelectedSearchIndex((current) =>
@@ -2473,7 +2626,7 @@ function ChatTabsOverlay() {
                 aria-busy={searchPending}
               >
                 {searchResults.length > 0 ? (
-                  searchResults.map(renderTabListMenuItem)
+                  searchResults.map((tab) => renderTabListMenuItem(tab))
                 ) : (
                   <span className="bb-chat-tabs-list-menu-search-empty">
                     {t(searchPending ? "Search chats..." : "No matching chats")}
@@ -2481,12 +2634,12 @@ function ChatTabsOverlay() {
                 )}
               </DropdownMenu.Group>
             ) : null}
-            {!searchActive && menuPinnedTabs.length > 0 ? (
+            {!searchActive && displayedPinnedTabs.length > 0 ? (
               <DropdownMenu.Group className="bb-chat-tabs-list-menu-group">
                 <DropdownMenu.Label className="bb-chat-tabs-list-menu-group-label">
                   {t("Pinned")}
                 </DropdownMenu.Label>
-                {menuPinnedTabs.map(renderTabListMenuItem)}
+                {displayedPinnedTabs.map(renderMenuTab)}
               </DropdownMenu.Group>
             ) : null}
             {!searchActive && visibleHistoryMenuTabs.length > 0 ? (
@@ -2502,7 +2655,7 @@ function ChatTabsOverlay() {
                         aria-label={t("Next history page")}
                       />
                     ) : null}
-                    {renderTabListMenuItem(tab)}
+                    {renderMenuTab(tab)}
                   </Fragment>
                 ))}
               </DropdownMenu.Group>
@@ -2514,7 +2667,7 @@ function ChatTabsOverlay() {
                 aria-label={t("Show {count} more history chats", {
                   count: Math.min(
                     HISTORY_MENU_PAGE_SIZE,
-                    menuHistoryTabs.length - visibleHistoryMenuTabs.length,
+                    displayedHistoryTabs.length - visibleHistoryMenuTabs.length,
                   ),
                 })}
                 onPointerEnter={(event) => {
@@ -2534,7 +2687,7 @@ function ChatTabsOverlay() {
               >
                 <span>{t("More")}</span>
                 <span className="bb-chat-tabs-list-menu-more-count">
-                  {menuHistoryTabs.length - visibleHistoryMenuTabs.length}
+                  {displayedHistoryTabs.length - visibleHistoryMenuTabs.length}
                 </span>
               </DropdownMenu.Item>
             ) : null}

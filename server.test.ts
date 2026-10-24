@@ -470,7 +470,9 @@ describe("Chat Tabs", () => {
       language: "Русский",
       searchArchivedChats: true,
       enableWorkspaces: false,
+      showChatListAsTree: false,
     });
+    expect(updated.values.showChatListAsTree).toBe(false);
     expect(updated.values.enableWorkspaces).toBe(false);
     expect(updated.values.language).toBe("Русский");
     expect(updated.values.searchArchivedChats).toBe(true);
@@ -479,6 +481,7 @@ describe("Chat Tabs", () => {
       { language: "Unknown" },
       { searchArchivedChats: "true" },
       { enableWorkspaces: "false" },
+      { showChatListAsTree: "false" },
       { unexpected: true },
       {},
     ]) {
