@@ -4,6 +4,7 @@ import { tabCandidateSchema, tabEntrySchema, type TabEntry } from "./tabs-model"
 import { DEFAULT_WORKSPACE_ID, workspaceInfoSchema, type WorkspaceInfo } from "./workspaces";
 
 const SELECTION_KEY = "bb.tabs.workspace.v1";
+const PERSISTED_SELECTION_KEY = "bb.tabs.workspace.last.v1";
 const PARKED_ROUTE_KEY = "bb.tabs.workspace.parked.v1";
 const ACTIVE_TABS_KEY = "bb.tabs.workspace.active.v1";
 const CLOSED_TABS_KEY = "bb.tabs.closed.v1";
@@ -33,7 +34,10 @@ export interface WorkspaceSelection {
 }
 
 /** One store per window; generation distinguishes A → B → A visits as well. */
-export function createWorkspaceSelectionStore(storage: SelectionStorage | null) {
+export function createWorkspaceSelectionStore(
+  storage: SelectionStorage | null,
+  persistentStorage: SelectionStorage | null = storage,
+) {
   let saved: string | null = null;
   let parkedRoute: ReturnType<typeof parkedRouteSchema.parse> | null = null;
   let currentThreadId: string | null = null;
@@ -79,7 +83,12 @@ export function createWorkspaceSelectionStore(storage: SelectionStorage | null) 
     /* Ignore damaged active-tab metadata; selection remains independently readable. */
   }
   try {
-    saved = storage?.getItem(SELECTION_KEY)?.trim() || null;
+    saved =
+      storage?.getItem(SELECTION_KEY)?.trim() ||
+      (persistentStorage !== storage
+        ? persistentStorage?.getItem(PERSISTED_SELECTION_KEY)?.trim()
+        : null) ||
+      null;
     const raw = storage?.getItem(PARKED_ROUTE_KEY);
     if (raw) {
       const parsed = parkedRouteSchema.safeParse(JSON.parse(raw));
@@ -105,15 +114,21 @@ export function createWorkspaceSelectionStore(storage: SelectionStorage | null) 
   const notify = () => {
     for (const listener of listeners) listener();
   };
-  const persist = () => {
+  const persist = (explicitSelection = false) => {
     const id = workspacesEnabled
       ? snapshot.workspaceId
       : (preferredWorkspaceId ?? snapshot.workspaceId);
     if (id === null) return;
-    try {
-      storage?.setItem(SELECTION_KEY, id);
-    } catch {
-      /* Keep the in-memory selection. */
+    const targets =
+      explicitSelection && persistentStorage !== storage
+        ? [[storage, SELECTION_KEY] as const, [persistentStorage, PERSISTED_SELECTION_KEY] as const]
+        : [[storage, SELECTION_KEY] as const];
+    for (const [target, key] of targets) {
+      try {
+        target?.setItem(key, id);
+      } catch {
+        /* Keep the in-memory selection. */
+      }
     }
   };
   const parkRoute = (workspaceId: string | null) => {
@@ -228,7 +243,7 @@ export function createWorkspaceSelectionStore(storage: SelectionStorage | null) 
       selectionRevision++;
       parkRoute(workspaceId);
       snapshot = { ...snapshot, workspaceId, generation: snapshot.generation + 1 };
-      persist();
+      persist(true);
       notify();
     },
     acceptStateRevision(workspaceId: string, revision?: number) {
@@ -255,6 +270,14 @@ export function createWorkspaceSelectionStore(storage: SelectionStorage | null) 
         return;
       if (serverRevision !== undefined) newestCatalogRevision = serverRevision;
       const workspaces = parsed.data;
+      try {
+        const lastSelected = persistentStorage?.getItem(PERSISTED_SELECTION_KEY);
+        if (lastSelected && !workspaces.some((item) => item.id === lastSelected)) {
+          persistentStorage?.setItem(PERSISTED_SELECTION_KEY, singleWorkspaceId(workspaces)!);
+        }
+      } catch {
+        /* Keep the window selection if persistent storage is unavailable. */
+      }
       for (const id of stateRevisions.keys()) {
         if (!workspaces.some((item) => item.id === id)) stateRevisions.delete(id);
       }
@@ -306,12 +329,18 @@ export function workspaceSelectionStore(target: Window = window) {
   let store = stores.get(target);
   if (store === undefined) {
     let storage: SelectionStorage | null = null;
+    let persistentStorage: SelectionStorage | null = null;
     try {
       storage = target.sessionStorage;
     } catch {
       /* Private/embedded windows can deny storage. */
     }
-    store = createWorkspaceSelectionStore(storage);
+    try {
+      persistentStorage = target.localStorage;
+    } catch {
+      /* Private/embedded windows can deny storage. */
+    }
+    store = createWorkspaceSelectionStore(storage, persistentStorage);
     stores.set(target, store);
   }
   return store;

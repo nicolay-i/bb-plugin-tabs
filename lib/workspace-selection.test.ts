@@ -6,9 +6,10 @@ const infos = [
   { id: "home", name: "Home", defaultName: "Home" },
   { id: "other", name: "Other", defaultName: "Other" },
 ];
-function storage(saved: string | null = null) {
+function storage(saved: string | null = null, persisted: string | null = null) {
   const values = new Map<string, string>();
   if (saved !== null) values.set("bb.tabs.workspace.v1", saved);
+  if (persisted !== null) values.set("bb.tabs.workspace.last.v1", persisted);
   return {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, next: string) => {
@@ -18,6 +19,62 @@ function storage(saved: string | null = null) {
 }
 
 describe("window-local workspace selection", () => {
+  it("restores the machine-local choice for a new window without coupling existing windows", () => {
+    const machine = storage();
+    const firstWindow = createWorkspaceSelectionStore(storage(), machine);
+    firstWindow.acceptCatalog(infos);
+    firstWindow.select("home");
+    const secondWindow = createWorkspaceSelectionStore(storage(), machine);
+    secondWindow.acceptCatalog(infos);
+    expect(secondWindow.getSnapshot().workspaceId).toBe("home");
+    secondWindow.select("other");
+    expect(firstWindow.getSnapshot().workspaceId).toBe("home");
+    const reloaded = createWorkspaceSelectionStore(storage(), machine);
+    reloaded.acceptCatalog(infos);
+    expect(reloaded.getSnapshot().workspaceId).toBe("other");
+  });
+
+  it("does not replace another window's last explicit choice on reload, catalog updates or settings", () => {
+    const machine = storage();
+    const sessionA = storage();
+    const a = createWorkspaceSelectionStore(sessionA, machine);
+    a.acceptCatalog(infos);
+    const b = createWorkspaceSelectionStore(storage(), machine);
+    b.acceptCatalog(infos);
+    b.select("home");
+    const reloadedA = createWorkspaceSelectionStore(sessionA, machine);
+    reloadedA.acceptCatalog(infos);
+    expect(reloadedA.getSnapshot().workspaceId).toBe("work");
+    reloadedA.acceptCatalog(infos.map((info) => ({ ...info, name: `${info.name}!` })));
+    reloadedA.setWorkspacesEnabled(false);
+    reloadedA.setWorkspacesEnabled(true);
+    expect(machine.getItem("bb.tabs.workspace.last.v1")).toBe("home");
+    const fresh = createWorkspaceSelectionStore(storage(), machine);
+    fresh.acceptCatalog(infos);
+    expect(fresh.getSnapshot().workspaceId).toBe("home");
+    reloadedA.select("other");
+    expect(machine.getItem("bb.tabs.workspace.last.v1")).toBe("other");
+  });
+
+  it("reconciles a deleted machine-local choice without adopting an old window's selection", () => {
+    const machine = storage(null, "home");
+    const oldWindow = createWorkspaceSelectionStore(storage("other"), machine);
+    const remaining = infos.filter((info) => info.id !== "home");
+    oldWindow.acceptCatalog(remaining);
+    expect(oldWindow.getSnapshot().workspaceId).toBe("other");
+    expect(machine.getItem("bb.tabs.workspace.last.v1")).toBe("work");
+    const fresh = createWorkspaceSelectionStore(storage(), machine);
+    fresh.acceptCatalog(remaining);
+    expect(fresh.getSnapshot().workspaceId).toBe("work");
+  });
+
+  it("prefers the current window choice over the machine-local choice", () => {
+    const machine = storage(null, "home");
+    const store = createWorkspaceSelectionStore(storage("work"), machine);
+    store.acceptCatalog(infos);
+    expect(store.getSnapshot().workspaceId).toBe("work");
+  });
+
   it("tracks explicit selection/settings intent without counting catalog fallback or rename", () => {
     const store = createWorkspaceSelectionStore(null);
     store.acceptCatalog(infos);
