@@ -182,7 +182,13 @@ describe("Chat Tabs CSS contracts", () => {
       "overflow-y": "hidden",
       padding: "0.25rem 0.5rem",
     });
-    expectStyle(".bb-chat-tab", { flex: "0 0 9rem", height: "var(--bb-chat-tabs-tab-height)" });
+    expectStyle(".bb-chat-tab", {
+      width: "13.5rem",
+      "min-width": "9rem",
+      "max-width": "13.5rem",
+      flex: "1 1 13.5rem",
+      height: "var(--bb-chat-tabs-tab-height)",
+    });
     expectStyle(".bb-chat-tab-action", { "margin-inline-end": "0.25rem" });
     expect(value(".bb-chat-tabs-shell", "border-bottom")).toBe("");
   });
@@ -355,6 +361,18 @@ describe("Chat Tabs CSS contracts", () => {
         "var(--bb-chat-tabs-strip-height)",
       );
     }
+  });
+  it("lets tabs grow to 1.5x and shrink before the strip scrolls", () => {
+    expectStyle(".bb-chat-tab", {
+      "min-width": "9rem",
+      "max-width": "13.5rem",
+      flex: "1 1 13.5rem",
+    });
+    expectStyle(
+      ".bb-chat-tab",
+      { "min-width": "6.75rem", "max-width": "13.5rem", flex: "1 1 13.5rem" },
+      compact,
+    );
   });
   it("keeps menu controls, bounded content and unavailable statuses consistent", () => {
     expectStyle('.bb-chat-tabs-list-switcher[data-position="right"]', {
