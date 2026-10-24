@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-tabs",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Keep BB chats within reach with workspaces, pinned tabs, favorites, search, project aliases and colors, and 15 interface languages.",
   "license": "MIT",
   "repository": {

@@ -2,6 +2,22 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## 0.1.15
+
+### Added
+
+- Show nested chats in side-opening submenus of the chat list by default, with a setting to return to a flat list. Search results remain directly accessible as a flat list; known ancestors preserve access to nested pins and history.
+- Search all available recent projects by name or alias from the New chat menu, including keyboard selection and automatic reveal of the selected result without moving search focus.
+- Restore the last explicitly selected workspace on the same browser/device after reopening BB, while keeping existing windows independent. Catalog refreshes and old-window reloads do not overwrite another window's choice.
+
+### Changed
+
+- Keep New chat immediately beside the tabs and inside the available window bounds. Desktop tabs expand up to 1.5 times their previous width, shrink back as space fills, and then scroll horizontally; compact surfaces keep their touch-layout minimum.
+
+### Security
+
+- Update Zod, Vitest/mocker, Hono, Vite, Undici and their required transitive dependencies within the existing version ranges to address reported advisories. Keep the BB SDK pin unchanged.
+
 ## 0.1.14
 
 ### Added
