@@ -11,7 +11,8 @@ const child = (threadId: string, children: ChildThreadNode[] = []): ChildThreadN
   isWorking: false,
   isWaiting: false,
   isUnread: false,
-  attentionCount: 0,
+  workingCount: 0,
+  hasUnread: false,
   children,
 });
 afterEach(() => {
@@ -25,20 +26,18 @@ describe("Subthread menu", () => {
   it("hides the counter on leaf tabs and exposes all calm children when the count is zero", async () => {
     const onOpen = vi.fn();
     const view = render(
-      <ThreadChildrenMenu title="Root" children={[]} attentionCount={0} onOpen={onOpen} />,
+      <ThreadChildrenMenu title="Root" children={[]} workingCount={0} onOpen={onOpen} />,
     );
     expect(screen.queryByRole("button")).toBeNull();
     view.rerender(
       <ThreadChildrenMenu
         title="Root"
         children={[child("Calm")]}
-        attentionCount={0}
+        workingCount={0}
         onOpen={onOpen}
       />,
     );
-    expect(
-      screen.getByRole("button", { name: "Subthreads of “Root”: 0 active or unread" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Subthreads of “Root”" })).toBeTruthy();
     openMenu();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Calm" }));
     expect(onOpen).toHaveBeenCalledWith({ threadId: "Calm", projectId: "proj_api", title: "Calm" });
@@ -50,7 +49,7 @@ describe("Subthread menu", () => {
       <ThreadChildrenMenu
         title="Root"
         children={[child("Parent", [child("Grandchild")])]}
-        attentionCount={0}
+        workingCount={0}
         onOpen={onOpen}
       />,
     );
@@ -73,7 +72,7 @@ describe("Subthread menu", () => {
       <ThreadChildrenMenu
         title="Root"
         children={[child("Parent", [child("Grandchild")])]}
-        attentionCount={1}
+        workingCount={1}
         onOpen={onOpen}
       />,
     );
@@ -92,7 +91,7 @@ describe("Subthread menu", () => {
       <ThreadChildrenMenu
         title="Root"
         children={[child("Parent", [child("Grandchild")])]}
-        attentionCount={0}
+        workingCount={0}
         onOpen={onOpen}
       />,
     );
@@ -109,7 +108,7 @@ describe("Subthread menu", () => {
       <ThreadChildrenMenu
         title="Root"
         children={[child("Child")]}
-        attentionCount={0}
+        workingCount={0}
         onOpen={vi.fn()}
       />,
     );
@@ -140,7 +139,7 @@ describe("Subthread menu", () => {
       <ThreadChildrenMenu
         title="Root"
         children={[busy, child("Calm")]}
-        attentionCount={1}
+        workingCount={1}
         onOpen={vi.fn()}
       />,
     );
@@ -149,7 +148,7 @@ describe("Subthread menu", () => {
     const indicators = item.querySelector(".bb-chat-tabs-child-indicators")!;
     expect(item.firstElementChild).toBe(indicators);
     expect(indicators.querySelector(".bb-chat-tab-working")).not.toBeNull();
-    expect(indicators.querySelector(".bb-chat-tab-unread")).not.toBeNull();
+    expect(indicators.querySelector(".bb-chat-tabs-child-unread")).not.toBeNull();
     expect(
       indicators.nextElementSibling?.querySelector(".bb-chat-tabs-child-title")?.textContent,
     ).toBe("Busy");
@@ -160,6 +159,48 @@ describe("Subthread menu", () => {
     ).toBeNull();
   });
 
+  it("shows an unread dot without a count or work accent for idle descendants", async () => {
+    const unread = { ...child("Unread"), isUnread: true };
+    const parent = { ...child("Parent", [unread]), hasUnread: true };
+    const view = render(
+      <ThreadChildrenMenu
+        locale="ru"
+        title="Root"
+        children={[parent]}
+        workingCount={0}
+        hasUnread
+        onOpen={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", {
+      name: "Сабтреды «Root»: есть непрочитанные",
+    });
+    expect(trigger.textContent).toBe("");
+    expect(trigger.getAttribute("title")).toBe(trigger.getAttribute("aria-label"));
+    expect(trigger.hasAttribute("data-attention")).toBe(false);
+    expect(trigger.querySelector(".bb-chat-tabs-child-unread")).not.toBeNull();
+    openMenu();
+    const item = await screen.findByRole("menuitem", { name: "Parent" });
+    expect(item.querySelector(".bb-chat-tabs-child-count")).toBeNull();
+    expect(item.querySelector(".bb-chat-tabs-child-unread")).not.toBeNull();
+    fireEvent.keyDown(item, { key: "ArrowRight" });
+    const leaf = await screen.findByRole("menuitem", { name: "Unread. Непрочитанное." });
+    expect(leaf.querySelector(".bb-chat-tabs-child-unread")).not.toBeNull();
+    expect(view.container.querySelector(".bb-chat-tab-working")).toBeNull();
+    view.rerender(
+      <ThreadChildrenMenu
+        title="Root"
+        children={[parent]}
+        workingCount={2}
+        hasUnread
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Subthreads of “Root”: 2 working" }).textContent,
+    ).toBe("2");
+  });
+
   it("localizes the badge and statuses while preserving user titles", async () => {
     const waiting = { ...child("User title"), isWaiting: true, isWorking: true, isUnread: true };
     render(
@@ -167,13 +208,11 @@ describe("Subthread menu", () => {
         locale="ru"
         title="Root"
         children={[waiting]}
-        attentionCount={1}
+        workingCount={1}
         onOpen={vi.fn()}
       />,
     );
-    expect(
-      screen.getByRole("button", { name: "Сабтреды «Root» — активность или непрочитанное: 1" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Сабтреды «Root»: работают 1" })).toBeTruthy();
     openMenu();
     const item = await screen.findByRole("menuitem", {
       name: "User title. Нужен ответ · Непрочитанное.",
@@ -181,7 +220,7 @@ describe("Subthread menu", () => {
     const indicators = item.querySelector(".bb-chat-tabs-child-indicators")!;
     expect(indicators.getAttribute("title")).toBe("Нужен ответ · Непрочитанное");
     expect(indicators.querySelector(".bb-chat-tab-waiting")?.textContent).toBe("?");
-    expect(indicators.querySelector(".bb-chat-tab-unread")).not.toBeNull();
+    expect(indicators.querySelector(".bb-chat-tabs-child-unread")).not.toBeNull();
     expect(indicators.querySelector(".bb-chat-tab-working")).toBeNull();
     expect(screen.getByText("User title")).toBeTruthy();
   });

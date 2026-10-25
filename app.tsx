@@ -2966,7 +2966,8 @@ function ChatTabsOverlay() {
                             title={title}
                             locale={locale}
                             children={childTree.children}
-                            attentionCount={childTree.attentionCount}
+                            workingCount={childTree.workingCount}
+                            hasUnread={childTree.hasUnread}
                             onOpen={(candidate) => {
                               // Explicitly create/reopen this child's preview before navigation;
                               // background children never create tabs by themselves.

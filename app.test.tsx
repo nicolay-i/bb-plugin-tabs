@@ -548,7 +548,7 @@ describe("Chat Tabs", () => {
     expect(remote.textContent).not.toContain("Subthread");
   });
 
-  it("shows descendant attention counts and opens a nested child as an explicit preview", async () => {
+  it("counts only working descendants and opens a nested child as an explicit preview", async () => {
     let state: TabsState = {
       version: 1,
       entries: [
@@ -597,7 +597,7 @@ describe("Chat Tabs", () => {
       },
     );
     const badge = await slot.findByRole("button", {
-      name: "Subthreads of “Root”: 2 active or unread",
+      name: "Subthreads of “Root”: 1 working",
     });
     expect(state.entries).toHaveLength(1); // Background children never open tabs.
     fireEvent.pointerDown(badge, { button: 0, ctrlKey: false });

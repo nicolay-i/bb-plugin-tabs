@@ -8,8 +8,9 @@ export interface ChildThreadNode {
   isWorking: boolean;
   isWaiting: boolean;
   isUnread: boolean;
-  /** Distinct descendants needing attention, excluding this node itself. */
-  attentionCount: number;
+  /** Distinct working descendants, excluding this node itself. */
+  workingCount: number;
+  hasUnread: boolean;
   children: ChildThreadNode[];
 }
 
@@ -33,7 +34,7 @@ export function childThreadTree(
   rootId: string,
   childrenByParent: ReadonlyMap<string, readonly PluginSidebarThread[]>,
   work: ThreadWorkIndex,
-): { children: ChildThreadNode[]; attentionCount: number } {
+): { children: ChildThreadNode[]; workingCount: number; hasUnread: boolean } {
   const seen = new Set([rootId]);
   const visit = (parentId: string): ChildThreadNode[] => {
     const result: ChildThreadNode[] = [];
@@ -48,20 +49,21 @@ export function childThreadTree(
         isWorking: work.directlyWorkingThreadIds.has(thread.id),
         isWaiting: work.directlyWaitingThreadIds.has(thread.id),
         isUnread: thread.isUnread,
-        attentionCount: countAttention(children),
+        workingCount: countWorking(children),
+        hasUnread: children.some((child) => child.isUnread || child.hasUnread),
         children,
       });
     }
     return result;
   };
   const children = visit(rootId);
-  return { children, attentionCount: countAttention(children) };
+  return {
+    children,
+    workingCount: countWorking(children),
+    hasUnread: children.some((child) => child.isUnread || child.hasUnread),
+  };
 }
 
-function countAttention(children: readonly ChildThreadNode[]): number {
-  return children.reduce(
-    (count, node) =>
-      count + Number(node.isWorking || node.isWaiting || node.isUnread) + node.attentionCount,
-    0,
-  );
+function countWorking(children: readonly ChildThreadNode[]): number {
+  return children.reduce((count, node) => count + Number(node.isWorking) + node.workingCount, 0);
 }

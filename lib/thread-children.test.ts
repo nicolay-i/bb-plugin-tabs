@@ -38,7 +38,7 @@ const tree = (threads: PluginSidebarThread[], active: ReadonlySet<string> = new 
   childThreadTree("root", indexThreadChildren(threads), buildThreadWorkIndex(threads, active));
 
 describe("Child thread tree", () => {
-  it("counts distinct active, waiting and unread descendants, not rolled-up parents", () => {
+  it("counts working descendants once, excluding waiting and unread signals", () => {
     const result = tree([
       thread("root", null, { isUnread: true }),
       thread("middle", "root"),
@@ -47,9 +47,10 @@ describe("Child thread tree", () => {
       thread("unread", "root", { isUnread: true }),
       thread("calm", "root"),
     ]);
-    expect(result.attentionCount).toBe(3);
+    expect(result.workingCount).toBe(1);
+    expect(result.hasUnread).toBe(true);
     expect(result.children).toHaveLength(4);
-    expect(result.children[0]?.attentionCount).toBe(1);
+    expect(result.children[0]?.workingCount).toBe(1);
     expect(result.children[0]?.isWorking).toBe(false);
     expect(result.children[0]?.children[0]?.threadId).toBe("busy");
   });
@@ -57,8 +58,8 @@ describe("Child thread tree", () => {
   it("keeps calm children available at zero and includes durable workflow activity", () => {
     const threads = [thread("root", null), thread("child", "root")];
     expect(tree(threads).children).toHaveLength(1);
-    expect(tree(threads).attentionCount).toBe(0);
-    expect(tree(threads, new Set(["child"])).attentionCount).toBe(1);
+    expect(tree(threads).workingCount).toBe(0);
+    expect(tree(threads, new Set(["child"])).workingCount).toBe(1);
   });
 
   it("does not include archived subtrees, unrelated threads, duplicates or the root itself", () => {
@@ -72,7 +73,27 @@ describe("Child thread tree", () => {
       thread("other", "unrelated", { isUnread: true }),
     ]);
     expect(result.children.map((item) => item.threadId)).toEqual(["child"]);
-    expect(result.attentionCount).toBe(1);
+    expect(result.workingCount).toBe(0);
+    expect(result.hasUnread).toBe(true);
+  });
+
+  it("keeps 50 idle descendants with two unread separate from working counts", () => {
+    const threads = [
+      thread("root", null),
+      ...Array.from({ length: 50 }, (_, i) =>
+        thread(`child-${i}`, i < 10 ? "root" : `child-${i % 10}`, {
+          isUnread: i === 0 || i === 10,
+        }),
+      ),
+    ];
+    const result = tree(threads);
+    expect(result.workingCount).toBe(0);
+    expect(result.hasUnread).toBe(true);
+    const nodes = [...result.children, ...result.children.flatMap((node) => node.children)];
+    expect(nodes).toHaveLength(50);
+    expect(nodes.every((node) => !node.isWorking && node.workingCount === 0)).toBe(true);
+    expect(nodes.filter((node) => node.isUnread)).toHaveLength(2);
+    expect(result.children[0]?.hasUnread).toBe(true);
   });
 
   it("guards cyclic parent relations and normalizes unnamed titles", () => {

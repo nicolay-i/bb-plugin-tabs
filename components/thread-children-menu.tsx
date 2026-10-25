@@ -9,7 +9,8 @@ import { Icon } from "./ui/icon";
 interface ThreadChildrenMenuProps {
   title: string;
   children: readonly ChildThreadNode[];
-  attentionCount: number;
+  workingCount: number;
+  hasUnread?: boolean;
   locale?: PluginLocale;
   onOpen: (thread: TabCandidate) => void;
 }
@@ -18,7 +19,8 @@ interface ThreadChildrenMenuProps {
 export function ThreadChildrenMenu({
   title,
   children,
-  attentionCount,
+  workingCount,
+  hasUnread = false,
   locale = "en",
   onOpen,
 }: ThreadChildrenMenuProps) {
@@ -89,7 +91,7 @@ export function ThreadChildrenMenu({
             ) : node.isWorking ? (
               <span className="bb-chat-tab-working" />
             ) : null}
-            {node.isUnread ? <span className="bb-chat-tab-unread" /> : null}
+            {node.isUnread ? <span className="bb-chat-tabs-child-unread" /> : null}
           </span>
         ) : null}
         <span className="bb-chat-tabs-child-copy">
@@ -97,10 +99,12 @@ export function ThreadChildrenMenu({
             {label(node)}
           </span>
         </span>
-        {node.children.length > 0 ? (
+        {node.workingCount > 0 ? (
           <span className="bb-chat-tabs-child-count" aria-hidden>
-            {node.attentionCount}
+            {node.workingCount}
           </span>
+        ) : node.hasUnread && !node.isUnread ? (
+          <span className="bb-chat-tabs-child-unread" aria-hidden />
         ) : null}
       </>
     );
@@ -166,10 +170,12 @@ export function ThreadChildrenMenu({
       ),
     );
 
-  const accessibleLabel = t("Subthreads of “{title}”: {count} active or unread", {
-    title,
-    count: attentionCount,
-  });
+  const accessibleLabel =
+    workingCount > 0
+      ? t("Subthreads of “{title}”: {count} working", { title, count: workingCount })
+      : hasUnread
+        ? t("Subthreads of “{title}”: unread", { title })
+        : t("Subthreads of “{title}”", { title });
   return (
     <DropdownMenu.Root
       open={open}
@@ -185,7 +191,7 @@ export function ThreadChildrenMenu({
           type="button"
           draggable={false}
           className="bb-chat-tab-children"
-          data-attention={attentionCount > 0 ? "true" : undefined}
+          data-attention={workingCount > 0 ? "true" : undefined}
           onDragStart={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -205,7 +211,11 @@ export function ThreadChildrenMenu({
           }}
         >
           <Icon name="GitBranch" aria-hidden />
-          {attentionCount}
+          {workingCount > 0 ? (
+            workingCount
+          ) : hasUnread ? (
+            <span className="bb-chat-tabs-child-unread" aria-hidden />
+          ) : null}
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
