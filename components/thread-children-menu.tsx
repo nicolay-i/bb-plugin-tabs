@@ -211,11 +211,7 @@ export function ThreadChildrenMenu({
           }}
         >
           <Icon name="GitBranch" aria-hidden />
-          {workingCount > 0 ? (
-            workingCount
-          ) : hasUnread ? (
-            <span className="bb-chat-tabs-child-unread" aria-hidden />
-          ) : null}
+          {workingCount > 0 ? workingCount : null}
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

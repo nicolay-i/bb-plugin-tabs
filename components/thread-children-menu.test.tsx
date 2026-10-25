@@ -159,7 +159,7 @@ describe("Subthread menu", () => {
     ).toBeNull();
   });
 
-  it("shows an unread dot without a count or work accent for idle descendants", async () => {
+  it("keeps unread dots inside the tree without a badge or work accent on idle tabs", async () => {
     const unread = { ...child("Unread"), isUnread: true };
     const parent = { ...child("Parent", [unread]), hasUnread: true };
     const view = render(
@@ -178,7 +178,7 @@ describe("Subthread menu", () => {
     expect(trigger.textContent).toBe("");
     expect(trigger.getAttribute("title")).toBe(trigger.getAttribute("aria-label"));
     expect(trigger.hasAttribute("data-attention")).toBe(false);
-    expect(trigger.querySelector(".bb-chat-tabs-child-unread")).not.toBeNull();
+    expect(trigger.querySelector(".bb-chat-tabs-child-unread")).toBeNull();
     openMenu();
     const item = await screen.findByRole("menuitem", { name: "Parent" });
     expect(item.querySelector(".bb-chat-tabs-child-count")).toBeNull();
