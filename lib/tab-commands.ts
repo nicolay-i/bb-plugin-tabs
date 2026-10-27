@@ -88,14 +88,13 @@ export function createTabCommands(locale: PluginLocale): PluginCommandRegistrati
     {
       id: "parent",
       title: t("Go to parent chat"),
+      // No default: Ctrl+Alt+arrows switch GNOME workspaces and rotate some Windows displays.
       action: { kind: "parent" },
-      defaultShortcut: { key: "ArrowUp", mod: true, alt: true },
     },
     {
       id: "children",
       title: t("Open subthread tree"),
       action: { kind: "children" },
-      defaultShortcut: { key: "ArrowDown", mod: true, alt: true },
     },
     {
       id: "rename",

@@ -155,12 +155,12 @@ describe("SDK tab commands", () => {
       ["toggle-pin", "p"],
       ["toggle-favorite", "s"],
       ["next-workspace", "w"],
-      ["parent", "ArrowUp"],
-      ["children", "ArrowDown"],
     ]) {
       expect(command(id!).defaultShortcut).toEqual({ key, mod: true, alt: true });
     }
     for (const id of [
+      "parent",
+      "children",
       "list",
       "copy-link",
       "close-others",
