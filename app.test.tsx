@@ -60,6 +60,11 @@ function sidebarThread(
   };
 }
 
+function tapShift(target: HTMLElement | Window = window) {
+  fireEvent.keyDown(target, { key: "Shift", code: "ShiftLeft" });
+  fireEvent.keyUp(target, { key: "Shift", code: "ShiftLeft" });
+}
+
 function installMatchMedia(matches: boolean): () => void {
   const descriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
   Object.defineProperty(window, "matchMedia", {
@@ -2067,8 +2072,8 @@ describe("Chat Tabs", () => {
     expect(menu.querySelector('[data-selected="true"]')).not.toBeNull();
     fireEvent.keyDown(search, { key: "Enter" });
     expect(slot.sidebarActionCalls).toContainEqual({ method: "open", threadId: "thr_history_two" });
-    fireEvent.keyUp(window, { key: "Shift" });
-    fireEvent.keyUp(window, { key: "Shift" });
+    tapShift();
+    tapShift();
     await waitFor(() => {
       expect(
         document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]'),
@@ -2085,8 +2090,8 @@ describe("Chat Tabs", () => {
     const composer = document.createElement("textarea");
     slot.container.appendChild(composer);
     composer.focus();
-    fireEvent.keyUp(composer, { key: "Shift" });
-    fireEvent.keyUp(composer, { key: "Shift" });
+    tapShift(composer);
+    tapShift(composer);
     await waitFor(() => {
       expect(
         document.body.querySelector('.bb-chat-tabs-list-menu[data-state="open"]'),
@@ -2095,6 +2100,84 @@ describe("Chat Tabs", () => {
         document.body.querySelector('input[aria-label="Search chats by title or project"]'),
       );
     });
+  });
+
+  it.each([
+    "Shift+A",
+    "Shift+Ф",
+    "A between",
+    "ф between",
+    "pointerdown",
+    "blur",
+    "compositionstart",
+    "compositionend",
+    "isComposing",
+    "keyCode 229",
+    "repeat",
+    "orphan keyup",
+  ])("does not open the chat list after an interrupted Shift gesture: %s", async (scenario) => {
+    const overlay = app.appOverlays[0];
+    if (!overlay) throw new Error("Missing overlay");
+    const state: TabsState = {
+      version: 1,
+      entries: [
+        { threadId: "current", projectId: "project", title: "Current", pinned: true, openedAt: 1 },
+        { threadId: "second", projectId: "project", title: "Second", pinned: true, openedAt: 2 },
+      ],
+    };
+    const slot = renderSlot<{}, typeof rpcContract>(
+      overlay,
+      {},
+      {
+        context: { projectId: "project", threadId: "current" },
+        sidebarThreads: { threads: [sidebarThread("current", "project", "Current")], projects: [] },
+        rpc: { tabs_list: () => ({ state }) },
+      },
+    );
+    await slot.findByRole("button", { name: "Current" });
+    if (scenario.startsWith("Shift+")) {
+      fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft" });
+      fireEvent.keyDown(window, {
+        key: scenario.endsWith("Ф") ? "Ф" : "A",
+        code: "KeyA",
+        shiftKey: true,
+      });
+      fireEvent.keyUp(window, {
+        key: scenario.endsWith("Ф") ? "Ф" : "A",
+        code: "KeyA",
+        shiftKey: true,
+      });
+      fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
+    } else if (scenario === "orphan keyup") {
+      fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
+    } else {
+      tapShift();
+      if (scenario.endsWith("between")) {
+        const key = scenario.startsWith("ф") ? "ф" : "a";
+        fireEvent.keyDown(window, { key, code: "KeyA" });
+        fireEvent.keyUp(window, { key, code: "KeyA" });
+      } else if (scenario === "repeat") {
+        fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft" });
+        fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft", repeat: true });
+        fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
+      } else if (scenario === "isComposing" || scenario === "keyCode 229") {
+        fireEvent.keyDown(window, {
+          key: "Process",
+          isComposing: scenario === "isComposing",
+          keyCode: scenario === "keyCode 229" ? 229 : 0,
+        });
+        fireEvent.keyUp(window, { key: "Process" });
+      } else {
+        window.dispatchEvent(new Event(scenario));
+      }
+    }
+    tapShift();
+    expect(document.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).toBeNull();
+    // An interruption must not poison the next clean pair.
+    tapShift();
+    await waitFor(() =>
+      expect(document.querySelector('.bb-chat-tabs-list-menu[data-state="open"]')).not.toBeNull(),
+    );
   });
 
   it("handles behavior 9", async () => {

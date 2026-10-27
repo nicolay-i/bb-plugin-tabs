@@ -1175,6 +1175,7 @@ function ChatTabsOverlay() {
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastShiftReleaseRef = useRef<number | null>(null);
+  const shiftPressRef = useRef({ down: false, clean: false });
   const [historyVisibleCount, setHistoryVisibleCount] = useState(HISTORY_MENU_PAGE_SIZE);
   const [historyMorePending, setHistoryMorePending] = useState(false);
   const [draggedTab, setDraggedTab] = useState<DraggedTab | null>(null);
@@ -2215,8 +2216,28 @@ function ChatTabsOverlay() {
   }, [isCurrentVisit, locale, restoreTab, t, threadActions]);
 
   useLayoutEffect(() => {
+    const resetShiftGesture = () => {
+      lastShiftReleaseRef.current = null;
+      shiftPressRef.current = { down: false, clean: false };
+    };
+    const invalidShiftEvent = (event: KeyboardEvent) =>
+      event.repeat ||
+      event.isComposing ||
+      event.keyCode === 229 ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      event.defaultPrevented;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Shift") lastShiftReleaseRef.current = null;
+      const press = shiftPressRef.current;
+      if (event.key === "Shift" && !invalidShiftEvent(event)) {
+        press.clean = !press.down;
+        press.down = true;
+        if (!press.clean) lastShiftReleaseRef.current = null;
+      } else {
+        press.clean = false;
+        lastShiftReleaseRef.current = null;
+      }
       if (event.defaultPrevented || isDialogKeyboardTarget(event.target)) return;
 
       if (isReopenClosedTabShortcut(event)) {
@@ -2266,9 +2287,14 @@ function ChatTabsOverlay() {
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key !== "Shift" || event.repeat || event.ctrlKey || event.altKey || event.metaKey)
+      if (event.key !== "Shift" || invalidShiftEvent(event)) {
+        resetShiftGesture();
         return;
+      }
+      const clean = shiftPressRef.current.down && shiftPressRef.current.clean;
+      shiftPressRef.current = { down: false, clean: false };
       if (
+        !clean ||
         !shouldDock ||
         !tabListMenuHasNavigation ||
         embeddedBrowserFocused.current ||
@@ -2276,8 +2302,10 @@ function ChatTabsOverlay() {
         renameDialogTarget !== null ||
         isBrowserChromeKeyboardTarget(event.target) ||
         isDialogKeyboardTarget(event.target)
-      )
+      ) {
+        lastShiftReleaseRef.current = null;
         return;
+      }
       const now = Date.now();
       if (
         lastShiftReleaseRef.current !== null &&
@@ -2296,9 +2324,17 @@ function ChatTabsOverlay() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("pointerdown", resetShiftGesture, true);
+    window.addEventListener("blur", resetShiftGesture);
+    window.addEventListener("compositionstart", resetShiftGesture, true);
+    window.addEventListener("compositionend", resetShiftGesture, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("pointerdown", resetShiftGesture, true);
+      window.removeEventListener("blur", resetShiftGesture);
+      window.removeEventListener("compositionstart", resetShiftGesture, true);
+      window.removeEventListener("compositionend", resetShiftGesture, true);
     };
   }, [
     closeCurrentTab,
