@@ -38,16 +38,16 @@ This README and the plugin overview are the English publication guides. Addition
   runtime activity have their own working indicator. An idle main chat shows a
   subdued grey dot while its sidechat is working; the main chat's own work keeps
   the regular indicator. Calm chats have no dot.
-- **Explore subthreads from a tab.** A compact counter shows distinct descendants
-  that are working, waiting for input, or unread. Hover or click it to see all
-  available direct children; nested side menus reveal deeper descendants. Select
-  a title to open that subthread as the normal preview tab. A zero counter still
-  opens calm children. Keyboard navigation and separate touch expansion arrows
+- **Explore subthreads from a tab.** A branch button counts only working
+  descendants; calm branches show the bare button. Hover or click it to see all
+  available direct children; nested side menus reveal deeper descendants, where
+  unread subthreads keep their dots. Select a title to open that subthread as the
+  normal preview tab. Keyboard navigation and separate touch expansion arrows
   are supported; archived branches are excluded.
 - **Create a chat from the strip.** A fixed plus outside the horizontal scroller opens BB's native composer with the prompt focused. Hover for 300 ms to see projects with tabs in the current workspace first, then other recently active projects, ordered by activity within each group. **More** reveals the next 15 on click or after another 300 ms of hover. Choosing a project preselects it in the composer.
 - **Try tab appearance locally.** The General/Appearance settings tabs offer a six-color palette and a searchable project alias/color manager with autocomplete, editing, and confirmed removal from the appearance list only. Strip titles can show `[alias] Title`; a tab's context menu overrides its inherited project color or restores inheritance. Appearance is shared across workspaces, without renaming native projects/chats or changing pins.
 - **Pinned and recent navigation menu.** Open it by click, a 300 ms mouse
-  hover, or two quick Shift presses. Search chat titles and project names across
+  hover, or two quick Shift presses with no other key in between. Search chat titles and project names across
   available BB chats, including older chats outside the last 100 visits. A project
   name finds chats in that project; combine it with title words to narrow results,
   for example `Office login`. Enable **Include archived
@@ -63,6 +63,7 @@ This README and the plugin overview are the English publication guides. Addition
   with an Archived or Deleted label. Unarchiving makes that history item
   clickable again but intentionally does not restore its old pin or preview.
 - **Reopen closed tabs.** `Ctrl+Shift+T` / `⌘⇧T` restores the last explicitly closed tab in the current workspace, including from New chat. Repeated presses undo older closes in that window; up to 100 records survive reload in session storage. Original order/pin is retained; a restored preview is pinned if another preview is already open, so no chat is displaced. Archived/deleted and already reopened chats are skipped; failed writes remain retryable. Browser-reserved shortcuts can only work when the browser forwards the key event to BB.
+- **Keyboard commands.** The BB palette (`Ctrl+Shift+P` / `⌘⇧P`) lists Chat Tabs commands, and Settings → Keyboard can rebind any of them. Defaults: `Ctrl+Alt+1…8` / `⌘⌥1…8` select a tab and `9` the last one; `Ctrl+Alt+P` / `⌘⌥P` pins or unpins; `Ctrl+Alt+S` / `⌘⌥S` toggles a favorite; `Ctrl+Alt+W` / `⌘⌥W` switches to the next workspace; `F2` renames. Letter shortcuts follow the physical key, so they also work in Russian and other layouts. Parent chat, subthread tree, tab list, copy link, close others, and move left/right are palette-only until you bind them. On Windows, `Ctrl+Alt` doubles as AltGr, so rebind any default that collides with a character you type.
 - **Desktop and touch behavior.** Desktop supports drag and drop, horizontal
   mouse-wheel scrolling, a conditional top scrollbar, middle-click close,
   `Ctrl+Tab` / `Ctrl+Shift+Tab`, and `Ctrl+W` / `⌘W` in BB Desktop. Touch

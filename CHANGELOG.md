@@ -2,6 +2,17 @@
 
 All notable changes to Chat Tabs are documented here.
 
+## Unreleased
+
+### Added
+
+- Register Chat Tabs commands in the BB palette with rebindable defaults: `Mod+Alt+1…8`/`9` select a tab or the last one, `Mod+Alt+P` pins, `Mod+Alt+S` toggles a favorite, `Mod+Alt+W` cycles workspaces, and `F2` renames. Letter defaults match the physical key in Russian and Option layouts. Parent chat, subthread tree, tab list, copy link, close others, move, cycle, and restore are palette-only.
+
+### Fixed
+
+- Open the chat list only after two clean Shift presses; any other key, pointer press, window blur, IME composition, or key repeat in between cancels the gesture.
+- Count only working descendants on the subthread button; unread subthread dots stay inside the tree menu instead of looking like activity on the tab.
+
 ## 0.1.15
 
 ### Added
