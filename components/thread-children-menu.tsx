@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type PointerEvent,
+  type Ref,
+} from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { chatStatusFor } from "../lib/chat-status";
 import type { ChildThreadNode } from "../lib/thread-children";
@@ -13,6 +20,11 @@ interface ThreadChildrenMenuProps {
   hasUnread?: boolean;
   locale?: PluginLocale;
   onOpen: (thread: TabCandidate) => void;
+  controllerRef?: Ref<ThreadChildrenMenuHandle>;
+}
+
+export interface ThreadChildrenMenuHandle {
+  open(): void;
 }
 
 /** A separate sibling button, never nested inside the main tab button. */
@@ -23,8 +35,10 @@ export function ThreadChildrenMenu({
   hasUnread = false,
   locale = "en",
   onOpen,
+  controllerRef,
 }: ThreadChildrenMenuProps) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hovered = useRef(false);
@@ -35,6 +49,15 @@ export function ThreadChildrenMenu({
     if (closeTimer.current !== null) clearTimeout(closeTimer.current);
     openTimer.current = closeTimer.current = null;
   };
+  useImperativeHandle(controllerRef, () => ({
+    open() {
+      if (children.length === 0) return;
+      clearTimers();
+      hovered.current = false;
+      trigger.current?.focus();
+      setOpen(true);
+    },
+  }));
   useEffect(() => () => clearTimers(), []);
   useEffect(() => {
     if (children.length === 0) {
@@ -188,6 +211,7 @@ export function ThreadChildrenMenu({
     >
       <DropdownMenu.Trigger asChild>
         <button
+          ref={trigger}
           type="button"
           draggable={false}
           className="bb-chat-tab-children"

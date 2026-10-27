@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { useRpc, experimental_useSidebarThreadActions } from "@get-bb/plugin-sdk/app";
+import {
+  useRpc,
+  experimental_useSidebarThreadActions,
+  type PluginRpcClient,
+  type PluginSidebarThreadActions,
+} from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { rpcContract } from "../server";
 import { MAX_WORKSPACES, validateWorkspaceName, type WorkspaceInfo } from "../lib/workspaces";
@@ -21,6 +26,61 @@ export function workspaceErrorMessage(locale: PluginLocale, cause: unknown): str
   const message = cause instanceof Error ? cause.message : String(cause);
   const key = errorKeys.find((key) => message.includes(key));
   return key ? translate(locale, key) : message;
+}
+
+export async function switchWorkspaceAndRestore({
+  workspaceId,
+  currentThreadId,
+  rpc,
+  threadActions,
+  locale,
+  select = true,
+}: {
+  workspaceId: string;
+  currentThreadId: string | null;
+  rpc: PluginRpcClient<typeof rpcContract>;
+  threadActions: PluginSidebarThreadActions;
+  locale: PluginLocale;
+  select?: boolean;
+}) {
+  const store = workspaceSelectionStore();
+  if (select) {
+    if (store.getSnapshot().workspaceId === workspaceId) return;
+    // The homepage can mount before the old overlay has observed its null route.
+    store.observeRoute(currentThreadId);
+    store.select(workspaceId);
+  }
+  const visit = store.getSnapshot();
+  const routeRevision = store.getRouteRevision();
+  const routeUrl = window.location.href;
+  const current = () =>
+    store.getSnapshot().workspaceId === workspaceId &&
+    store.getSnapshot().generation === visit.generation &&
+    store.getRouteRevision() === routeRevision &&
+    window.location.href === routeUrl;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await rpc.call("tabs_list", { workspaceId, workflowThreadIds: [] });
+      if (!current()) return;
+      if (!store.acceptStateRevision(workspaceId, result.stateRevision)) continue;
+      const remembered = store.lastActiveThreadId(workspaceId);
+      const target =
+        result.state.entries.find((entry) => entry.threadId === remembered) ??
+        result.state.entries[0];
+      if (target) {
+        store.rememberActive(workspaceId, target.threadId);
+        store.unparkRoute(target.threadId);
+        if (target.threadId !== currentThreadId) threadActions.open(target.threadId);
+      } else {
+        store.unparkRoute(null);
+        threadActions.openNewThread({ focusPrompt: true });
+      }
+      return;
+    }
+    throw new Error(translate(locale, "Could not update the chat."));
+  } catch (cause) {
+    if (current()) toast.error(workspaceErrorMessage(locale, cause));
+  }
 }
 
 export function WorkspaceSwitcher({
@@ -115,45 +175,8 @@ export function WorkspaceSwitcher({
     }
   };
 
-  const switchWorkspace = async (workspaceId: string, select = true) => {
-    if (select) {
-      if (store.getSnapshot().workspaceId === workspaceId) return;
-      // The homepage can mount before the old overlay has observed its null route.
-      store.observeRoute(currentThreadId);
-      store.select(workspaceId);
-    }
-    const visit = store.getSnapshot();
-    const routeRevision = store.getRouteRevision();
-    const routeUrl = window.location.href;
-    const current = () =>
-      store.getSnapshot().workspaceId === workspaceId &&
-      store.getSnapshot().generation === visit.generation &&
-      store.getRouteRevision() === routeRevision &&
-      window.location.href === routeUrl;
-    try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const result = await rpc.call("tabs_list", { workspaceId, workflowThreadIds: [] });
-        if (!current()) return;
-        if (!store.acceptStateRevision(workspaceId, result.stateRevision)) continue;
-        const remembered = store.lastActiveThreadId(workspaceId);
-        const target =
-          result.state.entries.find((entry) => entry.threadId === remembered) ??
-          result.state.entries[0];
-        if (target) {
-          store.rememberActive(workspaceId, target.threadId);
-          store.unparkRoute(target.threadId);
-          if (target.threadId !== currentThreadId) threadActions.open(target.threadId);
-        } else {
-          store.unparkRoute(null);
-          threadActions.openNewThread({ focusPrompt: true });
-        }
-        return;
-      }
-      throw new Error(t("Could not update the chat."));
-    } catch (cause) {
-      if (current()) toast.error(workspaceErrorMessage(locale, cause));
-    }
-  };
+  const switchWorkspace = (workspaceId: string, select = true) =>
+    switchWorkspaceAndRestore({ workspaceId, currentThreadId, rpc, threadActions, locale, select });
 
   const captureNavigation = () => {
     store.observeRoute(currentThreadId);

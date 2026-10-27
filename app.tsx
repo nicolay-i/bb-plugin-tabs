@@ -90,7 +90,11 @@ import {
 import { PinnedTabsList } from "./components/pinned-tabs-list";
 import { NewChatSwitcher } from "./components/new-chat-switcher";
 import { LocalizedSettings } from "./components/localized-settings";
-import { ThreadChildrenMenu } from "./components/thread-children-menu";
+import {
+  ThreadChildrenMenu,
+  type ThreadChildrenMenuHandle,
+} from "./components/thread-children-menu";
+import { createTabCommands, useTabCommandTarget } from "./lib/tab-commands";
 import { childThreadTree, indexThreadChildren } from "./lib/thread-children";
 import { useOverlayBounds } from "./lib/use-overlay-bounds";
 import { recentProjects } from "./lib/recent-projects";
@@ -105,9 +109,14 @@ import { fuzzyChatSearch } from "./lib/fuzzy-chat-search";
 import { chatMenuTree, type ChatMenuNode } from "./lib/chat-menu-tree";
 import { Icon } from "./components/ui/icon";
 import { SubthreadBadge } from "./components/subthread-badge";
-import { WorkspaceSwitcher, workspaceErrorMessage } from "./components/workspace-switcher";
+import {
+  WorkspaceSwitcher,
+  workspaceErrorMessage,
+  switchWorkspaceAndRestore,
+} from "./components/workspace-switcher";
 import {
   translate,
+  resolvePluginLocale,
   usePluginLocale,
   type PluginLocale,
   type LanguageSetting,
@@ -1166,6 +1175,7 @@ function ChatTabsOverlay() {
   const [renameDialogTarget, setRenameDialogTarget] = useState<RenameTabTarget | null>(null);
   const [hasHorizontalOverflow, setHasHorizontalOverflow] = useState(false);
   const [tabListMenuOpen, setTabListMenuOpen] = useState(false);
+  const currentChildMenu = useRef<ThreadChildrenMenuHandle>(null);
   const [tabSearch, setTabSearch] = useState("");
   const [remoteSearch, setRemoteSearch] = useState<{
     query: string;
@@ -2350,6 +2360,154 @@ function ChatTabsOverlay() {
     clearListHoverTimers,
   ]);
 
+  const commandParentId =
+    sidebarCurrent !== null
+      ? sidebarCurrent.parentThreadId
+      : (currentEntry?.parentThreadId ?? null);
+  const pinnedCommandTabs = tabs.filter((tab) => tab.entry.pinned);
+  const pinnedCommandIndex = pinnedCommandTabs.findIndex(
+    (tab) => tab.entry.threadId === currentEntry?.threadId,
+  );
+  const commandMoveTarget = {
+    "move-left": pinnedCommandTabs[pinnedCommandIndex - 1]?.entry,
+    "move-right":
+      pinnedCommandIndex < 0 ? undefined : pinnedCommandTabs[pinnedCommandIndex + 1]?.entry,
+  };
+  useTabCommandTarget({
+    threadId: context.threadId,
+    isAvailable(action) {
+      if (
+        !showTabsOnCurrentLayout ||
+        !isCurrentVisit() ||
+        embeddedBrowserFocused.current ||
+        inlineRename !== null ||
+        renameDialogTarget !== null ||
+        draggedTab !== null
+      )
+        return false;
+      if (action.kind === "restore") {
+        const selected = workspaceSelectionStore().getSnapshot().workspaceId;
+        return (
+          selected !== null &&
+          !reopeningTab.current &&
+          workspaceSelectionStore().lastClosed(selected) !== null
+        );
+      }
+      if (action.kind === "next-workspace")
+        return (
+          settings.values?.enableWorkspaces !== false &&
+          workspaceSelectionStore().getSnapshot().workspaces.length > 1
+        );
+      if (!shouldDock) return false;
+      if (action.kind === "list") return tabListMenuHasNavigation;
+      if (action.kind === "select") return tabs[action.index] !== undefined;
+      if (action.kind === "last") return tabs.length > 0;
+      if (currentEntry === null) return false;
+      if (action.kind === "parent") return commandParentId !== null;
+      if (action.kind === "children")
+        return (childrenByParent.get(currentEntry.threadId)?.length ?? 0) > 0;
+      if (action.kind === "move-left" || action.kind === "move-right")
+        return currentEntry.pinned && commandMoveTarget[action.kind] !== undefined;
+      if (action.kind === "next" || action.kind === "previous" || action.kind === "close-others")
+        return tabs.length > 1;
+      return true;
+    },
+    async run(action) {
+      switch (action.kind) {
+        case "select":
+        case "last": {
+          const tab = action.kind === "select" ? tabs[action.index] : tabs.at(-1);
+          if (tab)
+            openThread({
+              threadId: tab.entry.threadId,
+              projectId: tab.entry.projectId,
+              title: tab.title,
+            });
+          return;
+        }
+        case "next-workspace": {
+          const store = workspaceSelectionStore();
+          const selection = store.getSnapshot();
+          const index = selection.workspaces.findIndex(
+            (workspace) => workspace.id === selection.workspaceId,
+          );
+          const next = selection.workspaces[(index + 1) % selection.workspaces.length];
+          if (next)
+            await switchWorkspaceAndRestore({
+              workspaceId: next.id,
+              currentThreadId: context.threadId,
+              rpc: resolveRpcRef.current,
+              threadActions,
+              locale,
+            });
+          return;
+        }
+        case "restore":
+          await reopenClosedTab();
+          return;
+        case "list":
+          clearListHoverTimers();
+          listOpenedByHoverRef.current = false;
+          setTabListMenuOpen(true);
+          searchInputRef.current?.focus();
+          return;
+        case "parent":
+          if (commandParentId !== null) threadActions.open(commandParentId);
+          return;
+        case "children":
+          currentChildMenu.current?.open();
+          return;
+        case "next":
+          cycleTabsByKeyboard("next");
+          return;
+        case "previous":
+          cycleTabsByKeyboard("previous");
+          return;
+      }
+      if (currentEntry === null) return;
+      switch (action.kind) {
+        case "toggle-pin":
+          await setPinned(currentEntry.threadId, !currentEntry.pinned);
+          return;
+        case "toggle-favorite":
+          await setFavorite(
+            currentEntry.threadId,
+            !state?.favorites?.some((entry) => entry.threadId === currentEntry.threadId),
+          );
+          return;
+        case "copy-link":
+          await copyThreadLink(currentEntry);
+          return;
+        case "rename":
+          setRenameDialogTarget({
+            entry: currentEntry,
+            title:
+              tabs.find((tab) => tab.entry.threadId === currentEntry.threadId)?.title ??
+              currentEntry.title,
+          });
+          return;
+        case "move-left":
+        case "move-right": {
+          const target = commandMoveTarget[action.kind];
+          if (target)
+            await move(
+              currentEntry.threadId,
+              target.threadId,
+              action.kind === "move-left" ? "before" : "after",
+            );
+          return;
+        }
+        case "close-others":
+          for (const { entry } of tabs) {
+            if (!isCurrentVisit()) return;
+            if (entry.threadId !== currentEntry.threadId && (await close(entry.threadId)) === null)
+              return;
+          }
+          return;
+      }
+    },
+  });
+
   const lastPinnedThreadId = useMemo(
     () =>
       tabs.reduce<string | null>(
@@ -2999,6 +3157,7 @@ function ChatTabsOverlay() {
                         )}
                         {!editing ? (
                           <ThreadChildrenMenu
+                            controllerRef={active ? currentChildMenu : undefined}
                             title={title}
                             locale={locale}
                             children={childTree.children}
@@ -3317,6 +3476,12 @@ function FavoriteTabsHomepageSection(props: PluginHomepageSectionProps) {
 }
 
 export default definePluginApp((app) => {
+  const commandLocale = resolvePluginLocale(
+    undefined,
+    document.documentElement.lang,
+    navigator.language,
+  );
+  for (const command of createTabCommands(commandLocale)) app.commands.register(command);
   app.slots.experimental_threadHeaderAction({
     id: "workspace",
     title: "Workspace",
