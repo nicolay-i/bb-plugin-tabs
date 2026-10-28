@@ -2,7 +2,7 @@
 
 All notable changes to Chat Tabs are documented here.
 
-## Unreleased
+## 0.1.16
 
 ### Added
 
